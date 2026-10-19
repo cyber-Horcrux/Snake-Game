@@ -3,8 +3,13 @@ import { Volume2, VolumeX, Pause, RotateCcw, Shield, Clock } from 'lucide-react'
 import type { GameEngineState, GameMode } from '../game/types.ts';
 
 interface HeaderHUDProps {
-  state: GameEngineState;
+  score: number;
   bestScore: number;
+  level: number;
+  length: number;
+  mode: GameMode;
+  hasShield: boolean;
+  slowMoUntil: number;
   onPause: () => void;
   onRestart: () => void;
   onToggleMute: () => void;
@@ -18,16 +23,21 @@ const MODE_LABELS: Record<GameMode, { label: string; color: string; border: stri
 };
 
 export const HeaderHUD: React.FC<HeaderHUDProps> = ({
-  state,
+  score,
   bestScore,
+  level,
+  length,
+  mode,
+  hasShield,
+  slowMoUntil,
   onPause,
   onRestart,
   onToggleMute,
   sfxEnabled,
 }) => {
-  const modeInfo = MODE_LABELS[state.mode];
+  const modeInfo = MODE_LABELS[mode] || MODE_LABELS.classic;
   const now = Date.now();
-  const slowMoRemaining = Math.max(0, Math.ceil((state.powerUps.slowMoUntil - now) / 1000));
+  const slowMoRemaining = Math.max(0, Math.ceil((slowMoUntil - now) / 1000));
 
   return (
     <div className="absolute inset-0 pointer-events-none p-3 sm:p-5 flex flex-col justify-between z-10">
@@ -40,7 +50,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
               Score
             </div>
             <div className="text-xl sm:text-3xl font-bold font-mono-num text-[#43F5FF] leading-none">
-              {state.score}
+              {score}
             </div>
           </div>
 
@@ -51,7 +61,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
               Best
             </div>
             <div className="text-sm sm:text-xl font-bold font-mono-num text-slate-300 leading-none">
-              {Math.max(bestScore, state.score)}
+              {Math.max(bestScore, score)}
             </div>
           </div>
 
@@ -62,7 +72,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
               Level
             </div>
             <div className="text-sm sm:text-xl font-bold font-mono-num text-[#9865FF] leading-none">
-              {state.level}
+              {level}
             </div>
           </div>
 
@@ -73,7 +83,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
               Length
             </div>
             <div className="text-sm sm:text-xl font-bold font-mono-num text-slate-300 leading-none">
-              {state.snake.length}
+              {length}
             </div>
           </div>
         </div>
@@ -88,7 +98,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
 
           {/* Active Power-Up Badges */}
           <div className="flex items-center gap-1.5">
-            {state.powerUps.hasShield && (
+            {hasShield && (
               <div
                 title="Aegis Shield Active"
                 className="flex items-center gap-1 px-2 py-0.5 bg-[#9865FF]/20 border border-[#9865FF] rounded text-[#9865FF] text-[10px] font-bold animate-pulse"

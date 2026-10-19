@@ -33,11 +33,22 @@ export default function App() {
   // Navigation & Screen State
   const [screen, setScreen] = useState<AppScreen>('title');
   const [selectedMode, setSelectedMode] = useState<GameMode>('classic');
+  const selectedModeRef = useRef<GameMode>('classic');
   const [bestScores, setBestScores] = useState<ModeBestScores>(() => loadBestScores());
   const [settings, setSettings] = useState<GameSettings>(() => loadSettings());
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Reactive HUD state so UI updates as soon as food is collected or stats change
+  const [hudState, setHudState] = useState({
+    score: 0,
+    level: 1,
+    length: 3,
+    mode: 'classic' as GameMode,
+    hasShield: false,
+    slowMoUntil: 0,
+  });
 
   // Simulation Refs (Decoupled from React 60fps loop)
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -52,11 +63,14 @@ export default function App() {
   // Synchronize refs
   screenRef.current = screen;
   settingsRef.current = settings;
+  selectedModeRef.current = selectedMode;
+
+  if (typeof window !== 'undefined') {
+    (window as unknown as { __gameStateRef: unknown }).__gameStateRef = gameStateRef;
+  }
 
   // Touch Swipe coordinates
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const [hasStartedMoving, setHasStartedMoving] = useState(false);
-  const hasStartedMovingRef = useRef<boolean>(false);
 
   // Sync soundEngine settings
   useEffect(() => {
@@ -71,6 +85,7 @@ export default function App() {
 
   // Handle high score updates
   const handleGameOver = useCallback((finalState: GameEngineState) => {
+    screenRef.current = 'gameover';
     soundEngine.play(finalState.isVictory ? 'new_record' : 'game_over');
     const { isNewBest } = updateBestScore(finalState.mode, finalState.score);
     setIsNewRecord(isNewBest);
@@ -81,34 +96,38 @@ export default function App() {
   // Direction handler
   const handleSteer = useCallback((dir: Direction) => {
     if (screenRef.current === 'playing') {
-      if (!hasStartedMovingRef.current) {
-        hasStartedMovingRef.current = true;
-        setHasStartedMoving(true);
-        lastTimeRef.current = performance.now();
-      }
       gameStateRef.current = queueDirection(gameStateRef.current, dir);
     }
   }, []);
 
   // Start / Restart game
-  const startGame = useCallback((mode: GameMode = selectedMode) => {
+  const startGame = useCallback((mode?: GameMode) => {
+    const targetMode = mode || selectedModeRef.current;
+    screenRef.current = 'playing';
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-    const newState = createInitialState(mode);
+    const newState = createInitialState(targetMode);
     gameStateRef.current = newState;
     accumulatorRef.current = 0;
     lastTimeRef.current = performance.now();
-    hasStartedMovingRef.current = false;
-    setHasStartedMoving(false);
     rendererRef.current.particles.reset();
     setIsNewRecord(false);
+    setHudState({
+      score: 0,
+      level: 1,
+      length: newState.snake.length,
+      mode: targetMode,
+      hasShield: false,
+      slowMoUntil: 0,
+    });
     setScreen('playing');
     soundEngine.play('click');
-  }, [selectedMode]);
+  }, []);
 
   // Resume game
   const resumeGame = useCallback(() => {
+    screenRef.current = 'playing';
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -120,6 +139,7 @@ export default function App() {
 
   // Pause game
   const pauseGame = useCallback(() => {
+    screenRef.current = 'paused';
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -129,6 +149,7 @@ export default function App() {
 
   // Main menu
   const returnToMainMenu = useCallback(() => {
+    screenRef.current = 'title';
     setScreen('title');
     soundEngine.play('click');
   }, []);
@@ -301,7 +322,7 @@ export default function App() {
 
       rendererRef.current.update(dt);
 
-      if (screenRef.current === 'playing' && hasStartedMovingRef.current) {
+      if (screenRef.current === 'playing') {
         accumulatorRef.current += dt * 1000;
         const tickInterval = gameStateRef.current.tickIntervalMs;
 
@@ -328,6 +349,16 @@ export default function App() {
             } else {
               rendererRef.current.particles.spawn(px, py, '#43F5FF', 14, 160, 4);
             }
+
+            // Immediately synchronize reactive HUD state with updated score, level, and length
+            setHudState({
+              score: result.state.score,
+              level: result.state.level,
+              length: result.state.snake.length,
+              mode: result.state.mode,
+              hasShield: result.state.powerUps.hasShield,
+              slowMoUntil: result.state.powerUps.slowMoUntil,
+            });
           }
 
           if (result.shieldAbsorbed) {
@@ -336,6 +367,11 @@ export default function App() {
             const py = (head.y + 0.5) * (canvas.height / result.state.gridHeight);
             rendererRef.current.particles.spawn(px, py, '#9865FF', 24, 220, 5);
             rendererRef.current.triggerScreenShake(10, 0.3);
+
+            setHudState(prev => ({
+              ...prev,
+              hasShield: false,
+            }));
           }
 
           if (!result.state.isAlive || result.state.isVictory) {
@@ -427,24 +463,19 @@ export default function App() {
 
         {/* In-Game Minimal Perimeter HUD */}
         {screen === 'playing' && (
-          <>
-            <HeaderHUD
-              state={gameStateRef.current}
-              bestScore={bestScores[gameStateRef.current.mode]}
-              onPause={pauseGame}
-              onRestart={() => startGame(gameStateRef.current.mode)}
-              onToggleMute={toggleMute}
-              sfxEnabled={settings.audio.sfxEnabled}
-            />
-
-            {!hasStartedMoving && (
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10 flex flex-col items-center">
-                <div className="px-5 py-2.5 rounded-xl bg-[#101426]/95 border border-[#43F5FF] text-[#43F5FF] font-display font-bold text-xs sm:text-sm tracking-widest uppercase neon-box-cyan animate-pulse shadow-2xl">
-                  STEER TO LAUNCH [WASD / ARROWS]
-                </div>
-              </div>
-            )}
-          </>
+          <HeaderHUD
+            score={hudState.score}
+            bestScore={bestScores[hudState.mode]}
+            level={hudState.level}
+            length={hudState.length}
+            mode={hudState.mode}
+            hasShield={hudState.hasShield}
+            slowMoUntil={hudState.slowMoUntil}
+            onPause={pauseGame}
+            onRestart={() => startGame(hudState.mode)}
+            onToggleMute={toggleMute}
+            sfxEnabled={settings.audio.sfxEnabled}
+          />
         )}
       </div>
 
