@@ -1,0 +1,6 @@
+{
+  "name": "Neon Snake",
+  "description": "A modern, futuristic cyberpunk arcade Snake game with multiple modes, power-ups, procedural audio, and smooth neon visual effects.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
