@@ -2,7 +2,7 @@
  * Storage and Persistence Module
  * Robust schema validation, error handling, and fallback defaults.
  */
-import type { GameMode, GameSettings, ModeBestScores } from './types.ts';
+import type { ControlMode, GameMode, GameSettings, ModeBestScores } from './types.ts';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from './constants.ts';
 
 export const DEFAULT_BEST_SCORES: ModeBestScores = {
@@ -126,6 +126,18 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
     const validSkins = ['cyber_cyan', 'matrix_green', 'synth_sunset', 'hyper_violet', 'gold_prestige'];
     const skin = validSkins.includes(parsed.skin) ? parsed.skin : DEFAULT_SETTINGS.skin;
 
+    const validControlModes: ControlMode[] = ['swipe', 'buttons', 'both'];
+    let controlMode: ControlMode;
+    if (validControlModes.includes(parsed.controlMode)) {
+      controlMode = parsed.controlMode;
+    } else if (parsed.dpadPreference === 'never') {
+      controlMode = 'swipe';
+    } else if (parsed.dpadPreference === 'always') {
+      controlMode = 'buttons';
+    } else {
+      controlMode = DEFAULT_SETTINGS.controlMode;
+    }
+
     return {
       audio: {
         sfxEnabled,
@@ -134,6 +146,7 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
       visualEffects,
       dpadPreference,
       skin,
+      controlMode,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

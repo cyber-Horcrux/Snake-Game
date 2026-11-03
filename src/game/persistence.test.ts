@@ -100,11 +100,75 @@ test('loadSettings sanitizes corrupted fields and clamped volume', () => {
   assert.equal(loaded.visualEffects, DEFAULT_SETTINGS.visualEffects);
   assert.equal(loaded.dpadPreference, 'auto');
   assert.equal(loaded.skin, 'cyber_cyan'); // Falls back to default skin
+  assert.equal(loaded.controlMode, 'swipe'); // Falls back to default control mode
 
   // Valid skin is loaded properly
   saveSettings({ ...DEFAULT_SETTINGS, skin: 'synth_sunset' }, storage);
   const reloaded = loadSettings(storage);
   assert.equal(reloaded.skin, 'synth_sunset');
+});
+
+test('default control mode for new installations is swipe', () => {
+  const emptyStorage = new MemoryStorage();
+  const settings = loadSettings(emptyStorage);
+  assert.equal(settings.controlMode, 'swipe');
+  assert.deepEqual(loadSettings(null).controlMode, 'swipe');
+});
+
+test('correct persistence and restoration of all three control modes', () => {
+  const storage = new MemoryStorage();
+
+  // Test swipe
+  saveSettings({ ...DEFAULT_SETTINGS, controlMode: 'swipe' }, storage);
+  assert.equal(loadSettings(storage).controlMode, 'swipe');
+
+  // Test buttons
+  saveSettings({ ...DEFAULT_SETTINGS, controlMode: 'buttons' }, storage);
+  assert.equal(loadSettings(storage).controlMode, 'buttons');
+
+  // Test both
+  saveSettings({ ...DEFAULT_SETTINGS, controlMode: 'both' }, storage);
+  assert.equal(loadSettings(storage).controlMode, 'both');
+});
+
+test('restoration of previously saved selections and legacy dpad migration', () => {
+  const storage = new MemoryStorage();
+
+  // Legacy setting with dpadPreference 'never' maps to swipe
+  storage.setItem(
+    'neon_snake_settings_v1',
+    JSON.stringify({
+      audio: { sfxEnabled: true, sfxVolume: 0.8 },
+      visualEffects: 'high',
+      dpadPreference: 'never',
+      skin: 'cyber_cyan',
+    })
+  );
+  assert.equal(loadSettings(storage).controlMode, 'swipe');
+
+  // Legacy setting with dpadPreference 'always' maps to buttons
+  storage.setItem(
+    'neon_snake_settings_v1',
+    JSON.stringify({
+      audio: { sfxEnabled: true, sfxVolume: 0.8 },
+      visualEffects: 'high',
+      dpadPreference: 'always',
+      skin: 'cyber_cyan',
+    })
+  );
+  assert.equal(loadSettings(storage).controlMode, 'buttons');
+
+  // Corrupted or invalid controlMode falls back safely to swipe
+  storage.setItem(
+    'neon_snake_settings_v1',
+    JSON.stringify({
+      audio: { sfxEnabled: true, sfxVolume: 0.8 },
+      visualEffects: 'high',
+      controlMode: 'teleport_mind_control',
+      skin: 'cyber_cyan',
+    })
+  );
+  assert.equal(loadSettings(storage).controlMode, 'swipe');
 });
 
 test('storage exceptions do not crash application', () => {

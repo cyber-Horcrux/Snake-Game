@@ -1,7 +1,7 @@
 /**
  * Tunable game constants for NEON SNAKE
  */
-import type { GameMode, SnakeSkin, SnakeSkinId } from './types.ts';
+import type { ControlMode, GameMode, SnakeSkin, SnakeSkinId } from './types.ts';
 
 export const GRID_SIZE = {
   WIDTH: 24,
@@ -105,6 +105,7 @@ export const DEFAULT_SETTINGS = {
   visualEffects: 'high' as const,
   dpadPreference: 'auto' as const,
   skin: 'cyber_cyan' as SnakeSkinId,
+  controlMode: 'swipe' as ControlMode,
 };
 
 export const STORAGE_KEYS = {

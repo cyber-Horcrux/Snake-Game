@@ -45,9 +45,9 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose }) => {
             <div className="bg-[#080A12] p-3 rounded-xl border border-slate-800">
               <span className="font-bold text-white block mb-1">TOUCH & MOBILE</span>
               <ul className="text-slate-400 space-y-1">
-                <li><strong className="text-slate-200">Virtual D-Pad:</strong> Directional touch</li>
                 <li><strong className="text-slate-200">Swipe Gestures:</strong> Direct arena swiping</li>
-                <li><strong className="text-slate-200">HUD Icons:</strong> Instant pause & restart</li>
+                <li><strong className="text-slate-200">Virtual D-Pad:</strong> Directional touch buttons</li>
+                <li><strong className="text-slate-200">Control Modes:</strong> Swipe, Buttons, or Both in Settings</li>
               </ul>
             </div>
           </div>
