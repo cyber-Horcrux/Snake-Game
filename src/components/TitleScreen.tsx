@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Sparkles, Zap, Infinity } from 'lucide-react';
+import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Sparkles, Zap, Infinity, BarChart3 } from 'lucide-react';
 import type { GameMode, ModeBestScores } from '../game/types.ts';
 
 interface TitleScreenProps {
@@ -9,6 +9,7 @@ interface TitleScreenProps {
   onStartGame: () => void;
   onOpenHowToPlay: () => void;
   onOpenSettings: () => void;
+  onOpenStats: () => void;
   sfxEnabled: boolean;
   onToggleMute: () => void;
 }
@@ -53,6 +54,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStartGame,
   onOpenHowToPlay,
   onOpenSettings,
+  onOpenStats,
   sfxEnabled,
   onToggleMute,
 }) => {
@@ -171,10 +173,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </button>
 
         {/* Secondary Buttons */}
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap justify-center items-center gap-2 sm:gap-3">
+          <button
+            onClick={onOpenStats}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white bg-[#101426]/70 border border-slate-700 hover:border-amber-400/50 transition-all cursor-pointer"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
+            <span>DOSSIER</span>
+          </button>
+
           <button
             onClick={onOpenHowToPlay}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white bg-[#101426]/70 border border-slate-700 hover:border-[#43F5FF]/50 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white bg-[#101426]/70 border border-slate-700 hover:border-[#43F5FF]/50 transition-all cursor-pointer"
           >
             <HelpCircle className="w-3.5 h-3.5 text-[#43F5FF]" />
             <span>HOW TO PLAY</span>
@@ -182,7 +192,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
           <button
             onClick={onOpenSettings}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white bg-[#101426]/70 border border-slate-700 hover:border-[#43F5FF]/50 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white bg-[#101426]/70 border border-slate-700 hover:border-[#9865FF]/50 transition-all cursor-pointer"
           >
             <Settings className="w-3.5 h-3.5 text-[#9865FF]" />
             <span>SETTINGS</span>

@@ -18,6 +18,7 @@ import {
   POINTS,
   POWER_UPS,
   FOOD_PROGRESSION_PER_LEVEL,
+  COMBO_SETTINGS,
 } from './constants.ts';
 
 export interface StepResult {
@@ -154,6 +155,11 @@ export function createInitialState(
       slowMoUntil: 0,
       hasShield: false,
     },
+    combo: 1,
+    comboExpiresAt: 0,
+    wallsWrapped: 0,
+    shieldsUsed: 0,
+    powerUpsCollected: 0,
     lastTickTime: 0,
     tickIntervalMs: calculateTickInterval(mode, 1, false),
     gameTimeMs: 0,
@@ -228,9 +234,18 @@ export function stepGame(
 
   // 2. Wall Collisions & Wraparound
   let wallCollision = false;
+  let newWallsWrapped = currentState.wallsWrapped || 0;
+  let newShieldsUsed = currentState.shieldsUsed || 0;
+  let newPowerUpsCollected = currentState.powerUpsCollected || 0;
+
   if (currentState.mode === 'zen') {
-    nextHeadX = (nextHeadX + currentState.gridWidth) % currentState.gridWidth;
-    nextHeadY = (nextHeadY + currentState.gridHeight) % currentState.gridHeight;
+    const wrappedX = (nextHeadX + currentState.gridWidth) % currentState.gridWidth;
+    const wrappedY = (nextHeadY + currentState.gridHeight) % currentState.gridHeight;
+    if (wrappedX !== nextHeadX || wrappedY !== nextHeadY) {
+      newWallsWrapped++;
+    }
+    nextHeadX = wrappedX;
+    nextHeadY = wrappedY;
   } else {
     // Classic and Rush: walls are solid boundaries
     if (
@@ -250,6 +265,8 @@ export function stepGame(
       // Quantum Phase: Consume shield and warp through to opposite boundary
       currentPowerUps.hasShield = false;
       shieldAbsorbed = true;
+      newShieldsUsed++;
+      newWallsWrapped++;
       events.push('shield_absorb');
       nextHeadX = (nextHeadX + currentState.gridWidth) % currentState.gridWidth;
       nextHeadY = (nextHeadY + currentState.gridHeight) % currentState.gridHeight;
@@ -281,6 +298,7 @@ export function stepGame(
     if (currentPowerUps.hasShield) {
       currentPowerUps.hasShield = false;
       shieldAbsorbed = true;
+      newShieldsUsed++;
       events.push('shield_absorb');
     } else {
       return {
@@ -309,6 +327,13 @@ export function stepGame(
   let newPendingGrowth = currentState.pendingGrowth;
   let newFoodEaten = currentState.foodEaten;
   let newBonusEaten = currentState.bonusEaten;
+  let currentCombo = currentState.combo || 1;
+  let currentComboExpiresAt = currentState.comboExpiresAt || 0;
+
+  // Reset combo if time window has lapsed
+  if (nowMs > currentComboExpiresAt) {
+    currentCombo = 1;
+  }
 
   for (const item of activeFoods) {
     if (item.position.x === nextHeadX && item.position.y === nextHeadY) {
@@ -319,7 +344,17 @@ export function stepGame(
   }
 
   if (eatenFood) {
-    scoreGain += eatenFood.points;
+    if (nowMs <= currentComboExpiresAt && currentCombo >= 1) {
+      currentCombo = Math.min(COMBO_SETTINGS.MAX_COMBO, currentCombo + 1);
+      if (currentCombo > 1) {
+        events.push('combo');
+      }
+    } else {
+      currentCombo = 1;
+    }
+    currentComboExpiresAt = nowMs + COMBO_SETTINGS.WINDOW_MS;
+
+    scoreGain += eatenFood.points * currentCombo;
     if (eatenFood.type === 'normal') {
       newFoodEaten++;
       newPendingGrowth++;
@@ -328,9 +363,11 @@ export function stepGame(
       newBonusEaten++;
       events.push('bonus');
     } else if (eatenFood.type === 'powerup_slow') {
+      newPowerUpsCollected++;
       currentPowerUps.slowMoUntil = nowMs + POWER_UPS.SLOW_MO_DURATION_MS;
       events.push('powerup');
     } else if (eatenFood.type === 'powerup_shield') {
+      newPowerUpsCollected++;
       currentPowerUps.hasShield = true;
       events.push('powerup');
     }
@@ -366,6 +403,11 @@ export function stepGame(
         foodEaten: newFoodEaten,
         bonusEaten: newBonusEaten,
         maxLength: newMaxLength,
+        combo: currentCombo,
+        comboExpiresAt: currentComboExpiresAt,
+        wallsWrapped: newWallsWrapped,
+        shieldsUsed: newShieldsUsed,
+        powerUpsCollected: newPowerUpsCollected,
         isVictory: true,
         isAlive: false,
       },
@@ -471,6 +513,11 @@ export function stepGame(
     bonusEaten: newBonusEaten,
     maxLength: newMaxLength,
     powerUps: currentPowerUps,
+    combo: currentCombo,
+    comboExpiresAt: currentComboExpiresAt,
+    wallsWrapped: newWallsWrapped,
+    shieldsUsed: newShieldsUsed,
+    powerUpsCollected: newPowerUpsCollected,
     lastTickTime: nowMs,
     tickIntervalMs: newTickInterval,
   };

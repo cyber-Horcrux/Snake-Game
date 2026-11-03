@@ -27,7 +27,14 @@ import { PauseModal } from './components/PauseModal.tsx';
 import { GameOverModal } from './components/GameOverModal.tsx';
 import { HowToPlayModal } from './components/HowToPlayModal.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
+import { StatsModal } from './components/StatsModal.tsx';
 import { TouchDPad } from './components/TouchDPad.tsx';
+import {
+  loadStats,
+  loadAchievements,
+  recordRunCompletion,
+  resetStatsAndAchievements,
+} from './game/stats.ts';
 
 export default function App() {
   // Navigation & Screen State
@@ -36,9 +43,12 @@ export default function App() {
   const selectedModeRef = useRef<GameMode>('classic');
   const [bestScores, setBestScores] = useState<ModeBestScores>(() => loadBestScores());
   const [settings, setSettings] = useState<GameSettings>(() => loadSettings());
+  const [lifetimeStats, setLifetimeStats] = useState(() => loadStats());
+  const [achievements, setAchievements] = useState(() => loadAchievements());
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
   // Reactive HUD state so UI updates as soon as food is collected or stats change
   const [hudState, setHudState] = useState({
@@ -48,6 +58,7 @@ export default function App() {
     mode: 'classic' as GameMode,
     hasShield: false,
     slowMoUntil: 0,
+    combo: 1,
   });
 
   // Simulation Refs (Decoupled from React 60fps loop)
@@ -59,15 +70,13 @@ export default function App() {
   const animationFrameRef = useRef<number | null>(null);
   const screenRef = useRef<AppScreen>('title');
   const settingsRef = useRef<GameSettings>(settings);
+  const modalsOpenRef = useRef(false);
 
   // Synchronize refs
   screenRef.current = screen;
   settingsRef.current = settings;
   selectedModeRef.current = selectedMode;
-
-  if (typeof window !== 'undefined') {
-    (window as unknown as { __gameStateRef: unknown }).__gameStateRef = gameStateRef;
-  }
+  modalsOpenRef.current = showHowToPlay || showSettings || showStats;
 
   // Touch Swipe coordinates
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -83,13 +92,22 @@ export default function App() {
     document.body.dataset.state = screen;
   }, [screen]);
 
-  // Handle high score updates
+  // Handle high score and stats updates
   const handleGameOver = useCallback((finalState: GameEngineState) => {
     screenRef.current = 'gameover';
     soundEngine.play(finalState.isVictory ? 'new_record' : 'game_over');
     const { isNewBest } = updateBestScore(finalState.mode, finalState.score);
     setIsNewRecord(isNewBest);
     setBestScores(loadBestScores());
+
+    // Record telemetry in pilot dossier and check achievement unlock
+    const { stats: updatedStats, newlyUnlocked } = recordRunCompletion(finalState);
+    setLifetimeStats(updatedStats);
+    setAchievements(loadAchievements());
+    if (newlyUnlocked.length > 0) {
+      soundEngine.play('achievement');
+    }
+
     setScreen('gameover');
   }, []);
 
@@ -120,6 +138,7 @@ export default function App() {
       mode: targetMode,
       hasShield: false,
       slowMoUntil: 0,
+      combo: 1,
     });
     setScreen('playing');
     soundEngine.play('click');
@@ -181,6 +200,13 @@ export default function App() {
     setBestScores(loadBestScores());
   }, []);
 
+  // Reset Lifetime Stats & Achievements
+  const handleResetStats = useCallback(() => {
+    resetStatsAndAchievements();
+    setLifetimeStats(loadStats());
+    setAchievements(loadAchievements());
+  }, []);
+
   // Support ?autostart=1 query parameter
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -204,6 +230,17 @@ export default function App() {
       }
 
       const key = e.key;
+
+      // When modals (How to Play, Settings, Pilot Dossier) are open, intercept keys
+      if (modalsOpenRef.current) {
+        if (key === 'Escape') {
+          e.preventDefault();
+          setShowHowToPlay(false);
+          setShowSettings(false);
+          setShowStats(false);
+        }
+        return;
+      }
 
       // Global Mute toggle
       if (key === 'm' || key === 'M') {
@@ -350,7 +387,7 @@ export default function App() {
               rendererRef.current.particles.spawn(px, py, '#43F5FF', 14, 160, 4);
             }
 
-            // Immediately synchronize reactive HUD state with updated score, level, and length
+            // Immediately synchronize reactive HUD state with updated score, level, length, and combo
             setHudState({
               score: result.state.score,
               level: result.state.level,
@@ -358,7 +395,10 @@ export default function App() {
               mode: result.state.mode,
               hasShield: result.state.powerUps.hasShield,
               slowMoUntil: result.state.powerUps.slowMoUntil,
+              combo: result.state.combo || 1,
             });
+          } else if (result.state.combo === 1) {
+            setHudState(prev => (prev.combo !== 1 ? { ...prev, combo: 1 } : prev));
           }
 
           if (result.shieldAbsorbed) {
@@ -454,6 +494,9 @@ export default function App() {
         className="relative flex items-center justify-center w-full h-full p-2 select-none touch-none"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
+        onTouchCancel={() => {
+          touchStartRef.current = null;
+        }}
       >
         <canvas
           ref={canvasRef}
@@ -471,6 +514,7 @@ export default function App() {
             mode={hudState.mode}
             hasShield={hudState.hasShield}
             slowMoUntil={hudState.slowMoUntil}
+            combo={hudState.combo}
             onPause={pauseGame}
             onRestart={() => startGame(hudState.mode)}
             onToggleMute={toggleMute}
@@ -488,6 +532,7 @@ export default function App() {
           onStartGame={() => startGame(selectedMode)}
           onOpenHowToPlay={() => setShowHowToPlay(true)}
           onOpenSettings={() => setShowSettings(true)}
+          onOpenStats={() => setShowStats(true)}
           sfxEnabled={settings.audio.sfxEnabled}
           onToggleMute={toggleMute}
         />
@@ -510,6 +555,7 @@ export default function App() {
           isNewRecord={isNewRecord}
           onPlayAgain={() => startGame(gameStateRef.current.mode)}
           onMainMenu={returnToMainMenu}
+          onOpenStats={() => setShowStats(true)}
         />
       )}
 
@@ -523,6 +569,15 @@ export default function App() {
           onUpdateSettings={handleUpdateSettings}
           onResetScores={handleResetScores}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showStats && (
+        <StatsModal
+          stats={lifetimeStats}
+          achievements={achievements}
+          onResetStats={handleResetStats}
+          onClose={() => setShowStats(false)}
         />
       )}
 

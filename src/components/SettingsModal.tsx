@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Volume2, VolumeX, Eye, Smartphone, Trash2, Check, AlertTriangle } from 'lucide-react';
-import type { GameSettings } from '../game/types.ts';
+import { X, Volume2, VolumeX, Eye, Smartphone, Trash2, Check, AlertTriangle, Palette } from 'lucide-react';
+import type { GameSettings, SnakeSkinId } from '../game/types.ts';
+import { SKINS } from '../game/constants.ts';
 
 interface SettingsModalProps {
   settings: GameSettings;
@@ -50,6 +51,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onUpdateSettings({
       ...settings,
       dpadPreference: pref,
+    });
+  };
+
+  const handleSkinChange = (skinId: SnakeSkinId) => {
+    onUpdateSettings({
+      ...settings,
+      skin: skinId,
     });
   };
 
@@ -154,7 +162,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* 3. On-Screen D-Pad */}
+        {/* 3. Snake Chassis Skin Customization */}
+        <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2 mb-3">
+            <Palette className="w-4 h-4 text-[#43F5FF]" />
+            Snake Chassis Neon Skin
+          </span>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {(Object.keys(SKINS) as SnakeSkinId[]).map(skinKey => {
+              const skin = SKINS[skinKey];
+              const isSelected = (settings.skin || 'cyber_cyan') === skinKey;
+              return (
+                <button
+                  key={skin.id}
+                  onClick={() => handleSkinChange(skin.id)}
+                  className={`p-2.5 rounded-lg border text-left transition-all flex items-center gap-3 cursor-pointer ${
+                    isSelected
+                      ? 'border-[#43F5FF] bg-[#43F5FF]/15 text-white shadow-[0_0_12px_rgba(67,245,255,0.25)]'
+                      : 'border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  {/* Swatch Preview */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <div
+                      className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                      style={{ backgroundColor: skin.headColor }}
+                    />
+                    <div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: skin.bodyColors[1] }}
+                    />
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: skin.bodyColors[2] }}
+                    />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold font-display truncate">{skin.name}</div>
+                    <div className="text-[10px] text-slate-500 truncate">{skin.tagline}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 4. On-Screen D-Pad */}
         <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2 mb-3">
             <Smartphone className="w-4 h-4 text-[#FF4FD8]" />

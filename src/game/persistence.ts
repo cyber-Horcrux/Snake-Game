@@ -123,6 +123,9 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
     const validDpad = ['auto', 'always', 'never'];
     const dpadPreference = validDpad.includes(parsed.dpadPreference) ? parsed.dpadPreference : DEFAULT_SETTINGS.dpadPreference;
 
+    const validSkins = ['cyber_cyan', 'matrix_green', 'synth_sunset', 'hyper_violet', 'gold_prestige'];
+    const skin = validSkins.includes(parsed.skin) ? parsed.skin : DEFAULT_SETTINGS.skin;
+
     return {
       audio: {
         sfxEnabled,
@@ -130,6 +133,7 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
       },
       visualEffects,
       dpadPreference,
+      skin,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

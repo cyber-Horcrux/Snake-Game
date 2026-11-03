@@ -3,7 +3,8 @@
  * Designed for 60fps performance with smooth visual interpolation,
  * zero-GC particle ring buffer, and headless software rendering compatibility.
  */
-import type { GameEngineState, GridCoord, FoodItem } from './types.ts';
+import type { GameEngineState, GridCoord, FoodItem, SnakeSkinId, SnakeSkin } from './types.ts';
+import { SKINS } from './constants.ts';
 
 export interface Particle {
   active: boolean;
@@ -111,7 +112,7 @@ export class NeonRenderer {
     height: number,
     state: GameEngineState,
     alpha: number,
-    settings: { visualEffects: 'high' | 'performance' | 'reduced' }
+    settings: { visualEffects: 'high' | 'performance' | 'reduced'; skin?: SnakeSkinId }
   ): void {
     ctx.save();
     ctx.clearRect(0, 0, width, height);
@@ -143,8 +144,9 @@ export class NeonRenderer {
       this.drawFoodItem(ctx, item, cellW, cellH, now, allowGlow);
     }
 
-    // 3. Snake Body & Head (Smoothly Interpolated)
-    this.drawSnake(ctx, state, alpha, cellW, cellH, allowGlow, settings.visualEffects);
+    // 3. Snake Body & Head (Smoothly Interpolated using selected skin)
+    const skinConfig = SKINS[settings.skin || 'cyber_cyan'] || SKINS.cyber_cyan;
+    this.drawSnake(ctx, state, alpha, cellW, cellH, allowGlow, settings.visualEffects, skinConfig);
 
     // 4. Particles
     this.drawParticles(ctx, allowGlow);
@@ -360,7 +362,8 @@ export class NeonRenderer {
     cellW: number,
     cellH: number,
     allowGlow: boolean,
-    visualEffects: string
+    visualEffects: string,
+    skin: SnakeSkin
   ): void {
     if (state.snake.length === 0) return;
 
@@ -407,26 +410,28 @@ export class NeonRenderer {
       ctx.restore();
     }
 
-    // 2. Body Segments (Gradient from Cyan to Electric Purple to Magenta)
+    // 2. Body Segments with theme skin gradient (single save/restore pass for optimal 60fps)
     const radius = (Math.min(cellW, cellH) / 2) * 0.78;
+    ctx.save();
 
     for (let i = interpolatedPoints.length - 1; i >= 1; i--) {
       const pt = interpolatedPoints[i];
       const t = i / interpolatedPoints.length; // 0 near head, 1 near tail
       const segRadius = radius * (1 - t * 0.25); // Gentle taper towards tail
 
-      ctx.save();
       if (allowGlow && i < 6) {
-        ctx.shadowColor = t < 0.5 ? '#43F5FF' : '#9865FF';
+        ctx.shadowColor = skin.headGlow;
         ctx.shadowBlur = 8;
+      } else {
+        ctx.shadowBlur = 0;
       }
 
-      // Segment color interpolation
-      let fill = '#43F5FF';
+      // Segment color from skin palette
+      let fill = skin.bodyColors[0];
       if (t > 0.6) {
-        fill = '#FF4FD8';
+        fill = skin.bodyColors[2];
       } else if (t > 0.25) {
-        fill = '#9865FF';
+        fill = skin.bodyColors[1];
       }
 
       ctx.fillStyle = fill;
@@ -436,23 +441,23 @@ export class NeonRenderer {
 
       // Inner energy core
       ctx.fillStyle = '#FFFFFF';
+      ctx.shadowBlur = 0;
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, segRadius * 0.35, 0, Math.PI * 2);
       ctx.fill();
-
-      ctx.restore();
     }
+    ctx.restore();
 
     // 3. Snake Head
     const headPt = interpolatedPoints[0];
     ctx.save();
     if (allowGlow) {
-      ctx.shadowColor = '#43F5FF';
+      ctx.shadowColor = skin.headGlow;
       ctx.shadowBlur = 18;
     }
 
     // Head base circle
-    ctx.fillStyle = '#43F5FF';
+    ctx.fillStyle = skin.headColor;
     ctx.beginPath();
     ctx.arc(headPt.x, headPt.y, radius * 1.1, 0, Math.PI * 2);
     ctx.fill();
@@ -494,7 +499,7 @@ export class NeonRenderer {
     ctx.arc(eye2.x, eye2.y, radius * 0.28, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#39FF14';
+    ctx.fillStyle = skin.eyeColor;
     ctx.beginPath();
     ctx.arc(eye1.x, eye1.y, radius * 0.16, 0, Math.PI * 2);
     ctx.arc(eye2.x, eye2.y, radius * 0.16, 0, Math.PI * 2);

@@ -91,6 +91,7 @@ test('loadSettings sanitizes corrupted fields and clamped volume', () => {
       audio: { sfxEnabled: true, sfxVolume: 99 }, // Volume should clamp to 1.0
       visualEffects: 'invalid_mode',
       dpadPreference: 'auto',
+      skin: 'non_existent_skin',
     })
   );
 
@@ -98,6 +99,12 @@ test('loadSettings sanitizes corrupted fields and clamped volume', () => {
   assert.equal(loaded.audio.sfxVolume, 1.0);
   assert.equal(loaded.visualEffects, DEFAULT_SETTINGS.visualEffects);
   assert.equal(loaded.dpadPreference, 'auto');
+  assert.equal(loaded.skin, 'cyber_cyan'); // Falls back to default skin
+
+  // Valid skin is loaded properly
+  saveSettings({ ...DEFAULT_SETTINGS, skin: 'synth_sunset' }, storage);
+  const reloaded = loadSettings(storage);
+  assert.equal(reloaded.skin, 'synth_sunset');
 });
 
 test('storage exceptions do not crash application', () => {

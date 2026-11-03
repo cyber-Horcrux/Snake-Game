@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Pause, RotateCcw, Shield, Clock } from 'lucide-react';
+import { Volume2, VolumeX, Pause, RotateCcw, Shield, Clock, Flame } from 'lucide-react';
 import type { GameEngineState, GameMode } from '../game/types.ts';
 
 interface HeaderHUDProps {
@@ -10,6 +10,7 @@ interface HeaderHUDProps {
   mode: GameMode;
   hasShield: boolean;
   slowMoUntil: number;
+  combo?: number;
   onPause: () => void;
   onRestart: () => void;
   onToggleMute: () => void;
@@ -30,6 +31,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
   mode,
   hasShield,
   slowMoUntil,
+  combo = 1,
   onPause,
   onRestart,
   onToggleMute,
@@ -88,7 +90,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
           </div>
         </div>
 
-        {/* Center: Mode & Active Power-Ups */}
+        {/* Center: Mode & Active Power-Ups & Combo */}
         <div className="flex flex-col items-center gap-1.5">
           <div
             className={`px-2.5 py-0.5 rounded text-[11px] sm:text-xs font-bold tracking-widest border ${modeInfo.border} bg-[#101426]/90 ${modeInfo.color} shadow-sm`}
@@ -96,8 +98,17 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
             {modeInfo.label}
           </div>
 
-          {/* Active Power-Up Badges */}
+          {/* Active Power-Up Badges & Combo */}
           <div className="flex items-center gap-1.5">
+            {combo > 1 && (
+              <div
+                title="Active Score Multiplier"
+                className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 border border-amber-400 rounded text-amber-300 text-[10px] font-bold shadow-[0_0_10px_rgba(251,191,36,0.4)] animate-pulse"
+              >
+                <Flame className="w-3 h-3 text-amber-400 fill-amber-400" />
+                <span>{combo}X COMBO</span>
+              </div>
+            )}
             {hasShield && (
               <div
                 title="Aegis Shield Active"

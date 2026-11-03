@@ -204,6 +204,42 @@ class SoundEngine {
           });
           break;
         }
+
+        case 'combo': {
+          // Sharp rising double harmonic ping
+          [880, 1318.51].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const start = now + idx * 0.04;
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, start);
+            gain.gain.setValueAtTime(0.22, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.15);
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start(start);
+            osc.stop(start + 0.16);
+          });
+          break;
+        }
+
+        case 'achievement': {
+          // Regal triumphant four-note fanfare
+          [523.25, 659.25, 783.99, 1046.5, 1318.51].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const start = now + idx * 0.07;
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, start);
+            gain.gain.setValueAtTime(0.28, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.28);
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start(start);
+            osc.stop(start + 0.3);
+          });
+          break;
+        }
       }
     } catch {
       // Audio playback failsafe

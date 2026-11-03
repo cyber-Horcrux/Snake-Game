@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RotateCcw, Home, Trophy, Share2, Check } from 'lucide-react';
+import { RotateCcw, Home, Trophy, Share2, Check, BarChart3 } from 'lucide-react';
 import type { GameEngineState } from '../game/types.ts';
 
 interface GameOverModalProps {
@@ -8,6 +8,7 @@ interface GameOverModalProps {
   isNewRecord: boolean;
   onPlayAgain: () => void;
   onMainMenu: () => void;
+  onOpenStats?: () => void;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
@@ -16,6 +17,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   isNewRecord,
   onPlayAgain,
   onMainMenu,
+  onOpenStats,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -113,30 +115,40 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             <span>PLAY AGAIN [ENTER]</span>
           </button>
 
-          <div className="grid grid-cols-2 gap-2 w-full">
+          <div className="grid grid-cols-3 gap-2 w-full">
             <button
               onClick={handleShare}
-              className="py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              className="py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-1 cursor-pointer"
             >
               {copied ? (
                 <>
-                  <Check className="w-4 h-4 text-[#39FF14]" />
-                  <span className="text-[#39FF14]">COPIED!</span>
+                  <Check className="w-3.5 h-3.5 text-[#39FF14]" />
+                  <span className="text-[#39FF14]">COPIED</span>
                 </>
               ) : (
                 <>
-                  <Share2 className="w-4 h-4 text-slate-400" />
-                  <span>SHARE RUN</span>
+                  <Share2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>SHARE</span>
                 </>
               )}
             </button>
 
+            {onOpenStats && (
+              <button
+                onClick={onOpenStats}
+                className="py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-amber-400/50 transition-all flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
+                <span>DOSSIER</span>
+              </button>
+            )}
+
             <button
               onClick={onMainMenu}
-              className="py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              className="py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-1 cursor-pointer"
             >
-              <Home className="w-4 h-4 text-slate-400" />
-              <span>MAIN MENU</span>
+              <Home className="w-3.5 h-3.5 text-slate-400" />
+              <span>MENU</span>
             </button>
           </div>
         </div>

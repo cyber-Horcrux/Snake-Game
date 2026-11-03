@@ -4,7 +4,13 @@ A modern, futuristic, addictive cyberpunk Snake arcade game built with React, Ty
 
 ## Features
 
-- **Cyberpunk Visual System**: Custom neon color palette (#080A12, #43F5FF, #9865FF, #FF4FD8, #39FF14), glowing multi-segment snake with directional optic eyes, cyber grid arena, and responsive DPR-aware canvas rendering.
+- **Cyberpunk Visual System**: Custom neon color palette (`#080A12`, `#43F5FF`, `#9865FF`, `#FF4FD8`, `#39FF14`, `#FFD700`), glowing multi-segment snake with directional optic eyes, cyber grid arena, and responsive DPR-aware canvas rendering.
+- **Customizable Neon Chassis Skins**:
+  - **Cyber Cyan (Default)**: Cyan neural core with purple-magenta energy gradient.
+  - **Matrix Emerald**: Phosphor green terminal cascade with emerald core.
+  - **Synth Sunset**: Outrun dusk neon aesthetic with orange, pink, and violet tones.
+  - **Hyper Violet**: Ultraviolet laser arc with vivid radiant magenta optics.
+  - **Solar Prestige**: Hyper-conductive pure gold alloy with solar flare accents.
 - **Three Distinct Game Modes**:
   - **CLASSIC**: Solid walls, fatal self-collision, steady difficulty curve.
   - **ZEN**: Infinite toroidal wraparound borders, relaxed speed progression for endless flow state.
@@ -14,7 +20,13 @@ A modern, futuristic, addictive cyberpunk Snake arcade game built with React, Ty
   - **Bonus Star**: Timed high-value energy node (+30 PTS, with countdown ring indicator).
   - **Chrono Shift**: Temporarily slows simulation speed by ~45% for 7.5s for precise cornering.
   - **Aegis Shield**: Quantum-wraps the snake and absorbs one fatal wall collision or self-collision without ending the run.
-- **Procedural Web Audio Synth**: Custom synthesized sound effects (synthesized plucks, harmonic chimes, sci-fi sweeps, shield shatter, level-up fanfares, game-over descent) with zero external assets and full master mute & volume control.
+- **Dynamic Combo Multiplier System**:
+  - Consuming energy nodes in quick succession (within 3.2s) activates escalating combo multipliers (1x, 2x, 3x, 4x MAX).
+  - Real-time animated combo badge and synthesized harmonic audio feedback.
+- **Pilot Dossier & Career Telemetry**:
+  - Comprehensive telemetry tracking lifetime runs, cumulative score, highest score, food consumed, bonus stars, max combo, shields utilized, and wraparounds.
+  - 10 Unlocked/Progressive Achievements (First Bite, Centurion, High Roller, Cyber Anaconda, Aegis Master, Warp Runner, Rush Hour, Speed Demon, Combo Matrix, Neon Legend).
+- **Procedural Web Audio Synth**: Custom synthesized sound effects (synthesized plucks, harmonic chimes, combo pings, sci-fi sweeps, shield shatter, level-up fanfares, game-over descent, achievement fanfares) with zero external assets and full master mute & volume control.
 - **Responsive Controls**:
   - Desktop: WASD / Arrow keys, Space/Esc (Pause/Resume), R (Restart), M (Mute).
   - Mobile & Tablet: Custom on-screen cyber D-Pad, touch swipe gestures on arena.
@@ -23,36 +35,42 @@ A modern, futuristic, addictive cyberpunk Snake arcade game built with React, Ty
   - Minimal In-Game Perimeter HUD (low-occlusion, zero backdrop-filter over active canvas).
   - System Pause Modal with run stats.
   - Game Over Modal with run summary, record celebration, and one-click clipboard sharing.
+  - Pilot Dossier modal for telemetry and achievements.
   - Tactical Manual (How to Play) and Settings Configuration.
 - **Safe Persistence**:
   - LocalStorage integration with schema validation and fallback defaults.
   - Separate high score tracking per mode.
-  - Two-step confirmation for resetting records.
+  - Two-step confirmation for resetting records or dossier.
 
 ## Project Structure
 
 ```
 ├── src/
 │   ├── components/
-│   │   ├── HeaderHUD.tsx         # Minimal perimeter in-game HUD
-│   │   ├── TitleScreen.tsx       # Title screen with SVG lockup & mode select
+│   │   ├── HeaderHUD.tsx         # Minimal perimeter in-game HUD with combo indicator
+│   │   ├── TitleScreen.tsx       # Title screen with SVG lockup, mode select & dossier link
 │   │   ├── PauseModal.tsx        # Pause modal with live run statistics
-│   │   ├── GameOverModal.tsx     # Game Over modal with score breakdown & share
+│   │   ├── GameOverModal.tsx     # Game Over modal with score breakdown, dossier & share
+│   │   ├── StatsModal.tsx        # Career telemetry & achievement badges dossier
 │   │   ├── HowToPlayModal.tsx    # Tactical manual & game guide
-│   │   ├── SettingsModal.tsx     # Audio, graphics & D-pad configuration
+│   │   ├── SettingsModal.tsx     # Audio, skins, graphics & D-pad configuration
 │   │   └── TouchDPad.tsx         # On-screen directional pad for mobile
 │   ├── game/
-│   │   ├── types.ts              # TypeScript interfaces and game types
-│   │   ├── constants.ts          # Centralized game tuning constants
-│   │   ├── engine.ts             # Pure, deterministic Snake engine
-│   │   ├── engine.test.ts        # Unit test suite for engine mechanics
-│   │   ├── renderer.ts           # Canvas 2D neon renderer & particle pool
+│   │   ├── types.ts              # TypeScript interfaces, skins, achievements, and game types
+│   │   ├── constants.ts          # Centralized game tuning constants & skin palettes
+│   │   ├── engine.ts             # Pure, deterministic Snake engine with combo & wraparound
+│   │   ├── engine.test.ts        # Unit test suite for engine mechanics & combo system
+│   │   ├── renderer.ts           # Canvas 2D neon renderer & particle pool with skin theming
 │   │   ├── audio.ts              # Procedural Web Audio API sound synthesizer
-│   │   ├── persistence.ts        # LocalStorage persistence & validation
-│   │   └── persistence.test.ts   # Unit test suite for persistence
+│   │   ├── persistence.ts        # LocalStorage persistence & settings validation
+│   │   ├── persistence.test.ts   # Unit test suite for persistence & skin validation
+│   │   ├── stats.ts              # Lifetime statistics & achievement progression engine
+│   │   └── stats.test.ts         # Unit test suite for dossier telemetry & achievements
 │   ├── App.tsx                   # Main game orchestrator & 60fps loop
 │   ├── index.css                 # Global Tailwind CSS & neon styling
 │   └── main.tsx                  # React entry point
+├── index.html                    # Entry HTML with typography & SEO metadata
+├── metadata.json                 # AI Studio applet metadata
 └── package.json
 ```
 
@@ -62,10 +80,8 @@ A modern, futuristic, addictive cyberpunk Snake arcade game built with React, Ty
 # Start development server
 npm run dev
 
-# Run automated unit tests
+# Run automated unit test suite (36 tests)
 npm test
-# Or directly with Node's native test runner:
-node --test src/game/*.test.ts
 
 # Typecheck and lint
 npm run lint
@@ -76,7 +92,9 @@ npm run build
 
 ## Automated Tests Executed
 
-23 automated unit tests executed via `node --test` with 100% pass rate:
+36 automated unit and integration tests executed via Node's native test runner (`node --test`) with 100% pass rate:
+
+### Game Engine Mechanics (`src/game/engine.test.ts`)
 1. `isOpposite`: Correctly detects opposite directions and non-opposites.
 2. `snake initialization`: Initializes with correct length and faces RIGHT.
 3. `movement`: Updates head and body coordinates accurately.
@@ -94,9 +112,44 @@ npm run build
 15. `full board victory`: Triggers victory state when grid is filled.
 16. `slow-mo speed calculation`: Correctly adjusts tick interval.
 17. `level progression`: Triggers level-up every 5 food items eaten.
-18. `loadBestScores`: Returns defaults when storage is empty or null.
-19. `corrupt JSON handling`: Sanitizes malformed or corrupted localStorage data.
-20. `updateBestScore`: Updates high score per mode independently.
-21. `resetBestScores`: Clears all scores back to 0.
-22. `loadSettings sanitization`: Sanitizes invalid settings and clamps volumes.
-23. `storage exception resilience`: Failsafes prevent storage errors from crashing gameplay.
+18. `combo multiplier`: Increments multiplier on rapid consecutive food consumption.
+19. `combo reset`: Resets to 1x when time window elapses without food.
+20. `food expiration`: Expired timed items are safely removed from the board.
+21. `zen wraparounds`: Toroidal boundary crossings increment the telemetry counter.
+
+### Storage & Persistence (`src/game/persistence.test.ts`)
+22. `loadBestScores`: Returns defaults when storage is empty or null.
+23. `corrupt JSON handling`: Sanitizes malformed or corrupted localStorage data.
+24. `updateBestScore`: Updates high score per mode independently.
+25. `resetBestScores`: Clears all scores back to 0.
+26. `loadSettings sanitization`: Sanitizes invalid settings, clamps volumes, and falls back to default skin.
+27. `storage exception resilience`: Failsafes prevent storage errors from crashing gameplay.
+
+### Dossier Telemetry & Achievements (`src/game/stats.test.ts`)
+28. `loadStats`: Returns default stats on null or empty storage.
+29. `loadStats sanitization`: Gracefully handles corrupt or malformed stats data.
+30. `saveStats`: Persists valid statistics accurately.
+31. `loadAchievements`: Initializes all 10 badges with locked state.
+32. `first_bite achievement`: Unlocks automatically upon first food eaten.
+33. `centurion achievement`: Unlocks when run score reaches 100+.
+34. `rush_hour achievement`: Unlocks in Rush mode with score >= 250.
+35. `warp_runner achievement`: Unlocks when Zen wraparounds reach 20+.
+36. `resetStatsAndAchievements`: Cleans all records back to default factory state.
+
+## Pushing Changes to GitHub
+
+To push these updates to your GitHub repository (`https://github.com/cyber-Horcrux/Snake-Game`):
+
+```bash
+# 1. Check local git status
+git status
+
+# 2. Add remote origin if not already linked:
+git remote add origin https://github.com/cyber-Horcrux/Snake-Game.git
+
+# 3. Pull latest changes or rebase (if applicable):
+git pull --rebase origin main
+
+# 4. Push verified commits to main:
+git push origin main
+```
