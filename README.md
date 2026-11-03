@@ -74,25 +74,6 @@ A modern, futuristic, addictive cyberpunk Snake arcade game built with React, Ty
 └── package.json
 ```
 
-## Running the Application
-
-```bash
-# Start development server
-npm run dev
-
-# Run automated unit test suite (36 tests)
-npm test
-
-# Typecheck and lint
-npm run lint
-
-# Production build
-npm run build
-```
-
-## Automated Tests Executed
-
-36 automated unit and integration tests executed via Node's native test runner (`node --test`) with 100% pass rate:
 
 ### Game Engine Mechanics (`src/game/engine.test.ts`)
 1. `isOpposite`: Correctly detects opposite directions and non-opposites.
