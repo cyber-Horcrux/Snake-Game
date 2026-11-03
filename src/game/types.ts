@@ -73,11 +73,14 @@ export interface AudioSettings {
   sfxVolume: number;
 }
 
+export type ControlMode = 'swipe' | 'buttons' | 'both';
+
 export interface GameSettings {
   audio: AudioSettings;
   visualEffects: 'high' | 'performance' | 'reduced';
   dpadPreference: 'auto' | 'always' | 'never';
   skin: SnakeSkinId;
+  controlMode: ControlMode;
 }
 
 export interface ModeBestScores {

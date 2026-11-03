@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Volume2, VolumeX, Eye, Smartphone, Trash2, Check, AlertTriangle, Palette } from 'lucide-react';
-import type { GameSettings, SnakeSkinId } from '../game/types.ts';
+import type { ControlMode, GameSettings, SnakeSkinId } from '../game/types.ts';
 import { SKINS } from '../game/constants.ts';
 
 interface SettingsModalProps {
@@ -47,10 +47,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     });
   };
 
-  const handleDpadChange = (pref: 'auto' | 'always' | 'never') => {
+  const handleControlModeChange = (mode: ControlMode) => {
     onUpdateSettings({
       ...settings,
-      dpadPreference: pref,
+      controlMode: mode,
+      dpadPreference: mode === 'swipe' ? 'never' : mode === 'buttons' ? 'always' : 'auto',
     });
   };
 
@@ -209,30 +210,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* 4. On-Screen D-Pad */}
+        {/* 4. Movement Controls */}
         <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2 mb-3">
-            <Smartphone className="w-4 h-4 text-[#FF4FD8]" />
-            Mobile Directional Pad
-          </span>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-[#FF4FD8]" />
+              Movement Controls
+            </span>
+            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest px-2 py-0.5 rounded bg-slate-900 border border-slate-800">
+              {settings.controlMode}
+            </span>
+          </div>
 
           <div className="grid grid-cols-3 gap-2">
             {[
-              { id: 'auto' as const, label: 'AUTO', desc: 'Touch screens' },
-              { id: 'always' as const, label: 'ALWAYS', desc: 'Show pad' },
-              { id: 'never' as const, label: 'OFF', desc: 'Swipe only' },
+              { id: 'swipe' as const, label: 'SWIPE', desc: 'Gesture steering' },
+              { id: 'buttons' as const, label: 'BUTTONS', desc: 'Directional D-Pad' },
+              { id: 'both' as const, label: 'BOTH', desc: 'Swipe + D-Pad' },
             ].map(opt => (
               <button
                 key={opt.id}
-                onClick={() => handleDpadChange(opt.id)}
-                className={`p-2 rounded-lg border text-center transition-all ${
-                  settings.dpadPreference === opt.id
-                    ? 'border-[#FF4FD8] bg-[#FF4FD8]/20 text-white shadow-[0_0_10px_rgba(255,79,216,0.3)]'
+                type="button"
+                onClick={() => handleControlModeChange(opt.id)}
+                aria-pressed={settings.controlMode === opt.id}
+                aria-label={`Select ${opt.label} controls`}
+                className={`p-2.5 rounded-lg border text-center transition-all cursor-pointer ${
+                  settings.controlMode === opt.id
+                    ? 'border-[#FF4FD8] bg-[#FF4FD8]/20 text-white shadow-[0_0_12px_rgba(255,79,216,0.35)]'
                     : 'border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                 }`}
               >
-                <div className="text-xs font-bold">{opt.label}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5">{opt.desc}</div>
+                <div className="text-xs font-bold font-display">{opt.label}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">{opt.desc}</div>
               </button>
             ))}
           </div>

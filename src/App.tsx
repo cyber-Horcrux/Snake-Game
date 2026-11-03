@@ -15,6 +15,11 @@ import {
 import { NeonRenderer } from './game/renderer.ts';
 import { soundEngine } from './game/audio.ts';
 import {
+  SwipeTracker,
+  shouldAcceptSwipeControls,
+  shouldShowDirectionalControls,
+} from './game/controls.ts';
+import {
   loadBestScores,
   loadSettings,
   resetBestScores,
@@ -78,8 +83,9 @@ export default function App() {
   selectedModeRef.current = selectedMode;
   modalsOpenRef.current = showHowToPlay || showSettings || showStats;
 
-  // Touch Swipe coordinates
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Swipe Tracker & Touch State
+  const swipeTrackerRef = useRef<SwipeTracker>(new SwipeTracker(24));
+  const isTouchActiveRef = useRef(false);
 
   // Sync soundEngine settings
   useEffect(() => {
@@ -312,33 +318,80 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSteer, startGame, resumeGame, pauseGame, toggleMute]);
 
-  // Touch Swipe Handlers for mobile steering on the canvas
+  const shouldAcceptSwipes = shouldAcceptSwipeControls(settings.controlMode);
+  const shouldAcceptSwipesRef = useRef(shouldAcceptSwipes);
+  shouldAcceptSwipesRef.current = shouldAcceptSwipes;
+
+  // Touch & Pointer Swipe Handlers for mobile steering on the canvas
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (!shouldAcceptSwipesRef.current) return;
     if (e.touches.length === 1) {
-      touchStartRef.current = {
-        x: e.touches[0].clientX,
-        y: e.touches[0].clientY,
-      };
+      isTouchActiveRef.current = true;
+      swipeTrackerRef.current.start(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!shouldAcceptSwipesRef.current || !swipeTrackerRef.current.isTracking()) return;
+    if (e.touches.length === 1) {
+      const dir = swipeTrackerRef.current.move(e.touches[0].clientX, e.touches[0].clientY);
+      if (dir) {
+        handleSteer(dir);
+      }
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartRef.current || e.changedTouches.length === 0) return;
-    const endX = e.changedTouches[0].clientX;
-    const endY = e.changedTouches[0].clientY;
-    const dx = endX - touchStartRef.current.x;
-    const dy = endY - touchStartRef.current.y;
-    touchStartRef.current = null;
-
-    const minSwipeDistance = 24;
-    if (Math.abs(dx) < minSwipeDistance && Math.abs(dy) < minSwipeDistance) {
+    if (!shouldAcceptSwipesRef.current || !swipeTrackerRef.current.isTracking()) {
+      isTouchActiveRef.current = false;
       return;
     }
+    if (e.changedTouches.length > 0) {
+      const dir = swipeTrackerRef.current.end(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      if (dir) {
+        handleSteer(dir);
+      }
+    }
+    isTouchActiveRef.current = false;
+  };
 
-    if (Math.abs(dx) > Math.abs(dy)) {
-      handleSteer(dx > 0 ? 'RIGHT' : 'LEFT');
-    } else {
-      handleSteer(dy > 0 ? 'DOWN' : 'UP');
+  const handleTouchCancel = () => {
+    swipeTrackerRef.current.cancel();
+    isTouchActiveRef.current = false;
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!shouldAcceptSwipesRef.current) return;
+    if (e.pointerType === 'touch') {
+      isTouchActiveRef.current = true;
+      return; // Handled by touch events
+    }
+    if (isTouchActiveRef.current) return;
+    if (e.button !== 0) return; // Only primary mouse button
+    swipeTrackerRef.current.start(e.clientX, e.clientY);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!shouldAcceptSwipesRef.current || !swipeTrackerRef.current.isTracking()) return;
+    if (e.pointerType === 'touch' || isTouchActiveRef.current) return;
+    const dir = swipeTrackerRef.current.move(e.clientX, e.clientY);
+    if (dir) {
+      handleSteer(dir);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!shouldAcceptSwipesRef.current || !swipeTrackerRef.current.isTracking()) return;
+    if (e.pointerType === 'touch' || isTouchActiveRef.current) return;
+    const dir = swipeTrackerRef.current.end(e.clientX, e.clientY);
+    if (dir) {
+      handleSteer(dir);
+    }
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') {
+      swipeTrackerRef.current.cancel();
     }
   };
 
@@ -481,22 +534,22 @@ export default function App() {
     return () => window.removeEventListener('resize', resize);
   }, []);
 
-  const shouldShowDpad =
-    settings.dpadPreference === 'always' ||
-    (settings.dpadPreference === 'auto' &&
-      typeof window !== 'undefined' &&
-      ('ontouchstart' in window || navigator.maxTouchPoints > 0));
+  const shouldShowDpad = shouldShowDirectionalControls(settings.controlMode);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#080A12] flex flex-col items-center justify-center cyber-grid">
       {/* Canvas Viewport Container */}
       <div
+        data-testid="game-board-container"
         className="relative flex items-center justify-center w-full h-full p-2 select-none touch-none"
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onTouchCancel={() => {
-          touchStartRef.current = null;
-        }}
+        onTouchCancel={handleTouchCancel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
         <canvas
           ref={canvasRef}
@@ -583,7 +636,7 @@ export default function App() {
 
       {/* Touch D-Pad for Mobile Devices */}
       {screen === 'playing' && shouldShowDpad && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 md:hidden">
+        <div data-testid="touch-dpad-container" className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 md:hidden">
           <TouchDPad onDirection={handleSteer} />
         </div>
       )}
