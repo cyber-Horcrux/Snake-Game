@@ -136,20 +136,4 @@ npm run build
 35. `warp_runner achievement`: Unlocks when Zen wraparounds reach 20+.
 36. `resetStatsAndAchievements`: Cleans all records back to default factory state.
 
-## Pushing Changes to GitHub
 
-To push these updates to your GitHub repository (`https://github.com/cyber-Horcrux/Snake-Game`):
-
-```bash
-# 1. Check local git status
-git status
-
-# 2. Add remote origin if not already linked:
-git remote add origin https://github.com/cyber-Horcrux/Snake-Game.git
-
-# 3. Pull latest changes or rebase (if applicable):
-git pull --rebase origin main
-
-# 4. Push verified commits to main:
-git push origin main
-```
