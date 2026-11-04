@@ -1,4 +1,4 @@
-# NEON SNAKE — ONE MORE RUN
+#  NEON SNAKE — ONE MORE RUN
 
 A modern, futuristic, addictive cyberpunk Snake arcade game built with React, TypeScript, HTML5 Canvas 2D, and procedural Web Audio API.
 
