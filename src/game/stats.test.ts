@@ -213,5 +213,19 @@ test('legacy storage keys neonsnake_stats and neonsnake_achievements are seamles
   assert.equal(centurion?.unlocked, true);
   const neonLegend = achievements.find(a => a.id === 'neon_legend');
   assert.equal(neonLegend?.unlocked, false);
+
+  // Also verify neonsnake_lifetime_stats fallback key
+  const altLegacyStorage = new MemoryStorage();
+  altLegacyStorage.setItem('neonsnake_lifetime_stats', JSON.stringify({
+    runsPlayed: 12,
+    totalScore: 3400,
+    highestScore: 500,
+    longestSnake: 20,
+  }));
+  const altStats = loadStats(altLegacyStorage);
+  assert.equal(altStats.runsPlayed, 12);
+  assert.equal(altStats.totalScore, 3400);
+  assert.equal(altStats.highestScore, 500);
+  assert.equal(altStats.longestSnake, 20);
 });
 

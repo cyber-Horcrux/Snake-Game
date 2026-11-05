@@ -12,7 +12,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.3-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Capacitor](https://img.shields.io/badge/Capacitor-8.6-119EFF?style=flat-square&logo=capacitor&logoColor=white)](https://capacitorjs.com/)
 [![Android API](https://img.shields.io/badge/Android-API%2024%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com/)
-[![Unit Tests](https://img.shields.io/badge/Tests-79%20Passing-10FFA0?style=flat-square&logo=node.js&logoColor=black)](#testing)
+[![Unit Tests](https://img.shields.io/badge/Tests-83%20Passing-10FFA0?style=flat-square&logo=node.js&logoColor=black)](#testing)
 
 [Features](#core-features) • [Game Modes](#game-modes) • [Controls](#controls) • [Architecture](#architecture) • [Getting Started](#getting-started) • [Android Guide](#android-development--build) • [Roadmap](#roadmap)
 
@@ -128,7 +128,7 @@ NEON SNAKE offers three user-selectable control modes configurable in the **Sett
 - **HTML5 Canvas 2D**: Direct pixel-manipulation pipeline executing particle life cycles, glowing segment paths, and responsive aspect-ratio clamping.
 - **Procedural Web Audio**: Zero-asset sound synthesizer generating dynamic oscillator waves, gain nodes, and harmonic intervals directly via code.
 - **Capacitor 8 (`@capacitor/core`, `@capacitor/android`, `@capacitor/cli: ^8.6.0`)**: Cross-platform bridge connecting the web build to the Android native application wrapper (`com.cyberhorcrux.neonsnake`).
-- **Node.js Native Test Runner (`node:test`)**: Zero-dependency automated test runner executing 79 unit tests in under 1 second.
+- **Node.js Native Test Runner (`node:test`)**: Zero-dependency automated test runner executing 83 unit tests in under 1 second.
 
 ---
 
@@ -141,7 +141,7 @@ src/
 ├── assets/
 │   └── branding/            # Approved Apex Cyber-Viper vector asset suite (7 SVGs)
 ├── components/
-│   ├── branding/            # BrandLogo vector component & visual previewers
+│   ├── branding/            # BrandLogo vector component & production exports
 │   ├── GameOverModal.tsx    # Run termination summary, record celebration, and sharing
 │   ├── HeaderHUD.tsx        # Minimal perimeter HUD displaying score, combo, and active buffs
 │   ├── HowToPlayModal.tsx   # Tactical manual explaining controls and power-up nodes
@@ -291,14 +291,14 @@ NEON SNAKE maintains an automated test suite executed via the native Node.js tes
 npm test
 ```
 
-### Test Coverage Summary (79 Passing Tests)
+### Test Coverage Summary (83 Passing Tests)
 
-- **Deterministic Game Engine (`engine.test.ts`)**: Direction reversals (180° prevention), rapid 2-turn buffering, food consumption and growth timing, tail-vacating edge cases, self-collision detection, solid wall impacts in Classic, toroidal boundary wrapping in Zen, Aegis Shield collision absorption, full-grid victory state, slow-mo tick intervals, speed level advancement, combo multiplier escalation, and timed food decay.
-- **Controls & Gestures (`controls.test.ts`)**: Directional calculation from touch coordinates, minimum swipe threshold enforcement, and touch/keyboard coexistence.
-- **Responsive Layout & D-Pad Geometry (`responsive.test.ts`)**: 1:1 canvas aspect ratio enforcement across 14 distinct viewport sizes, small-screen scaling down to mobile viewports, portrait bottom-docking geometry, landscape right-gutter docking, and complete button clearance verification.
-- **Persistence & Storage Failsafes (`persistence.test.ts`)**: Fallback defaults on null/empty storage, corruption recovery for malformed JSON, independent high-score updates per mode, settings sanitization, and storage exception resilience.
-- **Pilot Dossier & Telemetry (`stats.test.ts`)**: Cumulative lifetime telemetry calculation, achievement badge unlock criteria (First Bite, Centurion, Rush Hour, Warp Runner, Aegis Master), and factory reset integrity.
-- **Brand Identity & UI Rebrand (`branding.test.ts`)**: Verification of all 7 vector brand assets, strict SVG XML validation without raster embeds, BrandLogo component export validation, web metadata and social cards in `index.html`, PWA manifest compliance, Android density icons, and cross-screen integration of BrandLogo in TitleScreen, PauseModal, GameOverModal, StatsModal, and HowToPlayModal.
+- **Deterministic Game Engine (`engine.test.ts` — 26 tests)**: Direction reversals (180° prevention), rapid 2-turn buffering, food consumption and growth timing, tail-vacating edge cases, self-collision detection, solid wall impacts in Classic, toroidal boundary wrapping in Zen, Aegis Shield collision absorption, full-grid victory state, slow-mo tick intervals, speed level advancement, combo multiplier escalation, and timed food decay.
+- **Controls & Gestures (`controls.test.ts` — 13 tests)**: Directional calculation from touch coordinates, minimum swipe threshold enforcement, touch/keyboard coexistence, and mode switching integrity.
+- **Responsive Layout & D-Pad Geometry (`responsive.test.ts` — 13 tests)**: 1:1 canvas aspect ratio enforcement across 14 distinct viewport sizes, small-screen scaling down to mobile viewports, portrait bottom-docking geometry, landscape right-gutter docking, and complete button clearance verification.
+- **Persistence & Storage Failsafes (`persistence.test.ts` — 10 tests)**: Fallback defaults on null/empty storage, corruption recovery for malformed JSON, independent high-score updates per mode, settings sanitization, legacy key migration (`neonsnake_best_scores`, `neonsnake_settings`), and storage exception resilience.
+- **Pilot Dossier & Telemetry (`stats.test.ts` — 11 tests)**: Cumulative lifetime telemetry calculation, achievement badge unlock criteria (First Bite, Centurion, Rush Hour, Warp Runner, Aegis Master), legacy telemetry migration (`neonsnake_stats`, `neonsnake_lifetime_stats`, `neonsnake_achievements`), and factory reset integrity.
+- **Brand Identity & UI Rebrand (`branding.test.ts` — 10 tests)**: Verification of all 7 vector brand assets, strict SVG XML validation without raster embeds, BrandLogo component export validation, web metadata and social cards in `index.html`, PWA manifest compliance, Android density icons, cross-screen integration of BrandLogo in TitleScreen, PauseModal, GameOverModal, StatsModal, and HowToPlayModal, and guaranteed absence of internal preview interfaces.
 
 ---
 
