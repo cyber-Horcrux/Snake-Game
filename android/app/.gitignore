@@ -1,2 +1,5 @@
 /build/*
 !/build/.npmkeep
+
+# Local release signing credentials
+keystore.properties
