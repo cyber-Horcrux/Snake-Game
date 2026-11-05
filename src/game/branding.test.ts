@@ -222,3 +222,62 @@ test('Android launcher icon and splash screen resources exist across all require
   const bgContent = fs.readFileSync(bgXml, 'utf-8');
   assert.ok(bgContent.includes('#05070E'), 'ic_launcher_background color must be #05070E');
 });
+
+test('Task 5 in-game UI rebrand integrates approved BrandLogo component across screens', () => {
+  const componentsDir = path.resolve(process.cwd(), 'src/components');
+
+  // Verify BrandLogo integration in TitleScreen, PauseModal, GameOverModal, StatsModal, HowToPlayModal
+  const screensWithBrandLogo = [
+    'TitleScreen.tsx',
+    'PauseModal.tsx',
+    'GameOverModal.tsx',
+    'StatsModal.tsx',
+    'HowToPlayModal.tsx',
+  ];
+
+  for (const compFile of screensWithBrandLogo) {
+    const compPath = path.join(componentsDir, compFile);
+    assert.ok(fs.existsSync(compPath), `${compFile} must exist`);
+    const content = fs.readFileSync(compPath, 'utf-8');
+    assert.ok(
+      content.includes("from './branding/BrandLogo") || content.includes('BrandLogo'),
+      `${compFile} must integrate BrandLogo component`
+    );
+    assert.ok(
+      content.includes('<BrandLogo'),
+      `${compFile} must render <BrandLogo /> component`
+    );
+  }
+});
+
+test('Task 5 in-game UI components preserve all critical interactive attributes and control schemas', () => {
+  const componentsDir = path.resolve(process.cwd(), 'src/components');
+
+  // TitleScreen must preserve data-start="true" for keyboard/enter and tests
+  const titleContent = fs.readFileSync(path.join(componentsDir, 'TitleScreen.tsx'), 'utf-8');
+  assert.ok(titleContent.includes('data-start="true"'), 'TitleScreen must preserve data-start attribute');
+  assert.ok(titleContent.includes('PLAY RUN [ENTER]'), 'TitleScreen must preserve PLAY RUN text');
+  assert.ok(titleContent.includes('NEON SNAKE'), 'TitleScreen must display brand title NEON SNAKE');
+  assert.ok(titleContent.includes('ONE MORE RUN'), 'TitleScreen must display tagline ONE MORE RUN');
+
+  // GameOverModal must preserve data-start="true" for play again
+  const gameOverContent = fs.readFileSync(path.join(componentsDir, 'GameOverModal.tsx'), 'utf-8');
+  assert.ok(gameOverContent.includes('data-start="true"'), 'GameOverModal must preserve data-start attribute');
+  assert.ok(gameOverContent.includes('PLAY AGAIN [ENTER]'), 'GameOverModal must preserve PLAY AGAIN text');
+
+  // SettingsModal must preserve controlMode selection with swipe, buttons, both
+  const settingsContent = fs.readFileSync(path.join(componentsDir, 'SettingsModal.tsx'), 'utf-8');
+  assert.ok(settingsContent.includes("'swipe'"), 'SettingsModal must support swipe controlMode');
+  assert.ok(settingsContent.includes("'buttons'"), 'SettingsModal must support buttons controlMode');
+  assert.ok(settingsContent.includes("'both'"), 'SettingsModal must support both controlMode');
+  assert.ok(settingsContent.includes('SKINS'), 'SettingsModal must support SKINS chassis customization');
+
+  // HeaderHUD must preserve score, bestScore, level, length and action buttons
+  const hudContent = fs.readFileSync(path.join(componentsDir, 'HeaderHUD.tsx'), 'utf-8');
+  assert.ok(hudContent.includes('Score'), 'HeaderHUD must display Score');
+  assert.ok(hudContent.includes('Best'), 'HeaderHUD must display Best');
+  assert.ok(hudContent.includes('CLASSIC'), 'HeaderHUD must support CLASSIC mode label');
+  assert.ok(hudContent.includes('ZEN'), 'HeaderHUD must support ZEN mode label');
+  assert.ok(hudContent.includes('RUSH'), 'HeaderHUD must support RUSH mode label');
+});
+

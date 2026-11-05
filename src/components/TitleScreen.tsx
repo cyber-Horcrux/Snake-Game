@@ -1,6 +1,7 @@
 import React from 'react';
 import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3 } from 'lucide-react';
 import type { GameMode, ModeBestScores } from '../game/types.ts';
+import { BrandLogo } from './branding/BrandLogo.tsx';
 
 interface TitleScreenProps {
   selectedMode: GameMode;
@@ -20,9 +21,9 @@ const MODES = [
     name: 'CLASSIC',
     tagline: 'Solid walls & increasing reflex challenge',
     icon: Trophy,
-    color: 'from-[#43F5FF] to-[#3B82F6]',
-    border: 'border-[#43F5FF]',
-    glow: 'shadow-[0_0_15px_rgba(67,245,255,0.25)]',
+    accent: '#00F5FF',
+    border: 'border-[#00F5FF]',
+    glow: 'shadow-[0_0_18px_rgba(0,245,255,0.28)]',
     badge: 'Standard',
   },
   {
@@ -30,9 +31,9 @@ const MODES = [
     name: 'ZEN',
     tagline: 'Wraparound boundaries & relaxed flow state',
     icon: Infinity,
-    color: 'from-[#39FF14] to-[#10B981]',
-    border: 'border-[#39FF14]',
-    glow: 'shadow-[0_0_15px_rgba(57,255,20,0.25)]',
+    accent: '#10FFA0',
+    border: 'border-[#10FFA0]',
+    glow: 'shadow-[0_0_18px_rgba(16,255,160,0.28)]',
     badge: 'Endless Flow',
   },
   {
@@ -40,9 +41,9 @@ const MODES = [
     name: 'RUSH',
     tagline: 'High speed, high risk & 1.5x bonus score',
     icon: Zap,
-    color: 'from-[#FF4FD8] to-[#9865FF]',
-    border: 'border-[#FF4FD8]',
-    glow: 'shadow-[0_0_15px_rgba(255,79,216,0.25)]',
+    accent: '#FF007A',
+    border: 'border-[#FF007A]',
+    glow: 'shadow-[0_0_18px_rgba(255,0,122,0.28)]',
     badge: 'High Adrenaline',
   },
 ];
@@ -59,14 +60,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onToggleMute,
 }) => {
   return (
-    <div className="absolute inset-0 z-20 flex flex-col justify-between items-center p-3 xs:p-4 sm:p-6 bg-[#080A12]/85 backdrop-blur-xs overflow-y-auto pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
-      {/* Top Right Quick Settings */}
+    <div className="absolute inset-0 z-20 flex flex-col justify-between items-center p-3 xs:p-4 sm:p-6 bg-[#05070E]/88 backdrop-blur-sm overflow-y-auto pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
+      {/* Top Right Quick Controls */}
       <div className="w-full flex justify-end gap-2 max-w-4xl shrink-0">
         <button
           type="button"
           onClick={onToggleMute}
           aria-label={sfxEnabled ? 'Mute Audio' : 'Unmute Audio'}
-          className="p-2 sm:p-2.5 rounded-lg bg-[#101426]/90 border border-slate-700 hover:border-[#43F5FF] text-slate-300 hover:text-[#43F5FF] transition-all cursor-pointer shadow-sm active:scale-95"
+          className="p-2 sm:p-2.5 rounded-xl bg-[#0B0E1A]/90 border border-[#161B2E] hover:border-[#00F5FF]/60 text-[#79869C] hover:text-[#00F5FF] transition-all cursor-pointer shadow-sm active:scale-95"
         >
           {sfxEnabled ? <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" /> : <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-rose-400" />}
         </button>
@@ -75,7 +76,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           type="button"
           onClick={onOpenSettings}
           aria-label="Game Settings"
-          className="p-2 sm:p-2.5 rounded-lg bg-[#101426]/90 border border-slate-700 hover:border-[#43F5FF] text-slate-300 hover:text-[#43F5FF] transition-all cursor-pointer shadow-sm active:scale-95"
+          className="p-2 sm:p-2.5 rounded-xl bg-[#0B0E1A]/90 border border-[#161B2E] hover:border-[#00F5FF]/60 text-[#79869C] hover:text-[#00F5FF] transition-all cursor-pointer shadow-sm active:scale-95"
         >
           <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
@@ -83,53 +84,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
       {/* Main Title Centerpiece */}
       <div className="flex flex-col items-center text-center my-auto max-w-2xl w-full py-2 sm:py-4">
-        {/* Custom Bespoke SVG Neon Snake Emblem */}
-        <div className="mb-1.5 sm:mb-2 relative shrink-0">
-          <div className="w-12 h-12 xs:w-16 xs:h-16 sm:w-20 sm:h-20 mx-auto relative flex items-center justify-center">
-            <svg
-              viewBox="0 0 100 100"
-              className="w-full h-full drop-shadow-[0_0_20px_rgba(67,245,255,0.6)] animate-pulse"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              {/* Outer Cyber Hex Ring */}
-              <polygon
-                points="50,4 93,27 93,73 50,96 7,73 7,27"
-                stroke="#9865FF"
-                strokeWidth="2.5"
-                strokeDasharray="6 4"
-                className="opacity-70"
-              />
-              {/* Snake Stylized S Curve with Glowing Points */}
-              <path
-                d="M30 30 C 30 18, 70 18, 70 34 C 70 50, 30 50, 30 66 C 30 82, 70 82, 70 70"
-                stroke="#43F5FF"
-                strokeWidth="6"
-                strokeLinecap="round"
-              />
-              <path
-                d="M30 30 C 30 18, 70 18, 70 34 C 70 50, 30 50, 30 66 C 30 82, 70 82, 70 70"
-                stroke="#FFFFFF"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-              {/* Snake Head Optic Eye */}
-              <circle cx="70" cy="70" r="5" fill="#FF4FD8" />
-              <circle cx="70" cy="70" r="2" fill="#FFFFFF" />
-            </svg>
-          </div>
+        {/* Apex Cyber-Viper Master Brand Logo */}
+        <div className="mb-2 sm:mb-3 relative shrink-0">
+          <BrandLogo
+            variant="symbol"
+            size="custom"
+            className="w-14 h-14 xs:w-18 xs:h-18 sm:w-22 sm:h-22"
+            glow={true}
+            interactive={true}
+            alt="Apex Cyber-Viper Emblem"
+          />
         </div>
 
-        {/* Title Lockup */}
-        <h1 className="text-2xl xs:text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#43F5FF] via-[#9865FF] to-[#FF4FD8] font-display uppercase neon-glow-cyan leading-tight">
+        {/* Brand Title Lockup */}
+        <h1 className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#00F5FF] via-[#7928CA] to-[#FF007A] font-display uppercase leading-tight select-none drop-shadow-[0_0_24px_rgba(0,245,255,0.35)]">
           NEON SNAKE
         </h1>
-        <p className="mt-0.5 sm:mt-1 text-[11px] sm:text-sm font-bold tracking-[0.25em] sm:tracking-[0.3em] text-slate-400 uppercase">
-          ONE MORE RUN.
+        <p className="mt-1 text-[11px] sm:text-xs font-bold tracking-[0.32em] text-[#79869C] uppercase select-none">
+          ONE MORE RUN
         </p>
 
-        {/* Mode Selector Tabs */}
-        <div className="mt-3 sm:mt-5 grid grid-cols-3 gap-1.5 xs:gap-2 sm:gap-3 w-full max-w-lg">
+        {/* Mode Selector Cards */}
+        <div className="mt-4 sm:mt-6 grid grid-cols-3 gap-2 xs:gap-2.5 sm:gap-3.5 w-full max-w-lg">
           {MODES.map(mode => {
             const isSelected = selectedMode === mode.id;
             const Icon = mode.icon;
@@ -138,21 +114,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 key={mode.id}
                 type="button"
                 onClick={() => onSelectMode(mode.id)}
-                className={`relative flex flex-col items-center p-2 sm:p-3 rounded-xl border transition-all text-center cursor-pointer active:scale-95 ${
+                className={`relative flex flex-col items-center p-2.5 sm:p-3.5 rounded-xl border transition-all text-center cursor-pointer active:scale-95 ${
                   isSelected
-                    ? `${mode.border} bg-[#101426] ${mode.glow} scale-102 sm:scale-105 z-10`
-                    : 'border-slate-800 bg-[#0d101d]/70 hover:border-slate-700 text-slate-400'
+                    ? `${mode.border} bg-[#0B0E1A] ${mode.glow} scale-[1.02] sm:scale-105 z-10`
+                    : 'border-[#161B2E] bg-[#0B0E1A]/60 hover:border-slate-700 text-[#79869C]'
                 }`}
               >
                 <Icon
-                  className={`w-4 h-4 sm:w-5 sm:h-5 mb-0.5 sm:mb-1 ${
-                    isSelected ? 'text-[#43F5FF]' : 'text-slate-500'
-                  }`}
+                  className="w-4 h-4 sm:w-5 sm:h-5 mb-1 transition-colors"
+                  style={{ color: isSelected ? mode.accent : undefined }}
                 />
-                <span className={`text-[11px] xs:text-xs sm:text-sm font-bold font-display ${isSelected ? 'text-white' : ''}`}>
+                <span className={`text-[11px] xs:text-xs sm:text-sm font-bold font-display tracking-wider ${isSelected ? 'text-[#F0F6FC]' : ''}`}>
                   {mode.name}
                 </span>
-                <span className="text-[9px] xs:text-[10px] text-slate-400 font-mono-num mt-0.5 sm:mt-1">
+                <span className="text-[9px] xs:text-[10px] text-[#79869C] font-mono-num mt-1 font-semibold">
                   BEST: {bestScores[mode.id]}
                 </span>
               </button>
@@ -160,55 +135,55 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           })}
         </div>
 
-        {/* Mode Description Banner */}
-        <div className="mt-1.5 sm:mt-2.5 text-[11px] sm:text-xs text-slate-400 font-medium min-h-[1.25rem] px-2 truncate max-w-md">
+        {/* Mode Tagline Description */}
+        <div className="mt-2 sm:mt-3 text-[11px] sm:text-xs text-[#79869C] font-medium min-h-[1.25rem] px-2 truncate max-w-md">
           {MODES.find(m => m.id === selectedMode)?.tagline}
         </div>
 
-        {/* Large Primary START Button */}
+        {/* Large Primary PLAY RUN Button */}
         <button
           type="button"
           onClick={onStartGame}
           data-start="true"
-          className="mt-3 xs:mt-4 sm:mt-6 px-8 xs:px-10 sm:px-14 py-2.5 xs:py-3 sm:py-3.5 rounded-xl font-display font-black text-sm xs:text-base sm:text-lg tracking-wider text-[#080A12] bg-gradient-to-r from-[#43F5FF] via-[#74F7FF] to-[#9865FF] hover:brightness-110 active:scale-95 transition-all shadow-[0_0_25px_rgba(67,245,255,0.4)] flex items-center gap-2 sm:gap-3 cursor-pointer shrink-0"
+          className="mt-4 xs:mt-5 sm:mt-7 px-8 xs:px-12 sm:px-16 py-3 xs:py-3.5 sm:py-4 rounded-xl font-display font-black text-sm xs:text-base sm:text-lg tracking-wider text-[#05070E] bg-gradient-to-r from-[#00F5FF] via-[#38E1FF] to-[#7928CA] hover:brightness-110 active:scale-95 transition-all shadow-[0_0_28px_rgba(0,245,255,0.4)] flex items-center gap-2.5 sm:gap-3 cursor-pointer shrink-0 border border-white/20"
         >
           <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
           <span>PLAY RUN [ENTER]</span>
         </button>
 
-        {/* Secondary Buttons */}
-        <div className="mt-3 sm:mt-4 flex flex-wrap justify-center items-center gap-1.5 xs:gap-2 sm:gap-3 shrink-0">
+        {/* Secondary Buttons Grid */}
+        <div className="mt-3.5 sm:mt-5 flex flex-wrap justify-center items-center gap-2 sm:gap-3 shrink-0">
           <button
             type="button"
             onClick={onOpenStats}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold text-slate-300 hover:text-white bg-[#101426]/80 border border-slate-700 hover:border-amber-400/50 transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#F0F6FC] bg-[#0B0E1A]/90 border border-[#161B2E] hover:border-[#FFB800]/60 transition-all cursor-pointer active:scale-95 shadow-sm"
           >
-            <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
+            <BarChart3 className="w-3.5 h-3.5 text-[#FFB800]" />
             <span>DOSSIER</span>
           </button>
 
           <button
             type="button"
             onClick={onOpenHowToPlay}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold text-slate-300 hover:text-white bg-[#101426]/80 border border-slate-700 hover:border-[#43F5FF]/50 transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#F0F6FC] bg-[#0B0E1A]/90 border border-[#161B2E] hover:border-[#00F5FF]/60 transition-all cursor-pointer active:scale-95 shadow-sm"
           >
-            <HelpCircle className="w-3.5 h-3.5 text-[#43F5FF]" />
+            <HelpCircle className="w-3.5 h-3.5 text-[#00F5FF]" />
             <span>HOW TO PLAY</span>
           </button>
 
           <button
             type="button"
             onClick={onOpenSettings}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold text-slate-300 hover:text-white bg-[#101426]/80 border border-slate-700 hover:border-[#9865FF]/50 transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#F0F6FC] bg-[#0B0E1A]/90 border border-[#161B2E] hover:border-[#7928CA]/60 transition-all cursor-pointer active:scale-95 shadow-sm"
           >
-            <Settings className="w-3.5 h-3.5 text-[#9865FF]" />
+            <Settings className="w-3.5 h-3.5 text-[#7928CA]" />
             <span>SETTINGS</span>
           </button>
         </div>
       </div>
 
-      {/* Bottom Flat Control Hint Line */}
-      <div className="w-full text-center py-1 sm:py-2 text-[10px] sm:text-xs text-slate-500 font-mono tracking-wider shrink-0">
+      {/* Bottom Tactical Control Legend */}
+      <div className="w-full text-center py-1 sm:py-2 text-[10px] sm:text-xs text-[#79869C]/80 font-mono tracking-wider shrink-0 select-none">
         WASD / ARROWS MOVE · SPACE PAUSE · R RESTART
       </div>
     </div>

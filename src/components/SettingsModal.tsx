@@ -75,15 +75,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center p-2 xs:p-3 sm:p-6 bg-[#080A12]/90 backdrop-blur-sm overflow-hidden pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
-      <div className="w-full max-w-lg max-h-[calc(100dvh-1.5rem)] bg-[#101426] border border-[#9865FF]/40 rounded-2xl shadow-[0_0_35px_rgba(152,101,255,0.2)] flex flex-col relative my-auto overflow-hidden">
+    <div className="absolute inset-0 z-40 flex items-center justify-center p-2 xs:p-3 sm:p-6 bg-[#05070E]/90 backdrop-blur-sm overflow-hidden pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
+      <div className="w-full max-w-lg max-h-[calc(100dvh-1.5rem)] bg-[#0B0E1A] border border-[#7928CA]/40 rounded-2xl shadow-[0_0_35px_rgba(121,40,202,0.2)] flex flex-col relative my-auto overflow-hidden">
         {/* Modal Header */}
-        <div className="p-3.5 sm:p-5 flex items-center justify-between border-b border-slate-800/80 shrink-0 bg-[#101426]">
+        <div className="p-3.5 sm:p-5 flex items-center justify-between border-b border-[#161B2E] shrink-0 bg-[#0B0E1A]">
           <div>
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-black font-display tracking-wider text-white neon-glow-magenta leading-none">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-black font-display tracking-wider text-[#F0F6FC] leading-none drop-shadow-[0_0_15px_rgba(121,40,202,0.3)]">
               SETTINGS
             </h2>
-            <p className="text-[10px] sm:text-xs text-slate-400 font-mono tracking-wider mt-1">
+            <p className="text-[10px] sm:text-xs text-[#79869C] font-mono tracking-wider mt-1 font-semibold">
               CONFIGURATION & PROTOCOLS
             </p>
           </div>
@@ -92,215 +92,219 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close Settings"
-            className="p-1.5 sm:p-2 rounded-lg bg-[#080A12] border border-slate-700 text-slate-400 hover:text-white hover:border-[#9865FF] transition-all cursor-pointer active:scale-95"
+            className="p-1.5 sm:p-2 rounded-xl bg-[#05070E] border border-[#161B2E] text-[#79869C] hover:text-[#F0F6FC] hover:border-[#7928CA]/60 transition-all cursor-pointer active:scale-95"
           >
             <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {/* Scrollable Body Content */}
-        <div className="overflow-y-auto p-3.5 sm:p-6 space-y-4 sm:space-y-6 flex-1">
+        <div className="overflow-y-auto p-3.5 sm:p-6 space-y-4 sm:space-y-5 flex-1">
           {/* 1. Audio Settings */}
-        <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-[#43F5FF]" />
-              Sound Effects
-            </span>
-            <button
-              onClick={handleToggleSfx}
-              aria-label={settings.audio.sfxEnabled ? 'Disable Sound Effects' : 'Enable Sound Effects'}
-              className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-                settings.audio.sfxEnabled
-                  ? 'bg-[#43F5FF]/20 text-[#43F5FF] border border-[#43F5FF]'
-                  : 'bg-slate-800 text-slate-400 border border-slate-700'
-              }`}
-            >
-              {settings.audio.sfxEnabled ? 'ENABLED' : 'MUTED'}
-            </button>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-[11px] text-slate-400 mb-1.5">
-              <span>Volume</span>
-              <span className="font-mono-num font-bold text-white">
-                {Math.round(settings.audio.sfxVolume * 100)}%
+          <div className="bg-[#05070E] p-3.5 sm:p-4 rounded-xl border border-[#161B2E]">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-[#00F5FF]" />
+                Sound Effects
               </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={settings.audio.sfxVolume}
-              onChange={handleVolumeChange}
-              disabled={!settings.audio.sfxEnabled}
-              aria-label="Sound volume slider"
-              className="w-full accent-[#43F5FF] cursor-pointer disabled:opacity-40"
-            />
-          </div>
-        </div>
-
-        {/* 2. Visual Effects & Reduced Motion */}
-        <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2 mb-3">
-            <Eye className="w-4 h-4 text-[#9865FF]" />
-            Graphics & Animation
-          </span>
-
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'high' as const, label: 'HIGH GLOW', desc: 'Full bloom' },
-              { id: 'performance' as const, label: 'FAST', desc: 'Balanced' },
-              { id: 'reduced' as const, label: 'REDUCED', desc: 'No shake' },
-            ].map(opt => (
               <button
-                key={opt.id}
-                onClick={() => handleVisualChange(opt.id)}
-                className={`p-2 rounded-lg border text-center transition-all ${
-                  settings.visualEffects === opt.id
-                    ? 'border-[#9865FF] bg-[#9865FF]/20 text-white shadow-[0_0_10px_rgba(152,101,255,0.3)]'
-                    : 'border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                type="button"
+                onClick={handleToggleSfx}
+                aria-label={settings.audio.sfxEnabled ? 'Disable Sound Effects' : 'Enable Sound Effects'}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer font-display ${
+                  settings.audio.sfxEnabled
+                    ? 'bg-[#00F5FF]/15 text-[#00F5FF] border border-[#00F5FF] shadow-[0_0_10px_rgba(0,245,255,0.25)]'
+                    : 'bg-[#0B0E1A] text-[#79869C] border border-[#161B2E]'
                 }`}
               >
-                <div className="text-xs font-bold">{opt.label}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5">{opt.desc}</div>
+                {settings.audio.sfxEnabled ? 'ENABLED' : 'MUTED'}
               </button>
-            ))}
+            </div>
+
+            <div>
+              <div className="flex justify-between text-[11px] text-[#79869C] mb-1.5">
+                <span>Volume</span>
+                <span className="font-mono-num font-bold text-[#F0F6FC]">
+                  {Math.round(settings.audio.sfxVolume * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={settings.audio.sfxVolume}
+                onChange={handleVolumeChange}
+                disabled={!settings.audio.sfxEnabled}
+                aria-label="Sound volume slider"
+                className="w-full accent-[#00F5FF] cursor-pointer disabled:opacity-40"
+              />
+            </div>
           </div>
-        </div>
 
-        {/* 3. Snake Chassis Skin Customization */}
-        <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2 mb-3">
-            <Palette className="w-4 h-4 text-[#43F5FF]" />
-            Snake Chassis Neon Skin
-          </span>
+          {/* 2. Visual Effects & Reduced Motion */}
+          <div className="bg-[#05070E] p-3.5 sm:p-4 rounded-xl border border-[#161B2E]">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] flex items-center gap-2 mb-3">
+              <Eye className="w-4 h-4 text-[#7928CA]" />
+              Graphics & Animation
+            </span>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {(Object.keys(SKINS) as SnakeSkinId[]).map(skinKey => {
-              const skin = SKINS[skinKey];
-              const isSelected = (settings.skin || 'cyber_cyan') === skinKey;
-              return (
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'high' as const, label: 'HIGH GLOW', desc: 'Full bloom' },
+                { id: 'performance' as const, label: 'FAST', desc: 'Balanced' },
+                { id: 'reduced' as const, label: 'REDUCED', desc: 'No shake' },
+              ].map(opt => (
                 <button
-                  key={skin.id}
-                  onClick={() => handleSkinChange(skin.id)}
-                  className={`p-2.5 rounded-lg border text-left transition-all flex items-center gap-3 cursor-pointer ${
-                    isSelected
-                      ? 'border-[#43F5FF] bg-[#43F5FF]/15 text-white shadow-[0_0_12px_rgba(67,245,255,0.25)]'
-                      : 'border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleVisualChange(opt.id)}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                    settings.visualEffects === opt.id
+                      ? 'border-[#7928CA] bg-[#7928CA]/20 text-[#F0F6FC] shadow-[0_0_12px_rgba(121,40,202,0.3)]'
+                      : 'border-[#161B2E] text-[#79869C] hover:border-slate-700 hover:text-[#F0F6FC]'
                   }`}
                 >
-                  {/* Swatch Preview */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <div
-                      className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
-                      style={{ backgroundColor: skin.headColor }}
-                    />
-                    <div
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: skin.bodyColors[1] }}
-                    />
-                    <div
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: skin.bodyColors[2] }}
-                    />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-bold font-display truncate">{skin.name}</div>
-                    <div className="text-[10px] text-slate-500 truncate">{skin.tagline}</div>
-                  </div>
+                  <div className="text-xs font-bold font-display">{opt.label}</div>
+                  <div className="text-[10px] text-[#79869C] mt-0.5">{opt.desc}</div>
                 </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 4. Movement Controls */}
-        <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-[#FF4FD8]" />
-              Movement Controls
-            </span>
-            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest px-2 py-0.5 rounded bg-slate-900 border border-slate-800">
-              {settings.controlMode}
-            </span>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'swipe' as const, label: 'SWIPE', desc: 'Gesture steering' },
-              { id: 'buttons' as const, label: 'BUTTONS', desc: 'Directional D-Pad' },
-              { id: 'both' as const, label: 'BOTH', desc: 'Swipe + D-Pad' },
-            ].map(opt => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => handleControlModeChange(opt.id)}
-                aria-pressed={settings.controlMode === opt.id}
-                aria-label={`Select ${opt.label} controls`}
-                className={`p-2.5 rounded-lg border text-center transition-all cursor-pointer ${
-                  settings.controlMode === opt.id
-                    ? 'border-[#FF4FD8] bg-[#FF4FD8]/20 text-white shadow-[0_0_12px_rgba(255,79,216,0.35)]'
-                    : 'border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                }`}
-              >
-                <div className="text-xs font-bold font-display">{opt.label}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">{opt.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 4. Reset Best Scores */}
-        <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800 flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 block">
-              Personal Records
+          {/* 3. Snake Chassis Neon Skin */}
+          <div className="bg-[#05070E] p-3.5 sm:p-4 rounded-xl border border-[#161B2E]">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] flex items-center gap-2 mb-3">
+              <Palette className="w-4 h-4 text-[#00F5FF]" />
+              Snake Chassis Neon Skin
             </span>
-            <span className="text-[11px] text-slate-400">
-              Clear saved high scores across all modes
-            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {(Object.keys(SKINS) as SnakeSkinId[]).map(skinKey => {
+                const skin = SKINS[skinKey];
+                const isSelected = (settings.skin || 'cyber_cyan') === skinKey;
+                return (
+                  <button
+                    key={skin.id}
+                    type="button"
+                    onClick={() => handleSkinChange(skin.id)}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-3 cursor-pointer ${
+                      isSelected
+                        ? 'border-[#00F5FF] bg-[#00F5FF]/15 text-[#F0F6FC] shadow-[0_0_12px_rgba(0,245,255,0.25)]'
+                        : 'border-[#161B2E] text-[#79869C] hover:border-slate-700 hover:text-[#F0F6FC]'
+                    }`}
+                  >
+                    {/* Swatch Preview */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <div
+                        className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                        style={{ backgroundColor: skin.headColor }}
+                      />
+                      <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: skin.bodyColors[1] }}
+                      />
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: skin.bodyColors[2] }}
+                      />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold font-display truncate">{skin.name}</div>
+                      <div className="text-[10px] text-[#79869C] truncate">{skin.tagline}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <button
-            onClick={handleResetClick}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              confirmReset
-                ? 'bg-rose-500 text-white border border-rose-400 animate-pulse'
-                : resetDone
-                ? 'bg-[#39FF14]/20 text-[#39FF14] border border-[#39FF14]'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-            }`}
-          >
-            {confirmReset ? (
-              <>
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>CONFIRM?</span>
-              </>
-            ) : resetDone ? (
-              <>
-                <Check className="w-3.5 h-3.5" />
-                <span>CLEARED</span>
-              </>
-            ) : (
-              <>
-                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                <span>RESET</span>
-              </>
-            )}
-          </button>
-        </div>
+          {/* 4. Movement Controls */}
+          <div className="bg-[#05070E] p-3.5 sm:p-4 rounded-xl border border-[#161B2E]">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-[#FF007A]" />
+                Movement Controls
+              </span>
+              <span className="text-[10px] font-mono text-[#79869C] uppercase tracking-widest px-2 py-0.5 rounded bg-[#0B0E1A] border border-[#161B2E] font-bold">
+                {settings.controlMode}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'swipe' as const, label: 'SWIPE', desc: 'Gesture steering' },
+                { id: 'buttons' as const, label: 'BUTTONS', desc: 'Directional D-Pad' },
+                { id: 'both' as const, label: 'BOTH', desc: 'Swipe + D-Pad' },
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleControlModeChange(opt.id)}
+                  aria-pressed={settings.controlMode === opt.id}
+                  aria-label={`Select ${opt.label} controls`}
+                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                    settings.controlMode === opt.id
+                      ? 'border-[#FF007A] bg-[#FF007A]/20 text-[#F0F6FC] shadow-[0_0_12px_rgba(255,0,122,0.35)]'
+                      : 'border-[#161B2E] text-[#79869C] hover:border-slate-700 hover:text-[#F0F6FC]'
+                  }`}
+                >
+                  <div className="text-xs font-bold font-display">{opt.label}</div>
+                  <div className="text-[10px] text-[#79869C] mt-0.5 leading-tight">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 5. Reset Best Scores */}
+          <div className="bg-[#05070E] p-3.5 sm:p-4 rounded-xl border border-[#161B2E] flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] block">
+                Personal Records
+              </span>
+              <span className="text-[11px] text-[#79869C]">
+                Clear saved high scores across all modes
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleResetClick}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                confirmReset
+                  ? 'bg-rose-500 text-white border border-rose-400 animate-pulse'
+                  : resetDone
+                  ? 'bg-[#10FFA0]/20 text-[#10FFA0] border border-[#10FFA0]'
+                  : 'bg-[#0B0E1A] hover:bg-[#161B2E] text-[#79869C] hover:text-[#F0F6FC] border border-[#161B2E]'
+              }`}
+            >
+              {confirmReset ? (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>CONFIRM?</span>
+                </>
+              ) : resetDone ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>CLEARED</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>RESET</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Modal Sticky Footer */}
-        <div className="p-3 sm:p-4 bg-[#101426] border-t border-slate-800/80 shrink-0">
+        <div className="p-3 sm:p-4 bg-[#0B0E1A] border-t border-[#161B2E] shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2.5 sm:py-3 rounded-xl font-display font-bold text-xs sm:text-sm tracking-wider text-[#080A12] bg-[#9865FF] hover:bg-[#B084FF] transition-all cursor-pointer shadow-[0_0_15px_rgba(152,101,255,0.3)] active:scale-98"
+            className="w-full py-2.5 sm:py-3.5 rounded-xl font-display font-black text-xs sm:text-sm tracking-wider bg-[#7928CA] hover:bg-[#9247E6] transition-all cursor-pointer shadow-[0_0_18px_rgba(121,40,202,0.35)] active:scale-98 text-white"
           >
             SAVE & CLOSE
           </button>
