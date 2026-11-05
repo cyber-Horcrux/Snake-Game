@@ -180,3 +180,38 @@ test('resetStatsAndAchievements cleans all records back to defaults', () => {
   assert.equal(achievements.every(a => a.unlocked === false), true);
 });
 
+test('legacy storage keys neonsnake_stats and neonsnake_achievements are seamlessly migrated', () => {
+  const legacyStorage = new MemoryStorage();
+  legacyStorage.setItem('neonsnake_stats', JSON.stringify({
+    runsPlayed: 45,
+    totalScore: 12500,
+    highestScore: 780,
+    totalFoodEaten: 420,
+    totalBonusEaten: 35,
+    powerUpsCollected: 18,
+    longestSnake: 32,
+    wallsWrapped: 14,
+    shieldsUsed: 8,
+    maxCombo: 4,
+  }));
+
+  legacyStorage.setItem('neonsnake_achievements', JSON.stringify([
+    { id: 'first_bite', unlocked: true, unlockedAt: 1700000000000 },
+    { id: 'centurion', unlocked: true, unlockedAt: 1700000100000 },
+  ]));
+
+  const stats = loadStats(legacyStorage);
+  assert.equal(stats.runsPlayed, 45);
+  assert.equal(stats.totalScore, 12500);
+  assert.equal(stats.highestScore, 780);
+  assert.equal(stats.longestSnake, 32);
+
+  const achievements = loadAchievements(legacyStorage);
+  const firstBite = achievements.find(a => a.id === 'first_bite');
+  assert.equal(firstBite?.unlocked, true);
+  const centurion = achievements.find(a => a.id === 'centurion');
+  assert.equal(centurion?.unlocked, true);
+  const neonLegend = achievements.find(a => a.id === 'neon_legend');
+  assert.equal(neonLegend?.unlocked, false);
+});
+

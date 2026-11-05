@@ -105,7 +105,7 @@ export function loadStats(storage: StorageLike | null = getBrowserStorage()): Li
   if (!storage) return { ...DEFAULT_STATS };
 
   try {
-    const raw = storage.getItem(STORAGE_KEYS.STATISTICS);
+    const raw = storage.getItem(STORAGE_KEYS.STATISTICS) || storage.getItem('neonsnake_stats') || storage.getItem('neonsnake_lifetime_stats');
     if (!raw) return { ...DEFAULT_STATS };
 
     const parsed = JSON.parse(raw);
@@ -149,7 +149,7 @@ export function loadAchievements(storage: StorageLike | null = getBrowserStorage
   if (!storage) return INITIAL_ACHIEVEMENTS.map(a => ({ ...a }));
 
   try {
-    const raw = storage.getItem(STORAGE_KEYS.ACHIEVEMENTS);
+    const raw = storage.getItem(STORAGE_KEYS.ACHIEVEMENTS) || storage.getItem('neonsnake_achievements');
     if (!raw) return INITIAL_ACHIEVEMENTS.map(a => ({ ...a }));
 
     const parsed = JSON.parse(raw);

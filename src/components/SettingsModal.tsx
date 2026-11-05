@@ -75,7 +75,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center p-2 xs:p-3 sm:p-6 bg-[#05070E]/90 backdrop-blur-sm overflow-hidden pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
+    <div
+      onClick={e => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="absolute inset-0 z-40 flex items-center justify-center p-2 xs:p-3 sm:p-6 bg-[#05070E]/90 backdrop-blur-sm overflow-hidden pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
+    >
       <div className="w-full max-w-lg max-h-[calc(100dvh-1.5rem)] bg-[#0B0E1A] border border-[#7928CA]/40 rounded-2xl shadow-[0_0_35px_rgba(121,40,202,0.2)] flex flex-col relative my-auto overflow-hidden">
         {/* Modal Header */}
         <div className="p-3.5 sm:p-5 flex items-center justify-between border-b border-[#161B2E] shrink-0 bg-[#0B0E1A]">

@@ -455,3 +455,17 @@ test('power-up slow-mo factor: properly resets tickInterval when duration expire
   assert.equal(calculateTickInterval('classic', 1, isSlowMoActive), normalInterval);
 });
 
+test('queueDirection safely rejects input when snake is dead or in victory', () => {
+  const deadState = createInitialState('classic', 10, 10);
+  deadState.isAlive = false;
+
+  const resultDead = queueDirection(deadState, 'UP');
+  assert.equal(resultDead.queuedDirections.length, 0);
+
+  const victoryState = createInitialState('classic', 10, 10);
+  victoryState.isVictory = true;
+
+  const resultVictory = queueDirection(victoryState, 'UP');
+  assert.equal(resultVictory.queuedDirections.length, 0);
+});
+

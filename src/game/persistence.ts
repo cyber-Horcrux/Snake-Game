@@ -37,7 +37,7 @@ export function loadBestScores(storage: StorageLike | null = getBrowserStorage()
   if (!storage) return { ...DEFAULT_BEST_SCORES };
 
   try {
-    const raw = storage.getItem(STORAGE_KEYS.BEST_SCORES);
+    const raw = storage.getItem(STORAGE_KEYS.BEST_SCORES) || storage.getItem('neonsnake_best_scores');
     if (!raw) return { ...DEFAULT_BEST_SCORES };
 
     const parsed = JSON.parse(raw);
@@ -105,7 +105,7 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
   if (!storage) return { ...DEFAULT_SETTINGS };
 
   try {
-    const raw = storage.getItem(STORAGE_KEYS.SETTINGS);
+    const raw = storage.getItem(STORAGE_KEYS.SETTINGS) || storage.getItem('neonsnake_settings');
     if (!raw) return { ...DEFAULT_SETTINGS };
 
     const parsed = JSON.parse(raw);

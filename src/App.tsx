@@ -34,7 +34,6 @@ import { HowToPlayModal } from './components/HowToPlayModal.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
 import { TouchDPad } from './components/TouchDPad.tsx';
-import { BrandPreview } from './components/branding/BrandPreview.tsx';
 import {
   loadStats,
   loadAchievements,
@@ -56,17 +55,6 @@ export default function App() {
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
-  const [showBrandPreview, setShowBrandPreview] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      return (
-        params.get('preview') === 'brand' ||
-        params.get('branding') === '1' ||
-        window.location.hash === '#brand-preview'
-      );
-    }
-    return false;
-  });
 
   // Reactive HUD state so UI updates as soon as food is collected or stats change
   const [hudState, setHudState] = useState({
@@ -237,26 +225,20 @@ export default function App() {
     }
   }, [startGame]);
 
-  // Support ?preview=brand or ?branding=1 or #brand-preview
+
+
+  // Auto-pause run when page or tab loses visibility (e.g., app switching, notifications, locking on mobile)
   useEffect(() => {
-    const handleCheckBrandPreview = () => {
-      const params = new URLSearchParams(window.location.search);
-      if (
-        params.get('preview') === 'brand' ||
-        params.get('branding') === '1' ||
-        window.location.hash === '#brand-preview'
-      ) {
-        setShowBrandPreview(true);
+    const handleVisibilityChange = () => {
+      if (document.hidden && screenRef.current === 'playing') {
+        pauseGame();
       }
     };
-    handleCheckBrandPreview();
-    window.addEventListener('popstate', handleCheckBrandPreview);
-    window.addEventListener('hashchange', handleCheckBrandPreview);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      window.removeEventListener('popstate', handleCheckBrandPreview);
-      window.removeEventListener('hashchange', handleCheckBrandPreview);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [pauseGame]);
 
   // Keyboard Event Listener
   useEffect(() => {
@@ -668,30 +650,17 @@ export default function App() {
 
       {/* Screen Modals & Overlays */}
       {screen === 'title' && (
-        <>
-          {/* Temporary Brand Preview Trigger Button */}
-          <button
-            type="button"
-            onClick={() => setShowBrandPreview(true)}
-            aria-label="Open Branding Preview Gallery"
-            className="absolute top-[max(0.75rem,env(safe-area-inset-top))] left-[max(0.75rem,env(safe-area-inset-left))] z-30 px-3 py-1.5 rounded-lg bg-[#101426]/90 border border-[#43F5FF]/40 text-[#43F5FF] text-xs font-mono tracking-wider hover:bg-[#43F5FF]/15 hover:border-[#43F5FF] transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer backdrop-blur-xs"
-          >
-            <span className="text-[#FF4FD8]">✦</span>
-            <span>BRAND PREVIEW</span>
-          </button>
-
-          <TitleScreen
-            selectedMode={selectedMode}
-            onSelectMode={setSelectedMode}
-            bestScores={bestScores}
-            onStartGame={() => startGame(selectedMode)}
-            onOpenHowToPlay={() => setShowHowToPlay(true)}
-            onOpenSettings={() => setShowSettings(true)}
-            onOpenStats={() => setShowStats(true)}
-            sfxEnabled={settings.audio.sfxEnabled}
-            onToggleMute={toggleMute}
-          />
-        </>
+        <TitleScreen
+          selectedMode={selectedMode}
+          onSelectMode={setSelectedMode}
+          bestScores={bestScores}
+          onStartGame={() => startGame(selectedMode)}
+          onOpenHowToPlay={() => setShowHowToPlay(true)}
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenStats={() => setShowStats(true)}
+          sfxEnabled={settings.audio.sfxEnabled}
+          onToggleMute={toggleMute}
+        />
       )}
 
       {screen === 'paused' && (
@@ -737,10 +706,7 @@ export default function App() {
         />
       )}
 
-      {/* Temporary Brand Preview Gallery Overlay */}
-      {showBrandPreview && (
-        <BrandPreview onClose={() => setShowBrandPreview(false)} />
-      )}
+
 
       {/* Bottom Desktop Keyboard Controls Hint */}
       {screen === 'playing' && (

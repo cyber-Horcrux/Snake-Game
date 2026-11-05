@@ -185,3 +185,24 @@ test('storage exceptions do not crash application', () => {
     saveSettings(DEFAULT_SETTINGS, brokenStorage);
   });
 });
+
+test('legacy storage keys neonsnake_best_scores and neonsnake_settings are seamlessly migrated', () => {
+  const legacyStorage = new MemoryStorage();
+  legacyStorage.setItem('neonsnake_best_scores', JSON.stringify({ classic: 250, zen: 180, rush: 120 }));
+  legacyStorage.setItem('neonsnake_settings', JSON.stringify({
+    audio: { sfxEnabled: true, sfxVolume: 0.7 },
+    visualEffects: 'high',
+    skin: 'hyper_violet',
+    controlMode: 'buttons',
+  }));
+
+  const scores = loadBestScores(legacyStorage);
+  assert.equal(scores.classic, 250);
+  assert.equal(scores.zen, 180);
+  assert.equal(scores.rush, 120);
+
+  const settings = loadSettings(legacyStorage);
+  assert.equal(settings.skin, 'hyper_violet');
+  assert.equal(settings.controlMode, 'buttons');
+  assert.equal(settings.audio.sfxVolume, 0.7);
+});

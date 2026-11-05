@@ -281,3 +281,21 @@ test('Task 5 in-game UI components preserve all critical interactive attributes 
   assert.ok(hudContent.includes('RUSH'), 'HeaderHUD must support RUSH mode label');
 });
 
+test('production branding exports contain exclusively clean game assets with no internal preview interfaces', () => {
+  const brandingIndexPath = path.resolve(process.cwd(), 'src/components/branding/index.ts');
+  const indexContent = fs.readFileSync(brandingIndexPath, 'utf-8');
+
+  // Must not export BrandPreview
+  assert.ok(!indexContent.includes('BrandPreview'), 'branding/index.ts must not export BrandPreview');
+
+  // Must export BrandLogo and LOGO_ASSETS
+  assert.ok(indexContent.includes('export { BrandLogo, LOGO_ASSETS }'), 'Must export BrandLogo and LOGO_ASSETS');
+
+  // App.tsx must not contain preview query params or BrandPreview component
+  const appPath = path.resolve(process.cwd(), 'src/App.tsx');
+  const appContent = fs.readFileSync(appPath, 'utf-8');
+  assert.ok(!appContent.includes('BrandPreview'), 'App.tsx must not import or render BrandPreview');
+  assert.ok(!appContent.includes('preview=brand'), 'App.tsx must not contain preview=brand route');
+  assert.ok(!appContent.includes('#brand-preview'), 'App.tsx must not contain #brand-preview hash');
+});
+
