@@ -16,10 +16,8 @@ android {
         applicationId "com.cyberhorcrux.neonsnake"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-
         versionCode 3
-        versionCode 3
-        versionName "1.2"(release: prepare NEON SNAKE v1.2)
+        versionName "1.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
