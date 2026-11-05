@@ -107,3 +107,6 @@ app/src/main/res/xml/config.xml
 app/release/
 *.jks
 *.keystore
+
+# Local release signing credentials
+keystore.properties
