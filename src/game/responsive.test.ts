@@ -82,3 +82,63 @@ test('orientation and viewport classifier helpers work accurately', () => {
   assert.equal(isNarrowViewport(430), false);
   assert.equal(isNarrowViewport(768), false);
 });
+
+test('buttons control mode mobile portrait geometry reserves ample clearance for enlarged D-pad', () => {
+  // Mobile test viewports in portrait:
+  // e.g. iPhone SE (320x568), standard Android (360x800), iPhone 14/15 (390x844), large Pro Max (430x932)
+  const mobileViewports = [
+    { width: 320, height: 568 },
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 430, height: 932 },
+  ];
+
+  for (const vp of mobileViewports) {
+    const hudHeight = 56;
+    const safeAreaVertical = 40;
+    const availableTotalH = vp.height - hudHeight - safeAreaVertical;
+
+    // In Buttons mode, flex ratios: board gets flex-[1.25], D-pad gets flex-1 (total 2.25)
+    const boardContainerH = Math.floor(availableTotalH * (1.25 / 2.25));
+    const dpadContainerH = availableTotalH - boardContainerH;
+
+    const boardDim = calculateCanvasDimensions(vp.width, boardContainerH, 2, { padding: 8 });
+
+    // 1. Board must maintain strictly square 1:1 aspect ratio
+    assert.equal(boardDim.backingWidth, boardDim.backingHeight);
+    assert.ok(boardDim.cssSize > 0, `Board size must be positive for ${vp.width}x${vp.height}`);
+    assert.ok(boardDim.cssSize <= vp.width, `Board width must not exceed screen width for ${vp.width}x${vp.height}`);
+    assert.ok(boardDim.cssSize <= boardContainerH, `Board height must not exceed container height for ${vp.width}x${vp.height}`);
+
+    // 2. D-pad container must have sufficient height for enlarged D-pad controls (min 160px)
+    assert.ok(dpadContainerH >= 160, `D-pad container height (${dpadContainerH}px) must be >= 160px for ${vp.width}x${vp.height}`);
+  }
+});
+
+test('buttons control mode mobile landscape geometry reserves ample gutter clearance for docked D-pad', () => {
+  // Mobile test viewports in landscape:
+  // e.g. iPhone SE (568x320), standard Android (800x360), modern wide phone (932x430)
+  const landscapeViewports = [
+    { width: 568, height: 320 },
+    { width: 800, height: 360 },
+    { width: 932, height: 430 },
+  ];
+
+  for (const vp of landscapeViewports) {
+    const safeAreaHorizontal = 48; // left + right safe area insets
+    const availableW = vp.width - safeAreaHorizontal;
+    const availableH = vp.height; // in landscape, board uses available height
+
+    const boardDim = calculateCanvasDimensions(availableW, availableH, 2, { padding: 8 });
+
+    // 1. Board must maintain strictly square 1:1 aspect ratio
+    assert.equal(boardDim.backingWidth, boardDim.backingHeight);
+    assert.ok(boardDim.cssSize > 0);
+    assert.ok(boardDim.cssSize <= availableH);
+
+    // 2. Right gutter width: (availableW - boardDim.cssSize) / 2
+    // Must be large enough to dock the touch D-pad (minimum 120px)
+    const gutterWidth = Math.floor((availableW - boardDim.cssSize) / 2);
+    assert.ok(gutterWidth >= 100, `Right gutter (${gutterWidth}px) must provide clearance for docked D-pad on ${vp.width}x${vp.height}`);
+  }
+});

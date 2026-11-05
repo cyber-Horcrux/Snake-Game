@@ -562,9 +562,10 @@ export default function App() {
       window.removeEventListener('resize', updateCanvasSize);
       window.removeEventListener('orientationchange', updateCanvasSize);
     };
-  }, []);
+  }, [screen, settings.controlMode]);
 
   const shouldShowDpad = shouldShowDirectionalControls(settings.controlMode);
+  const isButtonsMode = screen === 'playing' && settings.controlMode === 'buttons';
 
   return (
     <div className="relative w-full h-[100dvh] min-h-[100vh] overflow-hidden bg-[#080A12] flex flex-col items-center justify-between cyber-grid select-none pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]">
@@ -589,10 +590,20 @@ export default function App() {
       )}
 
       {/* Canvas Viewport Container */}
-      <div className="w-full flex-1 min-h-0 min-w-0 flex items-center justify-center relative overflow-hidden">
+      <div
+        className={`w-full min-h-0 min-w-0 flex items-center justify-center relative overflow-hidden ${
+          isButtonsMode
+            ? 'flex-1 portrait:max-md:flex-[1.25]'
+            : 'flex-1'
+        }`}
+      >
         <div
           data-testid="game-board-container"
-          className="relative flex items-center justify-center w-full h-full p-1 sm:p-2 select-none touch-none"
+          className={`relative flex justify-center w-full h-full select-none touch-none ${
+            isButtonsMode
+              ? 'portrait:max-md:items-start portrait:max-md:pt-1 sm:portrait:max-md:pt-2 items-center p-1 sm:p-2'
+              : 'items-center p-1 sm:p-2'
+          }`}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -601,6 +612,7 @@ export default function App() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
+          onContextMenu={e => e.preventDefault()}
         >
           <canvas
             ref={canvasRef}
@@ -672,9 +684,13 @@ export default function App() {
       {screen === 'playing' && shouldShowDpad && (
         <div
           data-testid="touch-dpad-container"
-          className="z-20 md:hidden shrink-0 pb-1 landscape:absolute landscape:right-3 landscape:bottom-2 landscape:pb-0"
+          className={`z-20 md:hidden shrink-0 pb-1 landscape:absolute landscape:right-3 landscape:bottom-2 landscape:pb-0 ${
+            isButtonsMode
+              ? 'portrait:max-md:flex-1 portrait:max-md:flex portrait:max-md:flex-col portrait:max-md:items-center portrait:max-md:justify-center portrait:max-md:pb-2'
+              : ''
+          }`}
         >
-          <TouchDPad onDirection={handleSteer} />
+          <TouchDPad onDirection={handleSteer} isButtonsMode={isButtonsMode} />
         </div>
       )}
 

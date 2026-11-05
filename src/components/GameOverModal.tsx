@@ -116,7 +116,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             <span>PLAY AGAIN [ENTER]</span>
           </button>
 
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 w-full">
+          <div className={`grid ${onOpenStats ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 sm:gap-2 w-full`}>
             <button
               type="button"
               onClick={handleShare}

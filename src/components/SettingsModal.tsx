@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Volume2, VolumeX, Eye, Smartphone, Trash2, Check, AlertTriangle, Palette } from 'lucide-react';
+import { X, Volume2, Eye, Smartphone, Trash2, Check, AlertTriangle, Palette } from 'lucide-react';
 import type { ControlMode, GameSettings, SnakeSkinId } from '../game/types.ts';
 import { SKINS } from '../game/constants.ts';
 

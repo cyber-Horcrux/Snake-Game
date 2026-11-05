@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Sparkles, Zap, Infinity, BarChart3 } from 'lucide-react';
+import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3 } from 'lucide-react';
 import type { GameMode, ModeBestScores } from '../game/types.ts';
 
 interface TitleScreenProps {

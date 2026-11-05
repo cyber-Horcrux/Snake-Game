@@ -1,6 +1,6 @@
 import React from 'react';
 import { Volume2, VolumeX, Pause, RotateCcw, Shield, Clock, Flame } from 'lucide-react';
-import type { GameEngineState, GameMode } from '../game/types.ts';
+import type { GameMode } from '../game/types.ts';
 
 interface HeaderHUDProps {
   score: number;

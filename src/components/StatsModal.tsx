@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Award, BarChart3, CheckCircle2, Lock, Flame, Shield, Trophy, RotateCcw } from 'lucide-react';
+import { X, Award, BarChart3, CheckCircle2, Lock, Flame, Shield } from 'lucide-react';
 import type { Achievement, LifetimeStats } from '../game/types.ts';
 
 interface StatsModalProps {

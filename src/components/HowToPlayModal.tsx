@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, ArrowRight, Shield, Clock, Sparkles, Award } from 'lucide-react';
+import { X, Shield, Clock, Sparkles } from 'lucide-react';
 
 interface HowToPlayModalProps {
   onClose: () => void;
