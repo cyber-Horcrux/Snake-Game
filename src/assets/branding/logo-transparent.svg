@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 680" width="100%" height="100%" fill="none">
+  <defs>
+    <!-- Cyan Neon Gradients -->
+    <linearGradient id="tCyberCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#55F7FF" />
+      <stop offset="50%" stop-color="#00E5FF" />
+      <stop offset="100%" stop-color="#0088FF" />
+    </linearGradient>
+
+    <!-- Magenta Eye Laser Gradients -->
+    <linearGradient id="tMagentaLaser" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF007A" />
+      <stop offset="50%" stop-color="#FF2E93" />
+      <stop offset="100%" stop-color="#FF70BA" />
+    </linearGradient>
+
+    <!-- Plate Shading Gradients -->
+    <linearGradient id="tPlateDark" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141C36" />
+      <stop offset="100%" stop-color="#090D1C" />
+    </linearGradient>
+    <linearGradient id="tPlateMid" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1D284C" />
+      <stop offset="100%" stop-color="#0E1428" />
+    </linearGradient>
+
+    <!-- Soft Neon Glow Filter -->
+    <filter id="tNeonBloom" x="-20%" y="-20%" width="140%" height="140%" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="6" result="blur1" />
+      <feMerge>
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <filter id="tEyeGlow" x="-50%" y="-50%" width="200%" height="200%" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="4" result="eyeBlur" />
+      <feMerge>
+        <feMergeNode in="eyeBlur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- EMBLEM: THE APEX CYBER-VIPER (Centered on transparent canvas) -->
+  <g transform="translate(68, 12) scale(0.90)">
+    <!-- Ambient Under-Glow Aura -->
+    <g opacity="0.3" filter="url(#tNeonBloom)">
+      <path d="M 256,44 L 184,96 L 140,150 L 106,218 L 92,252 L 126,310 L 168,362 L 204,396 L 218,446 L 228,386 L 256,348 L 284,386 L 294,446 L 308,396 L 344,362 L 386,310 L 420,252 L 406,218 L 372,150 L 328,96 Z"
+        stroke="#00F5FF" stroke-width="5" fill="none" />
+    </g>
+
+    <!-- Armor Shell -->
+    <path d="M 256,44 L 184,96 L 140,150 L 106,218 L 92,252 L 126,310 L 168,362 L 204,396 L 218,446 L 228,386 L 256,348 L 284,386 L 294,446 L 308,396 L 344,362 L 386,310 L 420,252 L 406,218 L 372,150 L 328,96 Z"
+      fill="url(#tPlateDark)" stroke="#222F52" stroke-width="3" stroke-linejoin="round" />
+
+    <!-- Left & Right Temple Shields -->
+    <polygon points="194,106 242,126 226,176 150,154" fill="url(#tPlateMid)" stroke="#2D3E6E" stroke-width="2" stroke-linejoin="round" />
+    <polygon points="318,106 270,126 286,176 362,154" fill="url(#tPlateMid)" stroke="#2D3E6E" stroke-width="2" stroke-linejoin="round" />
+
+    <!-- Left & Right Hood Flairs -->
+    <polygon points="138,168 212,188 194,244 112,230" fill="url(#tPlateMid)" stroke="#2D3E6E" stroke-width="2" stroke-linejoin="round" />
+    <polygon points="374,168 300,188 318,244 400,230" fill="url(#tPlateMid)" stroke="#2D3E6E" stroke-width="2" stroke-linejoin="round" />
+
+    <!-- Lower Jaw Flanks & Body Arcs -->
+    <polygon points="112,256 160,268 144,324 100,286" fill="url(#tPlateDark)" stroke="#222F52" stroke-width="1.5" />
+    <polygon points="400,256 352,268 368,324 412,286" fill="url(#tPlateDark)" stroke="#222F52" stroke-width="1.5" />
+    <path d="M 126,334 L 160,378 L 198,414 L 182,428 L 138,390 L 112,348 Z" fill="url(#tPlateMid)" stroke="#2D3E6E" stroke-width="2" />
+    <path d="M 386,334 L 352,378 L 314,414 L 330,428 L 374,390 L 400,348 Z" fill="url(#tPlateMid)" stroke="#2D3E6E" stroke-width="2" />
+    <polygon points="256,488 226,456 242,442 256,454 270,442 286,456" fill="#7928CA" stroke="#A779E9" stroke-width="2" stroke-linejoin="round" />
+
+    <!-- Kinetic Spine Chevrons -->
+    <polygon points="256,76 226,124 244,132 256,114 268,132 286,124"
+      fill="url(#tCyberCyan)" stroke="#A5F9FF" stroke-width="1.5" stroke-linejoin="round" filter="url(#tEyeGlow)" />
+    <polygon points="240,146 272,146 278,172 234,172" fill="#0C1326" stroke="url(#tCyberCyan)" stroke-width="2" />
+    <line x1="256" y1="146" x2="256" y2="172" stroke="#43F5FF" stroke-width="2" />
+    <polygon points="232,184 280,184 286,210 226,210" fill="#0C1326" stroke="url(#tCyberCyan)" stroke-width="2" />
+    <line x1="256" y1="184" x2="256" y2="210" stroke="#43F5FF" stroke-width="2" />
+
+    <!-- Snout Hexagon Plate -->
+    <polygon points="256,222 282,256 278,312 256,338 234,312 230,256" fill="#090E1D" stroke="url(#tCyberCyan)" stroke-width="2.5" />
+    <line x1="256" y1="230" x2="256" y2="330" stroke="#A5F9FF" stroke-width="2" />
+    <circle cx="256" cy="330" r="3" fill="#43F5FF" />
+
+    <!-- Eyes -->
+    <g filter="url(#tEyeGlow)">
+      <polygon points="164,238 226,252 208,276 150,260" fill="#060812" stroke="#FF007A" stroke-width="2" />
+      <polygon points="172,246 218,256 204,270 160,258" fill="url(#tMagentaLaser)" />
+      <polygon points="186,250 200,254 192,264 182,260" fill="#FFFFFF" />
+
+      <polygon points="348,238 286,252 304,276 362,260" fill="#060812" stroke="#FF007A" stroke-width="2" />
+      <polygon points="340,246 294,256 308,270 352,258" fill="url(#tMagentaLaser)" />
+      <polygon points="326,250 312,254 320,264 330,260" fill="#FFFFFF" />
+    </g>
+
+    <!-- Fangs -->
+    <polygon points="202,382 228,384 218,446" fill="#F0F8FF" stroke="url(#tCyberCyan)" stroke-width="2" />
+    <line x1="216" y1="384" x2="218" y2="440" stroke="#00F5FF" stroke-width="2" stroke-linecap="round" />
+    <circle cx="218" cy="442" r="2" fill="#43F5FF" filter="url(#tEyeGlow)" />
+
+    <polygon points="310,382 284,384 294,446" fill="#F0F8FF" stroke="url(#tCyberCyan)" stroke-width="2" />
+    <line x1="296" y1="384" x2="294" y2="440" stroke="#00F5FF" stroke-width="2" stroke-linecap="round" />
+    <circle cx="294" cy="442" r="2" fill="#43F5FF" filter="url(#tEyeGlow)" />
+
+    <!-- Neon Rim Strokes -->
+    <path d="M 256,44 L 184,96 L 140,150 L 106,218 L 92,252 L 126,310" stroke="url(#tCyberCyan)" stroke-width="3" stroke-linecap="round" />
+    <path d="M 256,44 L 328,96 L 372,150 L 406,218 L 420,252 L 386,310" stroke="url(#tCyberCyan)" stroke-width="3" stroke-linecap="round" />
+    <line x1="92" y1="252" x2="60" y2="242" stroke="#00F5FF" stroke-width="2.5" />
+    <circle cx="60" cy="242" r="2.5" fill="#43F5FF" />
+    <line x1="420" y1="252" x2="452" y2="242" stroke="#00F5FF" stroke-width="2.5" />
+    <circle cx="452" cy="242" r="2.5" fill="#43F5FF" />
+    <path d="M 228,386 L 256,348 L 284,386" stroke="#9865FF" stroke-width="2.5" fill="none" />
+  </g>
+
+  <!-- WORDMARK: NEON SNAKE -->
+  <g id="transparent-wordmark">
+    <text x="300" y="520" text-anchor="middle" font-family="'Orbitron', -apple-system, BlinkMacSystemFont, sans-serif" font-weight="900" font-size="52" letter-spacing="0.22em" fill="#FFFFFF" filter="url(#tNeonBloom)">
+      <tspan fill="url(#tCyberCyan)">NEON</tspan> <tspan fill="#F8FAFC">SNAKE</tspan>
+    </text>
+
+    <!-- Divider Beam -->
+    <g transform="translate(110, 546)">
+      <line x1="0" y1="0" x2="380" y2="0" stroke="#1D2A4C" stroke-width="2" />
+      <line x1="120" y1="0" x2="260" y2="0" stroke="url(#tCyberCyan)" stroke-width="2.5" />
+      <polygon points="190,-4 195,0 190,4 185,0" fill="#43F5FF" />
+    </g>
+
+    <!-- Tagline: [ ── ONE MORE RUN ── ] -->
+    <g transform="translate(300, 604)">
+      <path d="M -180,-14 L -194,-14 L -194,14 L -180,14" stroke="#43F5FF" stroke-width="2.5" fill="none" />
+      <circle cx="-194" cy="0" r="2" fill="#43F5FF" />
+      <text x="0" y="6" text-anchor="middle" font-family="'Rajdhani', 'Orbitron', sans-serif" font-weight="700" font-size="24" letter-spacing="0.38em" fill="#A5B4FC">
+        ONE MORE RUN
+      </text>
+      <path d="M 180,-14 L 194,-14 L 194,14 L 180,14" stroke="#43F5FF" stroke-width="2.5" fill="none" />
+      <circle cx="194" cy="0" r="2" fill="#43F5FF" />
+    </g>
+  </g>
+</svg>

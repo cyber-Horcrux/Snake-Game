@@ -1,6 +1,6 @@
 {
   "name": "Neon Snake",
-  "description": "A modern, futuristic cyberpunk arcade Snake game with multiple modes, power-ups, procedural audio, and smooth neon visual effects.",
+  "description": "High-octane cybernetic arcade snake game. Master rapid reflex runs, collect power-ups, and beat high scores across Classic, Zen, and Rush modes.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
