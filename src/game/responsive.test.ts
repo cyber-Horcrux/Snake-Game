@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   calculateCanvasDimensions,
+  calculateResponsiveDPadDimensions,
   getDeviceOrientation,
   isShortViewport,
   isNarrowViewport,
@@ -142,3 +143,50 @@ test('buttons control mode mobile landscape geometry reserves ample gutter clear
     assert.ok(gutterWidth >= 100, `Right gutter (${gutterWidth}px) must provide clearance for docked D-pad on ${vp.width}x${vp.height}`);
   }
 });
+
+test('calculateResponsiveDPadDimensions satisfies target sizes across all 14 required viewports', () => {
+  const targetViewports = [
+    // Portrait phones:
+    { name: '320 x 568 (Small portrait phone)', w: 320, h: 568, min: 62, max: 66, expected: 65 },
+    { name: '360 x 800 (Standard portrait phone)', w: 360, h: 800, min: 70, max: 74, expected: 71 },
+    { name: '375 x 812 (iPhone X/11/12/13 mini)', w: 375, h: 812, min: 72, max: 74, expected: 73 },
+    { name: '390 x 844 (Mid-sized portrait phone / iPhone 14)', w: 390, h: 844, min: 73, max: 76, expected: 75 },
+    { name: '412 x 915 (Android large portrait phone)', w: 412, h: 915, min: 74, max: 76, expected: 76 },
+    { name: '430 x 932 (Large portrait phone / Pro Max)', w: 430, h: 932, min: 75, max: 76, expected: 76 },
+    // Landscape phones:
+    { name: '568 x 320 (Small landscape phone)', w: 568, h: 320, min: 60, max: 68, expected: 60 },
+    { name: '667 x 375 (iPhone landscape)', w: 667, h: 375, min: 60, max: 68, expected: 68 },
+    { name: '740 x 360 (Android landscape)', w: 740, h: 360, min: 60, max: 68, expected: 67 },
+    { name: '844 x 390 (Modern phone landscape)', w: 844, h: 390, min: 60, max: 68, expected: 68 },
+    { name: '915 x 412 (Wide phone landscape)', w: 915, h: 412, min: 60, max: 68, expected: 68 },
+    // Tablets:
+    { name: '768 x 1024 (iPad portrait)', w: 768, h: 1024, min: 76, max: 84, expected: 77 },
+    { name: '820 x 1180 (iPad Air portrait)', w: 820, h: 1180, min: 76, max: 84, expected: 82 },
+    { name: '1024 x 768 (iPad landscape)', w: 1024, h: 768, min: 76, max: 84, expected: 77 },
+  ];
+
+  for (const vp of targetViewports) {
+    const dim = calculateResponsiveDPadDimensions(vp.w, vp.h);
+
+    // Button size check against min/max ranges and target expected value
+    assert.ok(
+      dim.buttonSize >= vp.min && dim.buttonSize <= vp.max,
+      `${vp.name}: buttonSize ${dim.buttonSize}px outside target range [${vp.min}, ${vp.max}]px`
+    );
+    assert.equal(dim.buttonSize, vp.expected, `${vp.name}: expected ${vp.expected}px, got ${dim.buttonSize}px`);
+
+    // Proportional harmonic elements check
+    assert.ok(dim.iconSize > 0 && dim.iconSize < dim.buttonSize, `${vp.name}: iconSize must be smaller than buttonSize`);
+    assert.ok(dim.coreSize > 0 && dim.coreSize < dim.buttonSize, `${vp.name}: coreSize must be smaller than buttonSize`);
+    assert.ok(dim.dotSize > 0 && dim.dotSize < dim.coreSize, `${vp.name}: dotSize must be smaller than coreSize`);
+    assert.ok(dim.gap >= 6 && dim.gap <= 14, `${vp.name}: gap ${dim.gap}px outside [6, 14]px`);
+
+    // Total layout dimensions check
+    assert.equal(dim.totalHeight, dim.buttonSize * 3 + dim.gap * 2);
+    assert.equal(dim.totalWidth, dim.buttonSize * 2 + dim.coreSize + dim.gap * 2);
+
+    // Previous fixed button size was 48px; all responsive sizes must be strictly larger than 48px
+    assert.ok(dim.buttonSize > 48, `${vp.name}: buttonSize (${dim.buttonSize}px) must be larger than legacy 48px`);
+  }
+});
+

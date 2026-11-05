@@ -70,3 +70,69 @@ export function isShortViewport(height: number, threshold: number = 520): boolea
 export function isNarrowViewport(width: number, threshold: number = 380): boolean {
   return width > 0 && width <= threshold;
 }
+
+export interface DPadDimensions {
+  buttonSize: number;
+  iconSize: number;
+  coreSize: number;
+  dotSize: number;
+  gap: number;
+  totalHeight: number;
+  totalWidth: number;
+}
+
+/**
+ * Calculates responsive D-pad button dimensions and spacing based on viewport width, height, and orientation.
+ * Design targets:
+ * - Small portrait phones (<360px): approximately 64px
+ * - Standard portrait phones (360-400px): approximately 72px
+ * - Large portrait phones (400px+): approximately 76px
+ * - Landscape phones: approximately 60–68px
+ * - Tablets (>=768px): approximately 76–84px
+ */
+export function calculateResponsiveDPadDimensions(
+  viewportWidth: number,
+  viewportHeight: number
+): DPadDimensions {
+  const isLandscape = viewportWidth > viewportHeight;
+  const isTablet = Math.min(viewportWidth, viewportHeight) >= 700;
+
+  let buttonSize: number;
+
+  if (isTablet) {
+    // Tablet (portrait or landscape): target 76px - 84px
+    const raw = Math.min(viewportWidth * 0.10, viewportHeight * 0.10);
+    buttonSize = Math.round(Math.max(76, Math.min(84, raw)));
+  } else if (isLandscape) {
+    // Landscape phone: target 60px - 68px
+    const raw = Math.min(viewportHeight * 0.185, viewportWidth * 0.12);
+    buttonSize = Math.round(Math.max(60, Math.min(68, raw)));
+  } else {
+    // Portrait phone:
+    // Small phone (<360px): ~64px
+    // Standard phone (360-400px): ~72px
+    // Large phone (400px+): ~76px
+    const widthScaled = viewportWidth * 0.13 + 24;
+    const heightScaled = viewportHeight * 0.115;
+    const raw = Math.min(widthScaled, heightScaled);
+    buttonSize = Math.round(Math.max(62, Math.min(76, raw)));
+  }
+
+  const iconSize = Math.round(buttonSize * 0.48);
+  const coreSize = Math.round(buttonSize * 0.62);
+  const dotSize = Math.round(buttonSize * 0.18);
+  const gap = Math.round(Math.max(6, Math.min(12, buttonSize * 0.13)));
+
+  const totalHeight = buttonSize * 3 + gap * 2;
+  const totalWidth = buttonSize * 2 + coreSize + gap * 2;
+
+  return {
+    buttonSize,
+    iconSize,
+    coreSize,
+    dotSize,
+    gap,
+    totalHeight,
+    totalWidth,
+  };
+}

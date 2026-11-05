@@ -90,3 +90,87 @@
   background-size: 32px 32px;
 }
 
+/* ==========================================================================
+   Responsive Virtual D-Pad System & Layout
+   ========================================================================== */
+.touch-dpad-root {
+  --dpad-btn: 48px;
+  --dpad-icon: 24px;
+  --dpad-core: 36px;
+  --dpad-dot: 10px;
+  --dpad-gap: 8px;
+}
+
+/* Dedicated Buttons Mode - Fully Responsive via clamp() based on viewport width & height */
+.touch-dpad-buttons-mode {
+  /* Portrait mobile: Scales smoothly between 64px on 320px screens to 76px on 430px+ screens */
+  --dpad-btn: clamp(62px, min(calc(13vw + 24px), 11.5dvh), 76px);
+  --dpad-icon: clamp(28px, calc(var(--dpad-btn) * 0.48), 38px);
+  --dpad-core: clamp(40px, calc(var(--dpad-btn) * 0.62), 48px);
+  --dpad-dot: clamp(12px, calc(var(--dpad-btn) * 0.18), 16px);
+  --dpad-gap: clamp(8px, calc(var(--dpad-btn) * 0.13), 12px);
+}
+
+/* Landscape orientation: Scales between 60px and 68px depending on viewport height and width */
+@media (orientation: landscape) {
+  .touch-dpad-buttons-mode {
+    --dpad-btn: clamp(60px, min(18.5vh, 12vw), 68px);
+    --dpad-icon: clamp(28px, calc(var(--dpad-btn) * 0.48), 34px);
+    --dpad-core: clamp(38px, calc(var(--dpad-btn) * 0.60), 44px);
+    --dpad-dot: clamp(10px, calc(var(--dpad-btn) * 0.16), 14px);
+    --dpad-gap: clamp(6px, calc(var(--dpad-btn) * 0.12), 10px);
+  }
+}
+
+/* Tablets (shortest dimension >= 700px): Targets 76px - 84px */
+@media (min-width: 700px) and (min-height: 600px) {
+  .touch-dpad-buttons-mode {
+    --dpad-btn: clamp(76px, min(10vw, 10dvh), 84px);
+    --dpad-icon: clamp(36px, calc(var(--dpad-btn) * 0.48), 42px);
+    --dpad-core: clamp(48px, calc(var(--dpad-btn) * 0.62), 54px);
+    --dpad-dot: clamp(14px, calc(var(--dpad-btn) * 0.18), 18px);
+    --dpad-gap: clamp(10px, calc(var(--dpad-btn) * 0.14), 14px);
+  }
+}
+
+/* Responsive Layout System for Buttons Control Mode */
+.game-viewport-buttons {
+  flex: 1;
+}
+
+@media (orientation: portrait) and (max-width: 1023px) {
+  .game-viewport-buttons {
+    flex: 1.2;
+  }
+
+  .game-board-container-buttons {
+    align-items: flex-start !important;
+    padding-top: 0.375rem !important;
+  }
+
+  .touch-dpad-container-buttons {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 0.5rem;
+  }
+}
+
+@media (orientation: landscape) {
+  .game-viewport-buttons {
+    padding-right: clamp(170px, 26vw, 220px);
+  }
+
+  .touch-dpad-container-docked {
+    position: absolute;
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+    top: 50%;
+    transform: translateY(-50%);
+    padding-bottom: 0;
+  }
+}
+
+
+

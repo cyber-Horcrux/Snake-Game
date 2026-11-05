@@ -592,17 +592,13 @@ export default function App() {
       {/* Canvas Viewport Container */}
       <div
         className={`w-full min-h-0 min-w-0 flex items-center justify-center relative overflow-hidden ${
-          isButtonsMode
-            ? 'flex-1 portrait:max-md:flex-[1.25]'
-            : 'flex-1'
+          isButtonsMode ? 'game-viewport-buttons' : 'flex-1'
         }`}
       >
         <div
           data-testid="game-board-container"
-          className={`relative flex justify-center w-full h-full select-none touch-none ${
-            isButtonsMode
-              ? 'portrait:max-md:items-start portrait:max-md:pt-1 sm:portrait:max-md:pt-2 items-center p-1 sm:p-2'
-              : 'items-center p-1 sm:p-2'
+          className={`relative flex justify-center w-full h-full select-none touch-none items-center p-1 sm:p-2 ${
+            isButtonsMode ? 'game-board-container-buttons' : ''
           }`}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
@@ -680,14 +676,12 @@ export default function App() {
         />
       )}
 
-      {/* Touch D-Pad for Mobile Devices */}
+      {/* Touch D-Pad for Mobile Devices & Tablets */}
       {screen === 'playing' && shouldShowDpad && (
         <div
           data-testid="touch-dpad-container"
-          className={`z-20 md:hidden shrink-0 pb-1 landscape:absolute landscape:right-3 landscape:bottom-2 landscape:pb-0 ${
-            isButtonsMode
-              ? 'portrait:max-md:flex-1 portrait:max-md:flex portrait:max-md:flex-col portrait:max-md:items-center portrait:max-md:justify-center portrait:max-md:pb-2'
-              : ''
+          className={`z-20 xl:hidden shrink-0 pb-1 touch-dpad-container-docked ${
+            isButtonsMode ? 'touch-dpad-container-buttons' : ''
           }`}
         >
           <TouchDPad onDirection={handleSteer} isButtonsMode={isButtonsMode} />
@@ -696,7 +690,7 @@ export default function App() {
 
       {/* Bottom Desktop Keyboard Controls Hint */}
       {screen === 'playing' && (
-        <div className="hidden md:flex justify-between items-center text-[11px] text-slate-500 font-mono tracking-wider w-full px-6 py-1.5 shrink-0 z-10">
+        <div className="hidden xl:flex justify-between items-center text-[11px] text-slate-500 font-mono tracking-wider w-full px-6 py-1.5 shrink-0 z-10">
           <span>WASD / ARROWS TO MOVE</span>
           <span>SPACE TO PAUSE · R TO RESTART · M TO MUTE</span>
         </div>
