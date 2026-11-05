@@ -75,25 +75,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center p-4 bg-[#080A12]/90 backdrop-blur-sm overflow-y-auto">
-      <div className="w-full max-w-lg bg-[#101426] border border-[#9865FF]/40 rounded-2xl p-6 sm:p-8 shadow-[0_0_35px_rgba(152,101,255,0.2)] relative my-auto">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          aria-label="Close Settings"
-          className="absolute top-5 right-5 p-2 rounded-lg bg-[#080A12] border border-slate-700 text-slate-400 hover:text-white hover:border-[#9865FF] transition-all cursor-pointer"
-        >
-          <X className="w-5 h-5" />
-        </button>
+    <div className="absolute inset-0 z-40 flex items-center justify-center p-2 xs:p-3 sm:p-6 bg-[#080A12]/90 backdrop-blur-sm overflow-hidden pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
+      <div className="w-full max-w-lg max-h-[calc(100dvh-1.5rem)] bg-[#101426] border border-[#9865FF]/40 rounded-2xl shadow-[0_0_35px_rgba(152,101,255,0.2)] flex flex-col relative my-auto overflow-hidden">
+        {/* Modal Header */}
+        <div className="p-3.5 sm:p-5 flex items-center justify-between border-b border-slate-800/80 shrink-0 bg-[#101426]">
+          <div>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-black font-display tracking-wider text-white neon-glow-magenta leading-none">
+              SETTINGS
+            </h2>
+            <p className="text-[10px] sm:text-xs text-slate-400 font-mono tracking-wider mt-1">
+              CONFIGURATION & PROTOCOLS
+            </p>
+          </div>
 
-        <h2 className="text-2xl sm:text-3xl font-black font-display tracking-wider text-white neon-glow-magenta mb-1">
-          SETTINGS
-        </h2>
-        <p className="text-xs text-slate-400 font-mono tracking-wider mb-6">
-          CONFIGURATION & PROTOCOLS
-        </p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Settings"
+            className="p-1.5 sm:p-2 rounded-lg bg-[#080A12] border border-slate-700 text-slate-400 hover:text-white hover:border-[#9865FF] transition-all cursor-pointer active:scale-95"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+        </div>
 
-        {/* 1. Audio Settings */}
+        {/* Scrollable Body Content */}
+        <div className="overflow-y-auto p-3.5 sm:p-6 space-y-4 sm:space-y-6 flex-1">
+          {/* 1. Audio Settings */}
         <div className="mb-6 bg-[#080A12] p-4 rounded-xl border border-slate-800">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
@@ -286,14 +293,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </button>
         </div>
+        </div>
 
-        {/* Done Button */}
-        <button
-          onClick={onClose}
-          className="w-full py-3 rounded-xl font-display font-bold text-sm tracking-wider text-[#080A12] bg-[#9865FF] hover:bg-[#B084FF] transition-all cursor-pointer shadow-[0_0_15px_rgba(152,101,255,0.3)]"
-        >
-          SAVE & CLOSE
-        </button>
+        {/* Modal Sticky Footer */}
+        <div className="p-3 sm:p-4 bg-[#101426] border-t border-slate-800/80 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 sm:py-3 rounded-xl font-display font-bold text-xs sm:text-sm tracking-wider text-[#080A12] bg-[#9865FF] hover:bg-[#B084FF] transition-all cursor-pointer shadow-[0_0_15px_rgba(152,101,255,0.3)] active:scale-98"
+          >
+            SAVE & CLOSE
+          </button>
+        </div>
       </div>
     </div>
   );

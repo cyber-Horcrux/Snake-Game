@@ -42,83 +42,85 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-[#080A12]/90">
-      <div className="w-full max-w-md bg-[#101426] border-2 border-[#FF4FD8] rounded-2xl p-6 sm:p-8 shadow-[0_0_40px_rgba(255,79,216,0.3)] flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+    <div className="absolute inset-0 z-30 flex items-center justify-center p-2 xs:p-3 sm:p-6 bg-[#080A12]/90 backdrop-blur-xs overflow-y-auto pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
+      <div className="w-full max-w-md max-h-[calc(100dvh-1.5rem)] bg-[#101426] border-2 border-[#FF4FD8] rounded-2xl p-4 xs:p-5 sm:p-7 md:p-8 shadow-[0_0_40px_rgba(255,79,216,0.3)] flex flex-col items-center text-center overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-200">
         {/* Mode Tag */}
-        <div className="px-3 py-0.5 rounded bg-[#FF4FD8]/10 border border-[#FF4FD8]/40 text-[#FF4FD8] text-xs font-bold tracking-widest uppercase mb-1">
+        <div className="px-2.5 py-0.5 rounded bg-[#FF4FD8]/10 border border-[#FF4FD8]/40 text-[#FF4FD8] text-[10px] sm:text-xs font-bold tracking-widest uppercase mb-1 shrink-0">
           {state.mode} RUN TERMINATED
         </div>
 
         {/* Title */}
-        <h2 className="text-3xl sm:text-5xl font-extrabold font-display tracking-wider text-white neon-glow-magenta mb-1">
+        <h2 className="text-2xl xs:text-3xl sm:text-5xl font-extrabold font-display tracking-wider text-white neon-glow-magenta mb-0.5 sm:mb-1 shrink-0">
           {state.isVictory ? 'VICTORY' : 'GAME OVER'}
         </h2>
 
         {/* Subtitle / Death Reason */}
-        <p className="text-xs font-mono text-slate-400 tracking-wider mb-6">
+        <p className="text-[11px] sm:text-xs font-mono text-slate-400 tracking-wider mb-3 sm:mb-5 shrink-0">
           {getDeathMessage()}
         </p>
 
         {/* New Record Celebration Banner */}
         {isNewRecord && (
-          <div className="w-full mb-6 py-2 px-4 rounded-xl bg-gradient-to-r from-[#FF4FD8]/20 via-[#43F5FF]/20 to-[#9865FF]/20 border border-[#43F5FF] flex items-center justify-center gap-2 text-[#43F5FF] font-bold text-sm tracking-wider animate-pulse">
-            <Trophy className="w-4 h-4 text-amber-400" />
+          <div className="w-full mb-3 sm:mb-5 py-1.5 sm:py-2 px-3 sm:px-4 rounded-xl bg-gradient-to-r from-[#FF4FD8]/20 via-[#43F5FF]/20 to-[#9865FF]/20 border border-[#43F5FF] flex items-center justify-center gap-2 text-[#43F5FF] font-bold text-xs sm:text-sm tracking-wider animate-pulse shrink-0">
+            <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
             <span>NEW ALL-TIME RECORD!</span>
           </div>
         )}
 
         {/* Big Score Display */}
-        <div className="w-full bg-[#080A12] border border-slate-800 rounded-xl p-4 mb-5 flex flex-col items-center">
-          <span className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+        <div className="w-full bg-[#080A12] border border-slate-800 rounded-xl p-3 sm:p-4 mb-3 sm:mb-5 flex flex-col items-center shrink-0">
+          <span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-widest">
             Final Score
           </span>
-          <span className="text-4xl sm:text-5xl font-black font-mono-num text-[#43F5FF] leading-none my-1">
+          <span className="text-3xl xs:text-4xl sm:text-5xl font-black font-mono-num text-[#43F5FF] leading-none my-1">
             {state.score}
           </span>
-          <span className="text-xs text-slate-400 font-mono">
+          <span className="text-[11px] sm:text-xs text-slate-400 font-mono">
             Mode Best: <strong className="text-white font-mono-num">{bestScore}</strong>
           </span>
         </div>
 
         {/* Detailed Run Statistics */}
-        <div className="grid grid-cols-3 gap-2 w-full mb-6">
-          <div className="bg-[#080A12]/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col items-center">
-            <span className="text-[10px] text-slate-400 font-bold uppercase">Food</span>
-            <span className="text-lg font-bold font-mono-num text-[#39FF14] mt-0.5">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 w-full mb-4 sm:mb-6 shrink-0">
+          <div className="bg-[#080A12]/80 border border-slate-800/80 rounded-lg p-2 sm:p-2.5 flex flex-col items-center">
+            <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase">Food</span>
+            <span className="text-base sm:text-lg font-bold font-mono-num text-[#39FF14] mt-0.5">
               {state.foodEaten}
             </span>
           </div>
 
-          <div className="bg-[#080A12]/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col items-center">
-            <span className="text-[10px] text-slate-400 font-bold uppercase">Max Length</span>
-            <span className="text-lg font-bold font-mono-num text-[#9865FF] mt-0.5">
+          <div className="bg-[#080A12]/80 border border-slate-800/80 rounded-lg p-2 sm:p-2.5 flex flex-col items-center">
+            <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase">Max Length</span>
+            <span className="text-base sm:text-lg font-bold font-mono-num text-[#9865FF] mt-0.5">
               {state.maxLength}
             </span>
           </div>
 
-          <div className="bg-[#080A12]/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col items-center">
-            <span className="text-[10px] text-slate-400 font-bold uppercase">Level</span>
-            <span className="text-lg font-bold font-mono-num text-[#43F5FF] mt-0.5">
+          <div className="bg-[#080A12]/80 border border-slate-800/80 rounded-lg p-2 sm:p-2.5 flex flex-col items-center">
+            <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase">Level</span>
+            <span className="text-base sm:text-lg font-bold font-mono-num text-[#43F5FF] mt-0.5">
               {state.level}
             </span>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-col gap-3 w-full">
+        <div className="flex flex-col gap-2 sm:gap-3 w-full shrink-0">
           <button
+            type="button"
             onClick={onPlayAgain}
             data-start="true"
-            className="w-full py-3.5 rounded-xl font-display font-bold text-base tracking-wider text-[#080A12] bg-gradient-to-r from-[#43F5FF] to-[#9865FF] hover:brightness-110 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(67,245,255,0.35)]"
+            className="w-full py-2.5 sm:py-3.5 rounded-xl font-display font-bold text-sm sm:text-base tracking-wider text-[#080A12] bg-gradient-to-r from-[#43F5FF] to-[#9865FF] hover:brightness-110 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(67,245,255,0.35)]"
           >
-            <RotateCcw className="w-5 h-5" />
+            <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>PLAY AGAIN [ENTER]</span>
           </button>
 
-          <div className="grid grid-cols-3 gap-2 w-full">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 w-full">
             <button
+              type="button"
               onClick={handleShare}
-              className="py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-1 cursor-pointer"
+              className="py-2 sm:py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
             >
               {copied ? (
                 <>
@@ -135,8 +137,9 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
 
             {onOpenStats && (
               <button
+                type="button"
                 onClick={onOpenStats}
-                className="py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-amber-400/50 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                className="py-2 sm:py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-amber-400/50 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
               >
                 <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
                 <span>DOSSIER</span>
@@ -144,8 +147,9 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             )}
 
             <button
+              type="button"
               onClick={onMainMenu}
-              className="py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-1 cursor-pointer"
+              className="py-2 sm:py-2.5 rounded-xl text-xs font-bold text-slate-300 bg-[#080A12] hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
             >
               <Home className="w-3.5 h-3.5 text-slate-400" />
               <span>MENU</span>

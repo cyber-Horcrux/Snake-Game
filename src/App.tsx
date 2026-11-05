@@ -40,6 +40,7 @@ import {
   recordRunCompletion,
   resetStatsAndAchievements,
 } from './game/stats.ts';
+import { calculateCanvasDimensions } from './game/responsive.ts';
 
 export default function App() {
   // Navigation & Screen State
@@ -505,60 +506,71 @@ export default function App() {
     };
   }, [handleGameOver]);
 
-  // Canvas Resolution & ResizeObserver
+  // Canvas Resolution & ResizeObserver with dynamic dimension calculation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const resize = () => {
-      const container = canvas.parentElement;
-      if (!container) return;
+    const container = canvas.parentElement;
+    if (!container) return;
 
+    const updateCanvasSize = () => {
       const rect = container.getBoundingClientRect();
-      const minDimension = Math.floor(Math.min(rect.width, rect.height) * 0.94);
-      const size = Math.max(280, Math.min(760, minDimension));
+      if (rect.width === 0 || rect.height === 0) return;
 
       const isHeadless =
         typeof navigator !== 'undefined' &&
         (navigator.webdriver || /HeadlessChrome/i.test(navigator.userAgent));
       const dpr = isHeadless ? 1 : Math.min(2, window.devicePixelRatio || 1);
 
-      canvas.width = size * dpr;
-      canvas.height = size * dpr;
-      canvas.style.width = `${size}px`;
-      canvas.style.height = `${size}px`;
+      const { cssSize, backingWidth, backingHeight } = calculateCanvasDimensions(
+        rect.width,
+        rect.height,
+        dpr,
+        { padding: 8 }
+      );
+
+      if (cssSize <= 0) return;
+
+      // Only reassign backing dimensions when changed to prevent clearing 2D context
+      if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+        canvas.width = backingWidth;
+        canvas.height = backingHeight;
+      }
+
+      const cssPx = `${cssSize}px`;
+      if (canvas.style.width !== cssPx) {
+        canvas.style.width = cssPx;
+      }
+      if (canvas.style.height !== cssPx) {
+        canvas.style.height = cssPx;
+      }
     };
 
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    updateCanvasSize();
+
+    const ro = new ResizeObserver(() => {
+      updateCanvasSize();
+    });
+    ro.observe(container);
+
+    window.addEventListener('resize', updateCanvasSize);
+    window.addEventListener('orientationchange', updateCanvasSize);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateCanvasSize);
+      window.removeEventListener('orientationchange', updateCanvasSize);
+    };
   }, []);
 
   const shouldShowDpad = shouldShowDirectionalControls(settings.controlMode);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#080A12] flex flex-col items-center justify-center cyber-grid">
-      {/* Canvas Viewport Container */}
-      <div
-        data-testid="game-board-container"
-        className="relative flex items-center justify-center w-full h-full p-2 select-none touch-none"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchCancel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-      >
-        <canvas
-          ref={canvasRef}
-          data-testid="game-canvas"
-          className="rounded-xl shadow-[0_0_30px_rgba(8,10,18,0.9)] bg-[#101426]/70 border border-[#43F5FF]/20"
-        />
-
-        {/* In-Game Minimal Perimeter HUD */}
-        {screen === 'playing' && (
+    <div className="relative w-full h-[100dvh] min-h-[100vh] overflow-hidden bg-[#080A12] flex flex-col items-center justify-between cyber-grid select-none pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]">
+      {/* In-Game Header HUD */}
+      {screen === 'playing' && (
+        <div className="w-full shrink-0 z-20 px-2 sm:px-4 pt-1 sm:pt-2">
           <HeaderHUD
             score={hudState.score}
             bestScore={bestScores[hudState.mode]}
@@ -573,7 +585,29 @@ export default function App() {
             onToggleMute={toggleMute}
             sfxEnabled={settings.audio.sfxEnabled}
           />
-        )}
+        </div>
+      )}
+
+      {/* Canvas Viewport Container */}
+      <div className="w-full flex-1 min-h-0 min-w-0 flex items-center justify-center relative overflow-hidden">
+        <div
+          data-testid="game-board-container"
+          className="relative flex items-center justify-center w-full h-full p-1 sm:p-2 select-none touch-none"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchCancel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+        >
+          <canvas
+            ref={canvasRef}
+            data-testid="game-canvas"
+            className="rounded-xl shadow-[0_0_30px_rgba(8,10,18,0.9)] bg-[#101426]/70 border border-[#43F5FF]/20 block"
+          />
+        </div>
       </div>
 
       {/* Screen Modals & Overlays */}
@@ -636,8 +670,19 @@ export default function App() {
 
       {/* Touch D-Pad for Mobile Devices */}
       {screen === 'playing' && shouldShowDpad && (
-        <div data-testid="touch-dpad-container" className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 md:hidden">
+        <div
+          data-testid="touch-dpad-container"
+          className="z-20 md:hidden shrink-0 pb-1 landscape:absolute landscape:right-3 landscape:bottom-2 landscape:pb-0"
+        >
           <TouchDPad onDirection={handleSteer} />
+        </div>
+      )}
+
+      {/* Bottom Desktop Keyboard Controls Hint */}
+      {screen === 'playing' && (
+        <div className="hidden md:flex justify-between items-center text-[11px] text-slate-500 font-mono tracking-wider w-full px-6 py-1.5 shrink-0 z-10">
+          <span>WASD / ARROWS TO MOVE</span>
+          <span>SPACE TO PAUSE · R TO RESTART · M TO MUTE</span>
         </div>
       )}
     </div>

@@ -42,142 +42,146 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
   const slowMoRemaining = Math.max(0, Math.ceil((slowMoUntil - now) / 1000));
 
   return (
-    <div className="absolute inset-0 pointer-events-none p-3 sm:p-5 flex flex-col justify-between z-10">
-      {/* Top Bar */}
-      <div className="flex items-start justify-between w-full">
-        {/* Left: Score & High Score */}
-        <div className="flex items-center gap-3 sm:gap-6 bg-[#101426]/90 border border-[#43F5FF]/30 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg pointer-events-auto shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
-          <div>
-            <div className="text-[10px] sm:text-xs tracking-wider text-slate-400 font-bold uppercase">
-              Score
-            </div>
-            <div className="text-xl sm:text-3xl font-bold font-mono-num text-[#43F5FF] leading-none">
-              {score}
-            </div>
-          </div>
-
-          <div className="w-[1px] h-8 bg-slate-800" />
-
-          <div>
-            <div className="text-[10px] sm:text-xs tracking-wider text-slate-400 font-bold uppercase">
-              Best
-            </div>
-            <div className="text-sm sm:text-xl font-bold font-mono-num text-slate-300 leading-none">
-              {Math.max(bestScore, score)}
-            </div>
-          </div>
-
-          <div className="hidden sm:block w-[1px] h-8 bg-slate-800" />
-
-          <div className="hidden sm:block">
-            <div className="text-[10px] sm:text-xs tracking-wider text-slate-400 font-bold uppercase">
-              Level
-            </div>
-            <div className="text-sm sm:text-xl font-bold font-mono-num text-[#9865FF] leading-none">
-              {level}
-            </div>
-          </div>
-
-          <div className="hidden sm:block w-[1px] h-8 bg-slate-800" />
-
-          <div className="hidden sm:block">
-            <div className="text-[10px] sm:text-xs tracking-wider text-slate-400 font-bold uppercase">
-              Length
-            </div>
-            <div className="text-sm sm:text-xl font-bold font-mono-num text-slate-300 leading-none">
-              {length}
-            </div>
-          </div>
+    <header
+      role="banner"
+      aria-label="Game Heads Up Display"
+      className="w-full pointer-events-none flex items-center justify-between gap-1.5 sm:gap-3 z-10"
+    >
+      {/* Left: Score & Record Best + Level & Length */}
+      <div className="flex items-center gap-1.5 xs:gap-2.5 sm:gap-4 md:gap-5 bg-[#101426]/95 border border-[#43F5FF]/30 px-2 py-1.5 sm:px-3.5 sm:py-2 rounded-xl pointer-events-auto shadow-[0_4px_20px_rgba(0,0,0,0.6)] backdrop-blur-xs">
+        {/* Score */}
+        <div className="flex flex-col">
+          <span className="text-[9px] sm:text-[11px] tracking-wider text-slate-400 font-bold uppercase leading-none">
+            Score
+          </span>
+          <span className="text-base sm:text-2xl md:text-3xl font-bold font-mono-num text-[#43F5FF] leading-tight mt-0.5">
+            {score}
+          </span>
         </div>
 
-        {/* Center: Mode & Active Power-Ups & Combo */}
-        <div className="flex flex-col items-center gap-1.5">
-          <div
-            className={`px-2.5 py-0.5 rounded text-[11px] sm:text-xs font-bold tracking-widest border ${modeInfo.border} bg-[#101426]/90 ${modeInfo.color} shadow-sm`}
-          >
-            {modeInfo.label}
-          </div>
+        <div className="w-[1px] h-6 sm:h-8 bg-slate-800 shrink-0" />
 
-          {/* Active Power-Up Badges & Combo */}
-          <div className="flex items-center gap-1.5">
-            {combo > 1 && (
-              <div
-                title="Active Score Multiplier"
-                className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 border border-amber-400 rounded text-amber-300 text-[10px] font-bold shadow-[0_0_10px_rgba(251,191,36,0.4)] animate-pulse"
-              >
-                <Flame className="w-3 h-3 text-amber-400 fill-amber-400" />
-                <span>{combo}X COMBO</span>
-              </div>
-            )}
-            {hasShield && (
-              <div
-                title="Aegis Shield Active"
-                className="flex items-center gap-1 px-2 py-0.5 bg-[#9865FF]/20 border border-[#9865FF] rounded text-[#9865FF] text-[10px] font-bold animate-pulse"
-              >
-                <Shield className="w-3 h-3" />
-                <span>SHIELD</span>
-              </div>
-            )}
-            {slowMoRemaining > 0 && (
-              <div
-                title="Chrono Shift Active"
-                className="flex items-center gap-1 px-2 py-0.5 bg-[#43F5FF]/20 border border-[#43F5FF] rounded text-[#43F5FF] text-[10px] font-bold"
-              >
-                <Clock className="w-3 h-3" />
-                <span>{slowMoRemaining}s</span>
-              </div>
-            )}
-          </div>
+        {/* Best */}
+        <div className="flex flex-col">
+          <span className="text-[9px] sm:text-[11px] tracking-wider text-slate-400 font-bold uppercase leading-none">
+            Best
+          </span>
+          <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-slate-300 leading-tight mt-0.5">
+            {Math.max(bestScore, score)}
+          </span>
         </div>
 
-        {/* Right: Quick Action Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
-          <button
-            onClick={e => {
-              e.currentTarget.blur();
-              onToggleMute();
-            }}
-            tabIndex={-1}
-            aria-label={sfxEnabled ? 'Mute Sound' : 'Unmute Sound'}
-            title={sfxEnabled ? 'Mute [M]' : 'Unmute [M]'}
-            className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#101426]/90 border border-slate-700 hover:border-[#43F5FF] text-slate-300 hover:text-[#43F5FF] flex items-center justify-center transition-colors shadow-md active:scale-95 cursor-pointer"
-          >
-            {sfxEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-rose-400" />}
-          </button>
+        <div className="w-[1px] h-6 sm:h-8 bg-slate-800 shrink-0" />
 
-          <button
-            onClick={e => {
-              e.currentTarget.blur();
-              onRestart();
-            }}
-            tabIndex={-1}
-            aria-label="Restart Game"
-            title="Restart [R]"
-            className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#101426]/90 border border-slate-700 hover:border-[#43F5FF] text-slate-300 hover:text-[#43F5FF] flex items-center justify-center transition-colors shadow-md active:scale-95 cursor-pointer"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
+        {/* Level */}
+        <div className="flex flex-col">
+          <span className="text-[9px] sm:text-[11px] tracking-wider text-slate-400 font-bold uppercase leading-none">
+            <span className="sm:hidden">Lvl</span>
+            <span className="hidden sm:inline">Level</span>
+          </span>
+          <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-[#9865FF] leading-tight mt-0.5">
+            {level}
+          </span>
+        </div>
 
-          <button
-            onClick={e => {
-              e.currentTarget.blur();
-              onPause();
-            }}
-            tabIndex={-1}
-            aria-label="Pause Game"
-            title="Pause [Space/Esc]"
-            className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#101426]/90 border border-slate-700 hover:border-[#43F5FF] text-slate-300 hover:text-[#43F5FF] flex items-center justify-center transition-colors shadow-md active:scale-95 cursor-pointer"
-          >
-            <Pause className="w-4 h-4" />
-          </button>
+        <div className="w-[1px] h-6 sm:h-8 bg-slate-800 shrink-0" />
+
+        {/* Length */}
+        <div className="flex flex-col">
+          <span className="text-[9px] sm:text-[11px] tracking-wider text-slate-400 font-bold uppercase leading-none">
+            <span className="sm:hidden">Len</span>
+            <span className="hidden sm:inline">Length</span>
+          </span>
+          <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-slate-300 leading-tight mt-0.5">
+            {length}
+          </span>
         </div>
       </div>
 
-      {/* Bottom Hint on Desktop */}
-      <div className="hidden md:flex justify-between items-center text-[11px] text-slate-500 font-mono tracking-wider">
-        <span>WASD / ARROWS TO MOVE</span>
-        <span>SPACE TO PAUSE · R TO RESTART</span>
+      {/* Center: Mode Indicator & Active Buffs/Combos */}
+      <div className="flex flex-col items-center gap-1 shrink-0">
+        <div
+          className={`px-2 py-0.5 rounded text-[10px] sm:text-xs font-bold tracking-widest border ${modeInfo.border} bg-[#101426]/95 ${modeInfo.color} shadow-sm`}
+        >
+          {modeInfo.label}
+        </div>
+
+        {/* Active Power-Up Badges & Combo */}
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap justify-center max-w-[160px] sm:max-w-none">
+          {combo > 1 && (
+            <div
+              title="Active Score Multiplier"
+              className="flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.2 sm:py-0.5 bg-amber-500/20 border border-amber-400 rounded text-amber-300 text-[9px] sm:text-[10px] font-bold shadow-[0_0_10px_rgba(251,191,36,0.4)] animate-pulse whitespace-nowrap"
+            >
+              <Flame className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400 fill-amber-400" />
+              <span>{combo}X<span className="hidden sm:inline"> COMBO</span></span>
+            </div>
+          )}
+          {hasShield && (
+            <div
+              title="Aegis Shield Active"
+              className="flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.2 sm:py-0.5 bg-[#9865FF]/20 border border-[#9865FF] rounded text-[#9865FF] text-[9px] sm:text-[10px] font-bold animate-pulse whitespace-nowrap"
+            >
+              <Shield className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+              <span>SHIELD</span>
+            </div>
+          )}
+          {slowMoRemaining > 0 && (
+            <div
+              title="Chrono Shift Active"
+              className="flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.2 sm:py-0.5 bg-[#43F5FF]/20 border border-[#43F5FF] rounded text-[#43F5FF] text-[9px] sm:text-[10px] font-bold whitespace-nowrap"
+            >
+              <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+              <span>{slowMoRemaining}s</span>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Right: Quick Action Controls */}
+      <div className="flex items-center gap-1 sm:gap-2 pointer-events-auto shrink-0">
+        <button
+          type="button"
+          onClick={e => {
+            e.currentTarget.blur();
+            onToggleMute();
+          }}
+          tabIndex={-1}
+          aria-label={sfxEnabled ? 'Mute Sound' : 'Unmute Sound'}
+          title={sfxEnabled ? 'Mute [M]' : 'Unmute [M]'}
+          className="w-7 h-7 xs:w-8 xs:h-8 sm:w-9 sm:h-9 rounded-lg bg-[#101426]/95 border border-slate-700 hover:border-[#43F5FF] text-slate-300 hover:text-[#43F5FF] flex items-center justify-center transition-colors shadow-md active:scale-95 cursor-pointer"
+        >
+          {sfxEnabled ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" />}
+        </button>
+
+        <button
+          type="button"
+          onClick={e => {
+            e.currentTarget.blur();
+            onRestart();
+          }}
+          tabIndex={-1}
+          aria-label="Restart Game"
+          title="Restart [R]"
+          className="w-7 h-7 xs:w-8 xs:h-8 sm:w-9 sm:h-9 rounded-lg bg-[#101426]/95 border border-slate-700 hover:border-[#43F5FF] text-slate-300 hover:text-[#43F5FF] flex items-center justify-center transition-colors shadow-md active:scale-95 cursor-pointer"
+        >
+          <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={e => {
+            e.currentTarget.blur();
+            onPause();
+          }}
+          tabIndex={-1}
+          aria-label="Pause Game"
+          title="Pause [Space/Esc]"
+          className="w-7 h-7 xs:w-8 xs:h-8 sm:w-9 sm:h-9 rounded-lg bg-[#101426]/95 border border-slate-700 hover:border-[#43F5FF] text-slate-300 hover:text-[#43F5FF] flex items-center justify-center transition-colors shadow-md active:scale-95 cursor-pointer"
+        >
+          <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </button>
+      </div>
+    </header>
   );
 };
