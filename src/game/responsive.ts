@@ -136,3 +136,144 @@ export function calculateResponsiveDPadDimensions(
     totalWidth,
   };
 }
+
+export const DEFAULT_HEADER_HEIGHT = 52;
+
+export interface LandscapeControlLayout {
+  headerHeight: number;
+  playAreaHeight: number;
+  dpadTop: number;
+  dpadBottom: number;
+  dpadCenterY: number;
+  quickActionButtonsBottom: number;
+  verticalClearance: number;
+  hasOverlap: boolean;
+}
+
+/**
+ * Calculates the vertical layout, center alignment, and clearance between
+ * Header HUD quick action buttons (Volume, Restart, Stop/Pause) and the docked
+ * touch D-Pad in landscape orientation.
+ *
+ * Verifies that the D-pad is aligned within its intended control region
+ * (the play-area container strictly below the Header HUD) rather than centered
+ * across the entire viewport, preventing any overlap with the top action buttons.
+ */
+export function calculateLandscapeControlLayout(
+  viewportWidth: number,
+  viewportHeight: number,
+  options: {
+    headerHeight?: number;
+    safeAreaTop?: number;
+    safeAreaBottom?: number;
+  } = {}
+): LandscapeControlLayout {
+  const safeAreaTop = options.safeAreaTop ?? 0;
+  const safeAreaBottom = options.safeAreaBottom ?? 0;
+  const headerHeight = options.headerHeight ?? DEFAULT_HEADER_HEIGHT;
+
+  // The Header HUD action buttons (Volume, Restart, Stop) sit within the header
+  const quickActionButtonsBottom = safeAreaTop + headerHeight;
+
+  // Play area is the region below Header HUD down to the bottom safe area
+  const playAreaHeight = Math.max(0, viewportHeight - quickActionButtonsBottom - safeAreaBottom);
+
+  // Responsive D-Pad dimensions
+  const dpadDim = calculateResponsiveDPadDimensions(viewportWidth, viewportHeight);
+  // Touch D-Pad container padding (p-1 is 4px top + 4px bottom = 8px)
+  const dpadTotalHeight = dpadDim.totalHeight + 8;
+
+  // In the corrected layout:
+  // The D-pad is centered within the play-area container:
+  // Center is at quickActionButtonsBottom + (playAreaHeight / 2)
+  const dpadCenterY = quickActionButtonsBottom + playAreaHeight / 2;
+  const dpadTop = dpadCenterY - dpadTotalHeight / 2;
+  const dpadBottom = dpadCenterY + dpadTotalHeight / 2;
+
+  // Vertical clearance between the bottom of the Header HUD controls and the top of the D-pad
+  const verticalClearance = dpadTop - quickActionButtonsBottom;
+  const hasOverlap = verticalClearance < 0;
+
+  return {
+    headerHeight,
+    playAreaHeight,
+    dpadTop,
+    dpadBottom,
+    dpadCenterY,
+    quickActionButtonsBottom,
+    verticalClearance,
+    hasOverlap,
+  };
+}
+
+/**
+ * Legacy calculation where D-pad was centered on the full screen height (50vh)
+ * regardless of the Header HUD. Provided for regression verification.
+ */
+export function calculateLegacyLandscapeDpadLayout(
+  viewportWidth: number,
+  viewportHeight: number,
+  options: {
+    headerHeight?: number;
+    safeAreaTop?: number;
+  } = {}
+): { dpadTop: number; quickActionButtonsBottom: number; verticalClearance: number; hasOverlap: boolean } {
+  const safeAreaTop = options.safeAreaTop ?? 0;
+  const headerHeight = options.headerHeight ?? DEFAULT_HEADER_HEIGHT;
+  const quickActionButtonsBottom = safeAreaTop + headerHeight;
+
+  const dpadDim = calculateResponsiveDPadDimensions(viewportWidth, viewportHeight);
+  const dpadTotalHeight = dpadDim.totalHeight + 8;
+
+  // Legacy: centered relative to 100vh of the entire screen
+  const centerY = viewportHeight / 2;
+  const dpadTop = centerY - dpadTotalHeight / 2;
+  const verticalClearance = dpadTop - quickActionButtonsBottom;
+  const hasOverlap = verticalClearance < 0;
+
+  return {
+    dpadTop,
+    quickActionButtonsBottom,
+    verticalClearance,
+    hasOverlap,
+  };
+}
+
+export interface PortraitControlLayout {
+  headerHeight: number;
+  availableHeight: number;
+  boardContainerHeight: number;
+  dpadContainerHeight: number;
+  hasSufficientSpace: boolean;
+}
+
+/**
+ * Calculates portrait control layout geometry to guarantee portrait dimensions,
+ * flex split ratios, and clearances remain unregressed.
+ */
+export function calculatePortraitControlLayout(
+  viewportHeight: number,
+  options: {
+    headerHeight?: number;
+    safeAreaTop?: number;
+    safeAreaBottom?: number;
+  } = {}
+): PortraitControlLayout {
+  const safeAreaTop = options.safeAreaTop ?? 0;
+  const safeAreaBottom = options.safeAreaBottom ?? 0;
+  const headerHeight = options.headerHeight ?? 56;
+
+  const availableHeight = Math.max(0, viewportHeight - headerHeight - safeAreaTop - safeAreaBottom);
+  // Board container gets flex-[1.2], D-pad gets flex-1 (total 2.2)
+  const boardContainerHeight = Math.floor(availableHeight * (1.2 / 2.2));
+  const dpadContainerHeight = availableHeight - boardContainerHeight;
+  const hasSufficientSpace = dpadContainerHeight >= 160;
+
+  return {
+    headerHeight,
+    availableHeight,
+    boardContainerHeight,
+    dpadContainerHeight,
+    hasSufficientSpace,
+  };
+}

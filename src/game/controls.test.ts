@@ -172,3 +172,57 @@ test('correct acceptance of swipes in each mode', () => {
   // In both mode, swipes are accepted
   assert.equal(shouldAcceptSwipeControls('both'), true);
 });
+
+test('mode switching: repeated switching between swipe, buttons, and both remains consistent without stuck state', () => {
+  const modes = ['swipe', 'buttons', 'both', 'buttons', 'swipe', 'both', 'swipe'] as const;
+
+  for (const mode of modes) {
+    const showDpad = shouldShowDirectionalControls(mode);
+    const acceptSwipes = shouldAcceptSwipeControls(mode);
+
+    if (mode === 'swipe') {
+      assert.equal(showDpad, false);
+      assert.equal(acceptSwipes, true);
+    } else if (mode === 'buttons') {
+      assert.equal(showDpad, true);
+      assert.equal(acceptSwipes, false);
+    } else if (mode === 'both') {
+      assert.equal(showDpad, true);
+      assert.equal(acceptSwipes, true);
+    }
+  }
+});
+
+test('directional input queue: max 2 turns buffered, ignores third input to prevent lag', () => {
+  let state = createInitialState('classic');
+  assert.equal(state.direction, 'RIGHT');
+
+  // First turn: UP
+  state = queueDirection(state, 'UP');
+  assert.equal(state.queuedDirections.length, 1);
+  assert.equal(state.queuedDirections[0], 'UP');
+
+  // Second turn: LEFT
+  state = queueDirection(state, 'LEFT');
+  assert.equal(state.queuedDirections.length, 2);
+  assert.deepEqual(state.queuedDirections, ['UP', 'LEFT']);
+
+  // Third turn: DOWN - should be ignored because buffer limit is 2
+  state = queueDirection(state, 'DOWN');
+  assert.equal(state.queuedDirections.length, 2);
+  assert.deepEqual(state.queuedDirections, ['UP', 'LEFT']);
+});
+
+test('input handling: ignores all direction inputs when snake is not alive or has won', () => {
+  let deadState = createInitialState('classic');
+  deadState.isAlive = false;
+
+  const afterDead = queueDirection(deadState, 'UP');
+  assert.equal(afterDead.queuedDirections.length, 0);
+
+  let victoryState = createInitialState('classic');
+  victoryState.isVictory = true;
+
+  const afterVictory = queueDirection(victoryState, 'UP');
+  assert.equal(afterVictory.queuedDirections.length, 0);
+});

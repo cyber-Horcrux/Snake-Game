@@ -134,6 +134,17 @@
 }
 
 /* Responsive Layout System for Buttons Control Mode */
+.game-play-area {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .game-viewport-buttons {
   flex: 1;
 }

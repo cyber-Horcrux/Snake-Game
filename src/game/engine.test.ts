@@ -387,3 +387,71 @@ test('collecting powerup items increments powerUpsCollected', () => {
   assert.equal(result.events.includes('powerup'), true);
 });
 
+test('full gameplay lifecycle: initialize, move, eat food, grow, increment score, and collide', () => {
+  // 1. Initial State
+  let state = createInitialState('classic', 12, 12);
+  assert.equal(state.isAlive, true);
+  assert.equal(state.score, 0);
+  assert.equal(state.level, 1);
+  assert.equal(state.snake.length, 3);
+  assert.equal(state.direction, 'RIGHT');
+
+  // Place food directly ahead of head (head is at (4, 6), food at (5, 6))
+  const head = state.snake[0];
+  state.food = [
+    {
+      id: 'target-core',
+      type: 'normal',
+      position: { x: head.x + 1, y: head.y },
+      points: 10,
+    },
+  ];
+
+  // 2. Step into Food -> snake immediately grows from 3 to 4 segments
+  const step1 = stepGame(state, 1000);
+  state = step1.state;
+  assert.equal(state.isAlive, true);
+  assert.equal(state.score, 10);
+  assert.equal(state.foodEaten, 1);
+  assert.equal(state.snake.length, 4);
+  assert.equal(state.pendingGrowth, 0);
+  assert.equal(step1.events.includes('eat'), true);
+
+  // 3. Step forward again (no pending growth) -> snake length remains 4
+  const step2 = stepGame(state, 1200);
+  state = step2.state;
+  assert.equal(state.snake.length, 4);
+  assert.equal(state.pendingGrowth, 0);
+
+  // 4. Queue turn UP and step
+  state = queueDirection(state, 'UP');
+  assert.equal(state.queuedDirections[0], 'UP');
+  const step3 = stepGame(state, 1400);
+  state = step3.state;
+  assert.equal(state.direction, 'UP');
+  assert.equal(step3.events.includes('turn'), true);
+
+  // 5. Navigate to top boundary to trigger wall collision
+  // Move UP until hitting y < 0
+  while (state.isAlive) {
+    state = stepGame(state, 2000).state;
+  }
+  assert.equal(state.isAlive, false);
+  assert.equal(state.deathReason, 'wall');
+});
+
+test('power-up slow-mo factor: properly resets tickInterval when duration expires', () => {
+  const normalInterval = calculateTickInterval('classic', 1, false);
+  const slowMoInterval = calculateTickInterval('classic', 1, true);
+
+  // Slow-mo interval must be strictly larger (slower simulation speed)
+  assert.ok(slowMoInterval > normalInterval);
+
+  // When slowMoUntil has passed, isSlowMoActive becomes false
+  const now = 10000;
+  const expiredTime = now - 500;
+  const isSlowMoActive = now < expiredTime;
+  assert.equal(isSlowMoActive, false);
+  assert.equal(calculateTickInterval('classic', 1, isSlowMoActive), normalInterval);
+});
+

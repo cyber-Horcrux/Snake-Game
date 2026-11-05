@@ -565,7 +565,7 @@ export default function App() {
   }, [screen, settings.controlMode]);
 
   const shouldShowDpad = shouldShowDirectionalControls(settings.controlMode);
-  const isButtonsMode = screen === 'playing' && settings.controlMode === 'buttons';
+  const isButtonsMode = screen === 'playing' && (settings.controlMode === 'buttons' || settings.controlMode === 'both');
 
   return (
     <div className="relative w-full h-[100dvh] min-h-[100vh] overflow-hidden bg-[#080A12] flex flex-col items-center justify-between cyber-grid select-none pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]">
@@ -589,33 +589,48 @@ export default function App() {
         </div>
       )}
 
-      {/* Canvas Viewport Container */}
-      <div
-        className={`w-full min-h-0 min-w-0 flex items-center justify-center relative overflow-hidden ${
-          isButtonsMode ? 'game-viewport-buttons' : 'flex-1'
-        }`}
-      >
+      {/* Main Game Playing Area (Canvas Viewport + Virtual Controls) */}
+      <div className="w-full flex-1 flex flex-col relative min-h-0 min-w-0 overflow-hidden items-center justify-between game-play-area">
+        {/* Canvas Viewport Container */}
         <div
-          data-testid="game-board-container"
-          className={`relative flex justify-center w-full h-full select-none touch-none items-center p-1 sm:p-2 ${
-            isButtonsMode ? 'game-board-container-buttons' : ''
+          className={`w-full min-h-0 min-w-0 flex items-center justify-center relative overflow-hidden ${
+            isButtonsMode ? 'game-viewport-buttons' : 'flex-1'
           }`}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onTouchCancel={handleTouchCancel}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-          onContextMenu={e => e.preventDefault()}
         >
-          <canvas
-            ref={canvasRef}
-            data-testid="game-canvas"
-            className="rounded-xl shadow-[0_0_30px_rgba(8,10,18,0.9)] bg-[#101426]/70 border border-[#43F5FF]/20 block"
-          />
+          <div
+            data-testid="game-board-container"
+            className={`relative flex justify-center w-full h-full select-none touch-none items-center p-1 sm:p-2 ${
+              isButtonsMode ? 'game-board-container-buttons' : ''
+            }`}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchCancel}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+            onContextMenu={e => e.preventDefault()}
+          >
+            <canvas
+              ref={canvasRef}
+              data-testid="game-canvas"
+              className="rounded-xl shadow-[0_0_30px_rgba(8,10,18,0.9)] bg-[#101426]/70 border border-[#43F5FF]/20 block"
+            />
+          </div>
         </div>
+
+        {/* Touch D-Pad for Mobile Devices & Tablets */}
+        {screen === 'playing' && shouldShowDpad && (
+          <div
+            data-testid="touch-dpad-container"
+            className={`z-20 xl:hidden shrink-0 pb-1 touch-dpad-container-docked ${
+              isButtonsMode ? 'touch-dpad-container-buttons' : ''
+            }`}
+          >
+            <TouchDPad onDirection={handleSteer} isButtonsMode={isButtonsMode} />
+          </div>
+        )}
       </div>
 
       {/* Screen Modals & Overlays */}
@@ -674,18 +689,6 @@ export default function App() {
           onResetStats={handleResetStats}
           onClose={() => setShowStats(false)}
         />
-      )}
-
-      {/* Touch D-Pad for Mobile Devices & Tablets */}
-      {screen === 'playing' && shouldShowDpad && (
-        <div
-          data-testid="touch-dpad-container"
-          className={`z-20 xl:hidden shrink-0 pb-1 touch-dpad-container-docked ${
-            isButtonsMode ? 'touch-dpad-container-buttons' : ''
-          }`}
-        >
-          <TouchDPad onDirection={handleSteer} isButtonsMode={isButtonsMode} />
-        </div>
       )}
 
       {/* Bottom Desktop Keyboard Controls Hint */}
