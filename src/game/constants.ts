@@ -63,6 +63,10 @@ export const SKINS: Record<SnakeSkinId, SnakeSkin> = {
     headGlow: '#43F5FF',
     eyeColor: '#39FF14',
     bodyColors: ['#43F5FF', '#9865FF', '#FF4FD8'],
+    unlock: {
+      type: 'default',
+      description: 'Available by default',
+    },
   },
   matrix_green: {
     id: 'matrix_green',
@@ -72,6 +76,10 @@ export const SKINS: Record<SnakeSkinId, SnakeSkin> = {
     headGlow: '#39FF14',
     eyeColor: '#43F5FF',
     bodyColors: ['#39FF14', '#10B981', '#065F46'],
+    unlock: {
+      type: 'default',
+      description: 'Available by default',
+    },
   },
   synth_sunset: {
     id: 'synth_sunset',
@@ -81,6 +89,11 @@ export const SKINS: Record<SnakeSkinId, SnakeSkin> = {
     headGlow: '#FF8A00',
     eyeColor: '#43F5FF',
     bodyColors: ['#FF8A00', '#FF2E93', '#8A2BE2'],
+    unlock: {
+      type: 'level',
+      requiredLevel: 3,
+      description: 'Reach Level 3 (Grid Runner)',
+    },
   },
   hyper_violet: {
     id: 'hyper_violet',
@@ -90,6 +103,44 @@ export const SKINS: Record<SnakeSkinId, SnakeSkin> = {
     headGlow: '#9865FF',
     eyeColor: '#FF4FD8',
     bodyColors: ['#9865FF', '#C084FC', '#FF4FD8'],
+    unlock: {
+      type: 'level',
+      requiredLevel: 7,
+      description: 'Reach Level 7 (Pulse Master)',
+    },
+  },
+  crimson_blaze: {
+    id: 'crimson_blaze',
+    name: 'Crimson Blaze',
+    tagline: 'High-thermal plasma core',
+    headColor: '#FF1744',
+    headGlow: '#FF1744',
+    eyeColor: '#FFD700',
+    bodyColors: ['#FF1744', '#FF5252', '#880E4F'],
+    unlock: {
+      type: 'level',
+      requiredLevel: 15,
+      description: 'Reach Level 15 (Neon Phantom)',
+    },
+  },
+  arctic_frost: {
+    id: 'arctic_frost',
+    name: 'Arctic Frost',
+    tagline: 'Sub-zero cryo superconductor',
+    headColor: '#E0F7FA',
+    headGlow: '#00E5FF',
+    eyeColor: '#00F5FF',
+    bodyColors: ['#E0F7FA', '#00E5FF', '#01579B'],
+    unlock: {
+      type: 'zen_wraps',
+      requiredZenWraps: 50,
+      description: 'Wrap 50 boundaries in Zen Mode',
+    },
+    altUnlock: {
+      type: 'level',
+      requiredLevel: 20,
+      description: 'Or reach Level 20 (Vortex Overlord)',
+    },
   },
   gold_prestige: {
     id: 'gold_prestige',
@@ -99,6 +150,30 @@ export const SKINS: Record<SnakeSkinId, SnakeSkin> = {
     headGlow: '#FFD700',
     eyeColor: '#FF4FD8',
     bodyColors: ['#FFD700', '#F59E0B', '#B45309'],
+    unlock: {
+      type: 'level',
+      requiredLevel: 25,
+      description: 'Reach Level 25 (Solar Sentinel)',
+    },
+  },
+  apex_void: {
+    id: 'apex_void',
+    name: 'Apex Void',
+    tagline: 'Dark matter cybernetic weave',
+    headColor: '#1A1D2E',
+    headGlow: '#7C4DFF',
+    eyeColor: '#00F5FF',
+    bodyColors: ['#1A1D2E', '#4A148C', '#00F5FF'],
+    unlock: {
+      type: 'campaign_victory',
+      requiredCampaignVictory: true,
+      description: 'Complete the Maze Campaign',
+    },
+    altUnlock: {
+      type: 'level',
+      requiredLevel: 40,
+      description: 'Or reach Level 40 (Quantum Basilisk)',
+    },
   },
 };
 
@@ -122,6 +197,7 @@ export const STORAGE_KEYS = {
   MAZE_PROGRESS: 'neon_snake_maze_progress_v1',
   PLAYER_PROGRESSION: 'neon_snake_player_progression_v1',
   DAILY_REWARD_LEDGER: 'neon_snake_daily_reward_ledger_v1',
+  SKINS: 'neon_snake_skins_v1',
 };
 
 export const MAX_PLAYER_LEVEL = 50;

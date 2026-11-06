@@ -57,9 +57,27 @@ export interface FoodItem {
   totalDurationMs?: number;
 }
 
-export type SnakeSkinId = 'cyber_cyan' | 'matrix_green' | 'synth_sunset' | 'hyper_violet' | 'gold_prestige';
+export type SnakeSkinId =
+  | 'cyber_cyan'
+  | 'matrix_green'
+  | 'synth_sunset'
+  | 'hyper_violet'
+  | 'crimson_blaze'
+  | 'arctic_frost'
+  | 'gold_prestige'
+  | 'apex_void';
 
-export interface SnakeSkin {
+export type SkinUnlockType = 'default' | 'level' | 'zen_wraps' | 'campaign_victory';
+
+export interface SkinUnlockCondition {
+  type: SkinUnlockType;
+  description: string;
+  requiredLevel?: number;
+  requiredZenWraps?: number;
+  requiredCampaignVictory?: boolean;
+}
+
+export interface SkinDefinition {
   id: SnakeSkinId;
   name: string;
   tagline: string;
@@ -67,6 +85,15 @@ export interface SnakeSkin {
   headGlow: string;
   eyeColor: string;
   bodyColors: [string, string, string]; // [head-near, mid-body, tail]
+  unlock: SkinUnlockCondition;
+  altUnlock?: SkinUnlockCondition;
+}
+
+export type SnakeSkin = SkinDefinition;
+
+export interface PlayerSkinsState {
+  equippedSkinId: SnakeSkinId;
+  unlockedSkinIds: SnakeSkinId[];
 }
 
 export interface ActivePowerUps {

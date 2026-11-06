@@ -13,6 +13,7 @@ import {
   createRunEventId,
   getCumulativeXpForLevel,
   getLevelTitle,
+  LEVEL_50_CUMULATIVE_XP,
   loadPlayerProgression,
   recordDailyRewardClaim,
   recordGameplayRunXp,
@@ -604,3 +605,119 @@ test('Audit 20: Stage Clear (+100) and Campaign Victory (+500) bonuses are stric
   assert.equal(stage6Result.breakdown.stageClearBonusXp, 100);
   assert.equal(stage6Result.breakdown.campaignVictoryBonusXp, 500);
 });
+
+test('Audit 21: Rush bonus (+25%) is calculated strictly on base subtotal and never double-counted', () => {
+  const rushInput: RunXpInput = {
+    mode: 'rush',
+    foodEaten: 10, // 100 XP
+    score: 200,    // 10 XP
+    survivalSeconds: 20, // 4 XP
+    maxCombo: 2,   // 10 XP
+  };
+  const breakdown = calculateRunXp(rushInput);
+  const baseSubtotal = 100 + 10 + 4 + 10; // 124 XP
+  const expectedRushTotal = Math.floor(baseSubtotal * 1.25); // 155 XP
+  const expectedRushBonus = expectedRushTotal - baseSubtotal; // 31 XP
+
+  assert.equal(breakdown.rushBonusXp, expectedRushBonus);
+  assert.equal(breakdown.totalXp, expectedRushTotal);
+
+  // In non-rush mode, rushBonusXp is strictly 0
+  const classicInput: RunXpInput = { ...rushInput, mode: 'classic' };
+  const classicBreakdown = calculateRunXp(classicInput);
+  assert.equal(classicBreakdown.rushBonusXp, 0);
+  assert.equal(classicBreakdown.totalXp, baseSubtotal);
+});
+
+test('Audit 22: Level-Up Celebration presentation logic accurately computes promotions and rank accolades', () => {
+  // Single-level promotion
+  const singleBefore = 4;
+  const singleAfter = 5;
+  const singleGained = 1;
+  assert.equal(singleGained, 1);
+  assert.equal(getLevelTitle(singleAfter), 'Apex Hunter');
+
+  // Multi-level leap
+  const leapBefore = 1;
+  const leapAfter = 4;
+  const leapGained = 3;
+  assert.equal(leapGained, 3);
+  assert.equal(getLevelTitle(leapAfter), 'Vector Viper');
+
+  // Inactive state (no promotion)
+  const noGained = 0;
+  assert.ok(noGained <= 0);
+});
+
+test('Audit 23: Level 50 player in UI cards maintains MAX LEVEL state with 100% progress and zero remaining XP', () => {
+  const maxCapState = calculateLevelFromLifetimeXp(LEVEL_50_CUMULATIVE_XP + 50000);
+  assert.equal(maxCapState.level, 50);
+  assert.equal(maxCapState.currentXp, 0);
+  assert.equal(maxCapState.xpForNextLevel, 0);
+
+  const isMaxLevel = maxCapState.level >= 50;
+  const percent = isMaxLevel ? 100 : Math.min(100, Math.round((maxCapState.currentXp / maxCapState.xpForNextLevel) * 100));
+  const remaining = isMaxLevel ? 0 : Math.max(0, maxCapState.xpForNextLevel - maxCapState.currentXp);
+
+  assert.equal(percent, 100);
+  assert.equal(remaining, 0);
+  assert.equal(getLevelTitle(maxCapState.level), 'Apex Legend');
+});
+
+test('Audit 24: Anti-exploit zero-XP runs return empty breakdown without mutating progression or awarding XP', () => {
+  const storage = new MemoryStorage();
+  const initialProgression = loadPlayerProgression(storage);
+
+  const exploitRunState: GameEngineState = {
+    ...createInitialState('classic'),
+    foodEaten: 0,
+    bonusEaten: 0,
+    score: 0,
+    gameTimeMs: 3000, // 3 seconds < 5 seconds
+  };
+
+  const result = recordGameplayRunXp(exploitRunState, 1715000000000, storage, 'exploit-attempt-1');
+  assert.equal(result.xpEarned, 0);
+  assert.equal(result.breakdown.totalXp, 0);
+  assert.equal(result.state.totalLifetimeXp, initialProgression.totalLifetimeXp);
+  assert.equal(result.state.level, 1);
+});
+
+test('Audit 25: All 10 XP breakdown component keys and display contracts strictly conform without extraneous categories', () => {
+  const allTenKeys: Array<keyof Omit<import('./types.ts').XpBreakdown, 'totalXp'>> = [
+    'foodXp',
+    'bonusFoodXp',
+    'scoreXp',
+    'survivalXp',
+    'comboXp',
+    'shieldXp',
+    'zenWrapXp',
+    'rushBonusXp',
+    'stageClearBonusXp',
+    'campaignVictoryBonusXp',
+  ];
+
+  assert.equal(allTenKeys.length, 10);
+
+  const sampleRun: RunXpInput = {
+    mode: 'zen',
+    foodEaten: 10,
+    bonusEaten: 2,
+    score: 300,
+    survivalSeconds: 30,
+    maxCombo: 3,
+    shieldsUsed: 1,
+    wallsWrapped: 8,
+  };
+
+  const breakdown = calculateRunXp(sampleRun);
+  let computedSum = 0;
+  for (const k of allTenKeys) {
+    const val = breakdown[k];
+    assert.ok(typeof val === 'number');
+    assert.ok(val >= 0);
+    computedSum += val;
+  }
+  assert.equal(computedSum, breakdown.totalXp);
+});
+

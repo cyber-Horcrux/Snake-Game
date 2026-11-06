@@ -9,7 +9,7 @@ interface XpBreakdownListProps {
 }
 
 interface BreakdownRow {
-  key: keyof Omit<XpBreakdown, 'totalXp'>;
+  key: keyof Omit<XpBreakdown, 'totalXp'> | (string & {});
   label: string;
   value: number;
   isBonus?: boolean;

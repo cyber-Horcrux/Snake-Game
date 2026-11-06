@@ -2,8 +2,16 @@
  * Storage and Persistence Module
  * Robust schema validation, error handling, and fallback defaults.
  */
-import type { ControlMode, GameMode, GameSettings, ModeBestScores, MazeProgress } from './types.ts';
+import type { ControlMode, GameMode, GameSettings, ModeBestScores, MazeProgress, PlayerSkinsState, SnakeSkinId } from './types.ts';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from './constants.ts';
+import {
+  ALL_SKIN_IDS,
+  DEFAULT_PLAYER_SKINS_STATE,
+  STARTER_SKIN_IDS,
+  isSkinUnlocked,
+  isValidSkinId,
+  sanitizePlayerSkinsState,
+} from './skins.ts';
 
 export const DEFAULT_BEST_SCORES: ModeBestScores = {
   classic: 0,
@@ -123,7 +131,7 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
     const validDpad = ['auto', 'always', 'never'];
     const dpadPreference = validDpad.includes(parsed.dpadPreference) ? parsed.dpadPreference : DEFAULT_SETTINGS.dpadPreference;
 
-    const validSkins = ['cyber_cyan', 'matrix_green', 'synth_sunset', 'hyper_violet', 'gold_prestige'];
+    const validSkins: SnakeSkinId[] = [...ALL_SKIN_IDS];
     const skin = validSkins.includes(parsed.skin) ? parsed.skin : DEFAULT_SETTINGS.skin;
 
     const validControlModes: ControlMode[] = ['swipe', 'buttons', 'both'];
@@ -282,4 +290,172 @@ export function resetMazeProgress(storage: StorageLike | null = getBrowserStorag
     return false;
   }
 }
+
+// ==========================================
+// PLAYER SKINS PERSISTENCE
+// ==========================================
+
+export function loadPlayerSkins(storage: StorageLike | null = getBrowserStorage()): PlayerSkinsState {
+  if (!storage) {
+    return {
+      equippedSkinId: DEFAULT_PLAYER_SKINS_STATE.equippedSkinId,
+      unlockedSkinIds: [...DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds],
+    };
+  }
+
+  try {
+    const raw = storage.getItem(STORAGE_KEYS.SKINS);
+    if (!raw) {
+      // If skin ledger is missing, recover legacy starter skin preference if set in settings
+      const settings = loadSettings(storage);
+      const equippedCandidate = (settings && STARTER_SKIN_IDS.includes(settings.skin as any))
+        ? (settings.skin as SnakeSkinId)
+        : DEFAULT_PLAYER_SKINS_STATE.equippedSkinId;
+
+      return {
+        equippedSkinId: equippedCandidate,
+        unlockedSkinIds: [...DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds],
+      };
+    }
+    const parsed = JSON.parse(raw);
+    return sanitizePlayerSkinsState(parsed);
+  } catch {
+    let equippedCandidate = DEFAULT_PLAYER_SKINS_STATE.equippedSkinId;
+    try {
+      const settings = loadSettings(storage);
+      if (settings && STARTER_SKIN_IDS.includes(settings.skin as any)) {
+        equippedCandidate = settings.skin as SnakeSkinId;
+      }
+    } catch {
+      // fallback to default
+    }
+    return {
+      equippedSkinId: equippedCandidate,
+      unlockedSkinIds: [...DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds],
+    };
+  }
+}
+
+export function savePlayerSkins(
+  skinsState: PlayerSkinsState,
+  storage: StorageLike | null = getBrowserStorage()
+): boolean {
+  if (!storage) return false;
+
+  try {
+    const sanitized = sanitizePlayerSkinsState(skinsState);
+    storage.setItem(STORAGE_KEYS.SKINS, JSON.stringify(sanitized));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function equipSkin(
+  skinId: SnakeSkinId,
+  storage: StorageLike | null = getBrowserStorage()
+): { success: boolean; state: PlayerSkinsState; error?: string } {
+  const current = loadPlayerSkins(storage);
+  if (!isSkinUnlocked(skinId, current)) {
+    return {
+      success: false,
+      state: current,
+      error: `Skin '${skinId}' is not unlocked.`,
+    };
+  }
+
+  const updated: PlayerSkinsState = {
+    equippedSkinId: skinId,
+    unlockedSkinIds: current.unlockedSkinIds,
+  };
+
+  const savedSkins = savePlayerSkins(updated, storage);
+  if (!savedSkins) {
+    return {
+      success: false,
+      state: current,
+      error: 'Failed to write skin persistence to storage.',
+    };
+  }
+
+  // Synchronize GameSettings.skin with two-storage rollback guarantee
+  const settings = loadSettings(storage);
+  if (settings.skin !== skinId) {
+    const savedSettings = saveSettings({ ...settings, skin: skinId }, storage);
+    if (!savedSettings) {
+      // Rollback skins storage to current to prevent desynchronization
+      const rollbackSuccess = savePlayerSkins(current, storage);
+      if (!rollbackSuccess) {
+        return {
+          success: false,
+          state: updated,
+          error: 'Failed to synchronize skin with game settings. Critical: Storage rollback also failed.',
+        };
+      }
+      return {
+        success: false,
+        state: current,
+        error: 'Failed to synchronize skin with game settings.',
+      };
+    }
+  }
+
+  return {
+    success: true,
+    state: updated,
+  };
+}
+
+export function unlockSkin(
+  skinId: SnakeSkinId,
+  storage: StorageLike | null = getBrowserStorage()
+): { success: boolean; state: PlayerSkinsState } {
+  if (!isValidSkinId(skinId)) {
+    const current = loadPlayerSkins(storage);
+    return { success: false, state: current };
+  }
+
+  const current = loadPlayerSkins(storage);
+  if (current.unlockedSkinIds.includes(skinId)) {
+    return { success: true, state: current };
+  }
+
+  const updated: PlayerSkinsState = {
+    equippedSkinId: current.equippedSkinId,
+    unlockedSkinIds: [...current.unlockedSkinIds, skinId],
+  };
+
+  const sanitized = sanitizePlayerSkinsState(updated);
+  savePlayerSkins(sanitized, storage);
+
+  return {
+    success: true,
+    state: sanitized,
+  };
+}
+
+export function resetPlayerSkins(storage: StorageLike | null = getBrowserStorage()): boolean {
+  if (!storage) return false;
+  try {
+    const currentSkins = loadPlayerSkins(storage);
+    const savedSkins = savePlayerSkins(DEFAULT_PLAYER_SKINS_STATE, storage);
+    if (!savedSkins) {
+      return false;
+    }
+
+    const settings = loadSettings(storage);
+    if (settings.skin !== 'cyber_cyan') {
+      const savedSettings = saveSettings({ ...settings, skin: 'cyber_cyan' }, storage);
+      if (!savedSettings) {
+        // Rollback skins ledger to previous state so we don't leave partial reset
+        savePlayerSkins(currentSkins, storage);
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 

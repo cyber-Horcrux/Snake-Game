@@ -187,7 +187,8 @@ export const CampaignVictoryModal: React.FC<CampaignVictoryModalProps> = ({
               </div>
             </div>
           </div>
-        ) : progression ? (
+        </div>
+      ) : progression ? (
           <div className="w-full mb-3 sm:mb-4 shrink-0">
             <div
               data-testid="campaign-victory-xp-card"

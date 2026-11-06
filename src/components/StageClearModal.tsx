@@ -188,7 +188,8 @@ export const StageClearModal: React.FC<StageClearModalProps> = ({
               </div>
             </div>
           </div>
-        ) : progression ? (
+        </div>
+      ) : progression ? (
           <div className="w-full mb-3 sm:mb-4 shrink-0">
             <div
               data-testid="stage-clear-xp-card"
