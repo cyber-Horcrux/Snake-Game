@@ -8,6 +8,12 @@ import {
   resetBestScores,
   loadSettings,
   saveSettings,
+  DEFAULT_MAZE_PROGRESS,
+  loadMazeProgress,
+  saveMazeProgress,
+  recordStageClear,
+  recordCampaignCompletion,
+  resetMazeProgress,
 } from './persistence.ts';
 import type { StorageLike } from './persistence.ts';
 import { DEFAULT_SETTINGS } from './constants.ts';
@@ -206,3 +212,152 @@ test('legacy storage keys neonsnake_best_scores and neonsnake_settings are seaml
   assert.equal(settings.controlMode, 'buttons');
   assert.equal(settings.audio.sfxVolume, 0.7);
 });
+
+// ==========================================
+// MAZE CAMPAIGN PERSISTENCE TESTS
+// ==========================================
+
+test('loadMazeProgress returns defaults on empty or null storage', () => {
+  assert.deepEqual(loadMazeProgress(null), DEFAULT_MAZE_PROGRESS);
+
+  const storage = new MemoryStorage();
+  assert.deepEqual(loadMazeProgress(storage), DEFAULT_MAZE_PROGRESS);
+});
+
+test('loadMazeProgress gracefully handles corrupt and malformed JSON', () => {
+  const storage = new MemoryStorage();
+  storage.setItem('neon_snake_maze_progress_v1', '{corrupt_json');
+  assert.deepEqual(loadMazeProgress(storage), DEFAULT_MAZE_PROGRESS);
+
+  storage.setItem('neon_snake_maze_progress_v1', JSON.stringify({
+    highestStageUnlocked: 99, // Should clamp to 6
+    totalCampaignsWon: -5,     // Should clamp to 0
+    totalMazesCleared: 'invalid', // Should fallback to 0
+    bestCampaignScore: NaN,    // Should fallback to 0
+  }));
+
+  const parsed = loadMazeProgress(storage);
+  assert.equal(parsed.highestStageUnlocked, 6);
+  assert.equal(parsed.totalCampaignsWon, 0);
+  assert.equal(parsed.totalMazesCleared, 0);
+  assert.equal(parsed.bestCampaignScore, 0);
+});
+
+test('saveMazeProgress correctly persists valid progress data', () => {
+  const storage = new MemoryStorage();
+  const progress = {
+    highestStageUnlocked: 4,
+    totalCampaignsWon: 1,
+    totalMazesCleared: 15,
+    bestCampaignScore: 1250,
+  };
+
+  const success = saveMazeProgress(progress, storage);
+  assert.equal(success, true);
+  assert.deepEqual(loadMazeProgress(storage), progress);
+});
+
+test('recordStageClear unlocks next stage up to 6', () => {
+  const storage = new MemoryStorage();
+
+  // Clear Stage 1 -> unlocks Stage 2
+  const p1 = recordStageClear(1, 150, storage);
+  assert.equal(p1.highestStageUnlocked, 2);
+  assert.equal(p1.totalMazesCleared, 1);
+  assert.equal(p1.totalCampaignsWon, 0);
+  assert.equal(p1.bestCampaignScore, 150);
+
+  // Clear Stage 2 -> unlocks Stage 3
+  const p2 = recordStageClear(2, 300, storage);
+  assert.equal(p2.highestStageUnlocked, 3);
+  assert.equal(p2.totalMazesCleared, 2);
+  assert.equal(p2.bestCampaignScore, 300);
+});
+
+test('replaying a previously unlocked stage does not reduce highestStageUnlocked', () => {
+  const storage = new MemoryStorage();
+  saveMazeProgress({
+    highestStageUnlocked: 5,
+    totalCampaignsWon: 0,
+    totalMazesCleared: 10,
+    bestCampaignScore: 600,
+  }, storage);
+
+  // Replay Stage 2 (would unlock Stage 3) -> highestStageUnlocked must remain 5!
+  const result = recordStageClear(2, 200, storage);
+  assert.equal(result.highestStageUnlocked, 5);
+  assert.equal(result.totalMazesCleared, 11);
+  assert.equal(result.bestCampaignScore, 600); // 200 is lower, preserve 600
+});
+
+test('clearing Stage 6 increments totalCampaignsWon and caps highestStageUnlocked at 6', () => {
+  const storage = new MemoryStorage();
+  saveMazeProgress({
+    highestStageUnlocked: 6,
+    totalCampaignsWon: 0,
+    totalMazesCleared: 5,
+    bestCampaignScore: 800,
+  }, storage);
+
+  const finalResult = recordStageClear(6, 1200, storage);
+  assert.equal(finalResult.highestStageUnlocked, 6); // Does not become 7
+  assert.equal(finalResult.totalCampaignsWon, 1);
+  assert.equal(finalResult.totalMazesCleared, 6);
+  assert.equal(finalResult.bestCampaignScore, 1200);
+});
+
+test('recordCampaignCompletion delegates cleanly to final stage completion', () => {
+  const storage = new MemoryStorage();
+  const result = recordCampaignCompletion(2500, storage);
+  assert.equal(result.totalCampaignsWon, 1);
+  assert.equal(result.bestCampaignScore, 2500);
+  assert.equal(result.highestStageUnlocked, 6);
+});
+
+test('resetMazeProgress restores defaults cleanly', () => {
+  const storage = new MemoryStorage();
+  saveMazeProgress({
+    highestStageUnlocked: 6,
+    totalCampaignsWon: 3,
+    totalMazesCleared: 25,
+    bestCampaignScore: 3000,
+  }, storage);
+
+  const resetSuccess = resetMazeProgress(storage);
+  assert.equal(resetSuccess, true);
+  assert.deepEqual(loadMazeProgress(storage), DEFAULT_MAZE_PROGRESS);
+});
+
+test('interrupted run leaves saved maze progress unmodified', () => {
+  const storage = new MemoryStorage();
+  saveMazeProgress({
+    highestStageUnlocked: 3,
+    totalCampaignsWon: 0,
+    totalMazesCleared: 2,
+    bestCampaignScore: 250,
+  }, storage);
+
+  // An unfinished run occurs (process terminates or crashes before gate entry)
+  // No recordStageClear was invoked
+  const progressAfterInterruption = loadMazeProgress(storage);
+  assert.equal(progressAfterInterruption.highestStageUnlocked, 3);
+  assert.equal(progressAfterInterruption.totalMazesCleared, 2);
+  assert.equal(progressAfterInterruption.bestCampaignScore, 250);
+});
+
+test('legacy storage key neonsnake_maze_progress is seamlessly migrated', () => {
+  const legacyStorage = new MemoryStorage();
+  legacyStorage.setItem('neonsnake_maze_progress', JSON.stringify({
+    highestStageUnlocked: 4,
+    totalCampaignsWon: 1,
+    totalMazesCleared: 12,
+    bestCampaignScore: 1800,
+  }));
+
+  const progress = loadMazeProgress(legacyStorage);
+  assert.equal(progress.highestStageUnlocked, 4);
+  assert.equal(progress.totalCampaignsWon, 1);
+  assert.equal(progress.totalMazesCleared, 12);
+  assert.equal(progress.bestCampaignScore, 1800);
+});
+

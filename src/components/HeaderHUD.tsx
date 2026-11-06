@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Pause, RotateCcw, Shield, Clock, Flame } from 'lucide-react';
+import { Volume2, VolumeX, Pause, RotateCcw, Shield, Clock, Flame, Waypoints, Sparkles, Lock } from 'lucide-react';
 import type { GameMode } from '../game/types.ts';
 
 interface HeaderHUDProps {
@@ -11,13 +11,17 @@ interface HeaderHUDProps {
   hasShield: boolean;
   slowMoUntil: number;
   combo?: number;
+  stage?: number;
+  stageName?: string;
+  stageFoodEaten?: number;
+  isGateActive?: boolean;
   onPause: () => void;
   onRestart: () => void;
   onToggleMute: () => void;
   sfxEnabled: boolean;
 }
 
-const MODE_LABELS: Record<GameMode, { label: string; color: string; border: string; bg: string }> = {
+const MODE_LABELS: Record<string, { label: string; color: string; border: string; bg: string }> = {
   classic: {
     label: 'CLASSIC',
     color: 'text-[#00F5FF]',
@@ -36,6 +40,12 @@ const MODE_LABELS: Record<GameMode, { label: string; color: string; border: stri
     border: 'border-[#FF007A]/40',
     bg: 'bg-[#FF007A]/10',
   },
+  maze: {
+    label: 'MAZE',
+    color: 'text-[#9865FF]',
+    border: 'border-[#9865FF]/40',
+    bg: 'bg-[#9865FF]/10',
+  },
 };
 
 export const HeaderHUD: React.FC<HeaderHUDProps> = ({
@@ -47,6 +57,10 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
   hasShield,
   slowMoUntil,
   combo = 1,
+  stage = 1,
+  stageName,
+  stageFoodEaten = 0,
+  isGateActive = false,
   onPause,
   onRestart,
   onToggleMute,
@@ -55,6 +69,8 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
   const modeInfo = MODE_LABELS[mode] || MODE_LABELS.classic;
   const now = Date.now();
   const slowMoRemaining = Math.max(0, Math.ceil((slowMoUntil - now) / 1000));
+  const isMaze = mode === 'maze';
+  const gateReady = isGateActive || stageFoodEaten >= 10;
 
   return (
     <header
@@ -62,7 +78,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
       aria-label="Game Heads Up Display"
       className="w-full pointer-events-none flex items-center justify-between gap-1.5 sm:gap-3 z-10"
     >
-      {/* Left: Score & Record Best + Level & Length */}
+      {/* Left: Score & Record Best + Level/Stage & Length/Cores */}
       <div className="flex items-center gap-1.5 xs:gap-2.5 sm:gap-4 md:gap-5 bg-[#0B0E1A]/95 border border-[#161B2E] px-2 py-1.5 sm:px-3.5 sm:py-2 rounded-xl pointer-events-auto shadow-[0_4px_24px_rgba(5,7,14,0.7)] backdrop-blur-sm">
         {/* Score */}
         <div className="flex flex-col">
@@ -88,41 +104,90 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
 
         <div className="w-[1px] h-6 sm:h-8 bg-[#161B2E] shrink-0" />
 
-        {/* Level */}
-        <div className="flex flex-col">
-          <span className="text-[9px] sm:text-[11px] tracking-wider text-[#79869C] font-bold uppercase leading-none">
-            <span className="sm:hidden">Lvl</span>
-            <span className="hidden sm:inline">Level</span>
-          </span>
-          <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-[#7928CA] leading-tight mt-0.5">
-            {level}
-          </span>
-        </div>
+        {/* Maze Mode: Stage or Standard Mode: Level */}
+        {isMaze ? (
+          <div className="flex flex-col">
+            <span className="text-[9px] sm:text-[11px] tracking-wider text-[#9865FF] font-bold uppercase leading-none">
+              <span className="sm:hidden">Stg</span>
+              <span className="hidden sm:inline">Stage</span>
+            </span>
+            <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-[#9865FF] leading-tight mt-0.5">
+              {stage}<span className="text-[10px] sm:text-xs text-[#79869C]">/6</span>
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            <span className="text-[9px] sm:text-[11px] tracking-wider text-[#79869C] font-bold uppercase leading-none">
+              <span className="sm:hidden">Lvl</span>
+              <span className="hidden sm:inline">Level</span>
+            </span>
+            <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-[#7928CA] leading-tight mt-0.5">
+              {level}
+            </span>
+          </div>
+        )}
 
         <div className="w-[1px] h-6 sm:h-8 bg-[#161B2E] shrink-0" />
 
-        {/* Length */}
-        <div className="flex flex-col">
-          <span className="text-[9px] sm:text-[11px] tracking-wider text-[#79869C] font-bold uppercase leading-none">
-            <span className="sm:hidden">Len</span>
-            <span className="hidden sm:inline">Length</span>
-          </span>
-          <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-[#F0F6FC] leading-tight mt-0.5">
-            {length}
-          </span>
-        </div>
+        {/* Maze Mode: Neon Cores or Standard Mode: Length */}
+        {isMaze ? (
+          <div className="flex flex-col">
+            <span className="text-[9px] sm:text-[11px] tracking-wider text-[#79869C] font-bold uppercase leading-none">
+              Cores
+            </span>
+            <span className={`text-xs sm:text-lg md:text-xl font-bold font-mono-num leading-tight mt-0.5 ${gateReady ? 'text-[#10FFA0]' : 'text-[#00F5FF]'}`}>
+              {stageFoodEaten}<span className="text-[10px] sm:text-xs text-[#79869C]">/10</span>
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            <span className="text-[9px] sm:text-[11px] tracking-wider text-[#79869C] font-bold uppercase leading-none">
+              <span className="sm:hidden">Len</span>
+              <span className="hidden sm:inline">Length</span>
+            </span>
+            <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-[#F0F6FC] leading-tight mt-0.5">
+              {length}
+            </span>
+          </div>
+        )}
+
+        {/* In Maze mode, show length as secondary if space permits */}
+        {isMaze && (
+          <div className="hidden md:flex flex-col">
+            <span className="text-[9px] sm:text-[11px] tracking-wider text-[#79869C] font-bold uppercase leading-none">
+              Len
+            </span>
+            <span className="text-xs sm:text-lg md:text-xl font-bold font-mono-num text-[#F0F6FC] leading-tight mt-0.5">
+              {length}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Center: Mode Indicator & Active Buffs/Combos */}
+      {/* Center: Mode Indicator & Active Buffs/Combos/Warp Gate Status */}
       <div className="flex flex-col items-center gap-1 shrink-0">
         <div
           className={`px-2.5 py-0.5 rounded text-[10px] sm:text-xs font-bold tracking-widest border ${modeInfo.border} ${modeInfo.bg} ${modeInfo.color} shadow-sm uppercase font-display`}
         >
-          {modeInfo.label}
+          {isMaze && stageName ? `STAGE ${stage}: ${stageName}` : modeInfo.label}
         </div>
 
-        {/* Active Power-Up Badges & Combo */}
+        {/* Active Power-Up Badges, Combo, & Warp Gate Status */}
         <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap justify-center max-w-[160px] sm:max-w-none">
+          {isMaze && (
+            <div
+              title={gateReady ? 'Perimeter Warp Gate Unlocked — Enter to Clear Stage' : 'Warp Gate Locked — 10 Cores Required'}
+              className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold whitespace-nowrap border ${
+                gateReady
+                  ? 'bg-[#10FFA0]/20 border-[#10FFA0] text-[#10FFA0] shadow-[0_0_12px_rgba(16,255,160,0.4)] animate-pulse'
+                  : 'bg-[#05070E] border-[#161B2E] text-[#79869C]'
+              }`}
+            >
+              {gateReady ? <Sparkles className="w-2.5 h-2.5 text-[#10FFA0]" /> : <Lock className="w-2.5 h-2.5 text-[#79869C]" />}
+              <span>GATE: {gateReady ? 'ACTIVE' : 'LOCKED'}</span>
+            </div>
+          )}
+
           {combo > 1 && (
             <div
               title="Active Score Multiplier"
@@ -200,3 +265,4 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
     </header>
   );
 };
+

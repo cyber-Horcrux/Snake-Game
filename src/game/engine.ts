@@ -10,6 +10,8 @@ import type {
   GameEngineState,
   GameMode,
   GridCoord,
+  Obstacle,
+  WarpGate,
 } from './types.ts';
 import {
   GRID_SIZE,
@@ -48,6 +50,118 @@ export function getDirectionOffset(dir: Direction): GridCoord {
     case 'RIGHT':
       return { x: 1, y: 0 };
   }
+}
+
+export function getOrthogonalDirections(dir: Direction): [Direction, Direction] {
+  switch (dir) {
+    case 'UP':
+    case 'DOWN':
+      return ['LEFT', 'RIGHT'];
+    case 'LEFT':
+    case 'RIGHT':
+      return ['UP', 'DOWN'];
+  }
+}
+
+/**
+ * Checks whether stepping into a given coordinate is unobstructed by boundaries,
+ * obstacles, inactive warp gates, or stationary snake body segments.
+ */
+export function isCellClear(
+  coord: GridCoord,
+  obstacles: Obstacle[],
+  snake: GridCoord[],
+  gridWidth: number,
+  gridHeight: number,
+  warpGate: WarpGate | null = null
+): boolean {
+  if (coord.x < 0 || coord.x >= gridWidth || coord.y < 0 || coord.y >= gridHeight) {
+    return false;
+  }
+  for (let i = 0; i < obstacles.length; i++) {
+    const ob = obstacles[i];
+    if (ob.x === coord.x && ob.y === coord.y) {
+      return false;
+    }
+  }
+  if (warpGate && !warpGate.active && warpGate.x === coord.x && warpGate.y === coord.y) {
+    return false;
+  }
+  for (let i = 1; i < snake.length; i++) {
+    if (snake[i].x === coord.x && snake[i].y === coord.y) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Calculates clearance (unobstructed steps) along a ray in the given direction.
+ */
+export function calculateClearance(
+  from: GridCoord,
+  dir: Direction,
+  obstacles: Obstacle[],
+  snake: GridCoord[],
+  gridWidth: number,
+  gridHeight: number,
+  warpGate: WarpGate | null = null
+): number {
+  const offset = getDirectionOffset(dir);
+  let steps = 0;
+  let curr = { x: from.x + offset.x, y: from.y + offset.y };
+  while (isCellClear(curr, obstacles, snake, gridWidth, gridHeight, warpGate)) {
+    steps++;
+    curr = { x: curr.x + offset.x, y: curr.y + offset.y };
+  }
+  return steps;
+}
+
+/**
+ * Deterministically finds the best safe orthogonal deflection direction when
+ * colliding with an impassable wall.
+ * 1. Evaluates orthogonal options.
+ * 2. If exactly one is open, selects it.
+ * 3. If both are open, selects the one with greater clearance.
+ *    If clearance is tied, uses deterministic clockwise tie-breaker.
+ * 4. If neither is open, returns null (cannot deflect safely).
+ */
+export function findSafeDeflectionDirection(
+  head: GridCoord,
+  currentDir: Direction,
+  obstacles: Obstacle[],
+  snake: GridCoord[],
+  gridWidth: number,
+  gridHeight: number,
+  warpGate: WarpGate | null = null
+): Direction | null {
+  const [orthA, orthB] = getOrthogonalDirections(currentDir);
+  const offsetA = getDirectionOffset(orthA);
+  const targetA = { x: head.x + offsetA.x, y: head.y + offsetA.y };
+  const clearA = isCellClear(targetA, obstacles, snake, gridWidth, gridHeight, warpGate);
+
+  const offsetB = getDirectionOffset(orthB);
+  const targetB = { x: head.x + offsetB.x, y: head.y + offsetB.y };
+  const clearB = isCellClear(targetB, obstacles, snake, gridWidth, gridHeight, warpGate);
+
+  if (clearA && !clearB) return orthA;
+  if (!clearA && clearB) return orthB;
+  if (!clearA && !clearB) return null;
+
+  const depthA = calculateClearance(head, orthA, obstacles, snake, gridWidth, gridHeight, warpGate);
+  const depthB = calculateClearance(head, orthB, obstacles, snake, gridWidth, gridHeight, warpGate);
+
+  if (depthA > depthB) return orthA;
+  if (depthB > depthA) return orthB;
+
+  // Clockwise tie-breaker relative to current heading
+  const clockwiseMap: Record<Direction, Direction> = {
+    UP: 'RIGHT',
+    RIGHT: 'DOWN',
+    DOWN: 'LEFT',
+    LEFT: 'UP',
+  };
+  return clockwiseMap[currentDir];
 }
 
 /**
@@ -127,7 +241,9 @@ export function createInitialState(
   mode: GameMode = 'classic',
   gridWidth: number = GRID_SIZE.WIDTH,
   gridHeight: number = GRID_SIZE.HEIGHT,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
+  obstacles: Obstacle[] = [],
+  warpGate: WarpGate | null = null
 ): GameEngineState {
   const startX = Math.floor(gridWidth / 3);
   const startY = Math.floor(gridHeight / 2);
@@ -163,10 +279,23 @@ export function createInitialState(
     lastTickTime: 0,
     tickIntervalMs: calculateTickInterval(mode, 1, false),
     gameTimeMs: 0,
+    obstacles,
+    warpGate,
+    stage: 1,
+    stageFoodEaten: 0,
+    maxCombo: 1,
   };
 
-  // Spawn initial normal food
-  const emptyCell = findEmptyCell(gridWidth, gridHeight, snake, rng);
+  // Spawn initial normal food ensuring no overlap with snake, obstacles, or warpGate
+  const occupied: GridCoord[] = [
+    ...snake,
+    ...obstacles.map(o => ({ x: o.x, y: o.y })),
+  ];
+  if (warpGate) {
+    occupied.push({ x: warpGate.x, y: warpGate.y });
+  }
+
+  const emptyCell = findEmptyCell(gridWidth, gridHeight, occupied, rng);
   if (emptyCell) {
     state.food.push({
       id: 'food-0',
@@ -232,44 +361,170 @@ export function stepGame(
   let nextHeadX = head.x + offset.x;
   let nextHeadY = head.y + offset.y;
 
-  // 2. Wall Collisions & Wraparound
-  let wallCollision = false;
+  let currentObstacles = [...(currentState.obstacles || [])];
+  let currentPowerUps = { ...currentState.powerUps };
   let newWallsWrapped = currentState.wallsWrapped || 0;
   let newShieldsUsed = currentState.shieldsUsed || 0;
   let newPowerUpsCollected = currentState.powerUpsCollected || 0;
+  let newStageFoodEaten = currentState.stageFoodEaten || 0;
+  let newStage = currentState.stage || 1;
+  let newMaxCombo = currentState.maxCombo || 1;
+  let obstacleScoreBonus = 0;
+  let isHazardHitWithoutShield = false;
 
-  if (currentState.mode === 'zen') {
-    const wrappedX = (nextHeadX + currentState.gridWidth) % currentState.gridWidth;
-    const wrappedY = (nextHeadY + currentState.gridHeight) % currentState.gridHeight;
-    if (wrappedX !== nextHeadX || wrappedY !== nextHeadY) {
-      newWallsWrapped++;
+  // Helper for Kinetic Deflection & Halt on impassable obstacles/walls
+  const executeKineticDeflection = (): StepResult => {
+    currentPowerUps.hasShield = false;
+    shieldAbsorbed = true;
+    newShieldsUsed++;
+    events.push('shield_absorb');
+
+    // Head remains at current position (does not advance into wall)
+    nextHeadX = head.x;
+    nextHeadY = head.y;
+
+    // Discard any queued direction that points into the wall or is opposite to heading
+    remainingQueue = remainingQueue.filter(
+      d => d !== nextDirection && !isOpposite(d, nextDirection)
+    );
+
+    let selectedDeflection: Direction | null = null;
+
+    // Check if user has an orthogonal direction queued that is clear
+    while (remainingQueue.length > 0) {
+      const candidate = remainingQueue[0];
+      const candOffset = getDirectionOffset(candidate);
+      const candTarget = { x: head.x + candOffset.x, y: head.y + candOffset.y };
+      if (isCellClear(candTarget, currentObstacles, currentState.snake, currentState.gridWidth, currentState.gridHeight, currentState.warpGate)) {
+        selectedDeflection = remainingQueue.shift()!;
+        break;
+      } else {
+        remainingQueue.shift(); // Discard obstructed turn
+      }
     }
-    nextHeadX = wrappedX;
-    nextHeadY = wrappedY;
-  } else {
-    // Classic and Rush: walls are solid boundaries
-    if (
-      nextHeadX < 0 ||
-      nextHeadX >= currentState.gridWidth ||
-      nextHeadY < 0 ||
-      nextHeadY >= currentState.gridHeight
-    ) {
-      wallCollision = true;
+
+    // If no queued turn was usable, evaluate the two orthogonal directions
+    if (!selectedDeflection) {
+      selectedDeflection = findSafeDeflectionDirection(
+        head,
+        nextDirection,
+        currentObstacles,
+        currentState.snake,
+        currentState.gridWidth,
+        currentState.gridHeight,
+        currentState.warpGate
+      );
+    }
+
+    if (selectedDeflection) {
+      nextDirection = selectedDeflection;
+      events.push('turn');
+    }
+
+    // Snake halts for this tick: body segments hold positions
+    const haltedSnake = currentState.snake.map(s => ({ ...s }));
+    const prevSnakeCopy = currentState.snake.map(s => ({ ...s }));
+    const isSlowMoActive = nowMs < currentPowerUps.slowMoUntil;
+    const newTickInterval = calculateTickInterval(
+      currentState.mode,
+      currentState.level,
+      isSlowMoActive
+    );
+
+    return {
+      state: {
+        ...currentState,
+        snake: haltedSnake,
+        prevSnake: prevSnakeCopy,
+        direction: nextDirection,
+        queuedDirections: remainingQueue,
+        powerUps: currentPowerUps,
+        shieldsUsed: newShieldsUsed,
+        lastTickTime: nowMs,
+        tickIntervalMs: newTickInterval,
+        obstacles: currentObstacles,
+        maxCombo: newMaxCombo,
+      },
+      events,
+      shieldAbsorbed: true,
+    };
+  };
+
+  const warpGate = currentState.warpGate;
+
+  // PRIORITY 1: Obstacle Collisions (walls, barriers, hazards)
+  let hitObstacle: Obstacle | undefined;
+  for (let i = 0; i < currentObstacles.length; i++) {
+    const ob = currentObstacles[i];
+    if (ob.x === nextHeadX && ob.y === nextHeadY) {
+      hitObstacle = ob;
+      break;
     }
   }
 
-  // Power-up shield vs Wall collision
-  let currentPowerUps = { ...currentState.powerUps };
-  if (wallCollision) {
+  if (hitObstacle) {
+    if (hitObstacle.type === 'barrier') {
+      if (currentPowerUps.hasShield) {
+        currentPowerUps.hasShield = false;
+        shieldAbsorbed = true;
+        newShieldsUsed++;
+        events.push('shield_absorb', 'bonus');
+        currentObstacles = currentObstacles.filter(o => o.id !== hitObstacle!.id);
+        obstacleScoreBonus += 50;
+        // Snake advances into barrier's previous coordinate
+      } else {
+        return {
+          state: {
+            ...currentState,
+            isAlive: false,
+            deathReason: 'wall',
+          },
+          events: ['game_over'],
+        };
+      }
+    } else if (hitObstacle.type === 'hazard') {
+      if (currentPowerUps.hasShield) {
+        currentPowerUps.hasShield = false;
+        shieldAbsorbed = true;
+        newShieldsUsed++;
+        events.push('shield_absorb');
+        currentObstacles = currentObstacles.filter(o => o.id !== hitObstacle!.id);
+        // Snake advances safely without segment loss
+      } else {
+        if (currentState.snake.length <= 3) {
+          return {
+            state: {
+              ...currentState,
+              isAlive: false,
+              deathReason: 'wall',
+            },
+            events: ['game_over'],
+          };
+        } else {
+          // Snake length > 3: advances into hazard coordinate and triggers segment severing
+          isHazardHitWithoutShield = true;
+        }
+      }
+    } else if (hitObstacle.type === 'wall') {
+      if (currentPowerUps.hasShield) {
+        return executeKineticDeflection();
+      } else {
+        return {
+          state: {
+            ...currentState,
+            isAlive: false,
+            deathReason: 'wall',
+          },
+          events: ['game_over'],
+        };
+      }
+    }
+  }
+
+  // PRIORITY 3: Inactive Warp Gate (Impassable solid obstacle)
+  if (warpGate && !warpGate.active && nextHeadX === warpGate.x && nextHeadY === warpGate.y) {
     if (currentPowerUps.hasShield) {
-      // Quantum Phase: Consume shield and warp through to opposite boundary
-      currentPowerUps.hasShield = false;
-      shieldAbsorbed = true;
-      newShieldsUsed++;
-      newWallsWrapped++;
-      events.push('shield_absorb');
-      nextHeadX = (nextHeadX + currentState.gridWidth) % currentState.gridWidth;
-      nextHeadY = (nextHeadY + currentState.gridHeight) % currentState.gridHeight;
+      return executeKineticDeflection();
     } else {
       return {
         state: {
@@ -282,10 +537,72 @@ export function stepGame(
     }
   }
 
-  // 3. Self-Collision (with Tail-Vacating Rule)
-  // If snake is not growing on this step, the tail segment will vacate this cell on this step.
-  // Therefore, moving into the tail position is legal when pendingGrowth === 0.
-  const tailWillVacate = currentState.pendingGrowth === 0;
+  // PRIORITY 4: Outer Boundary Wall Collision & Wraparound
+  let wallCollision = false;
+  if (currentState.mode === 'zen') {
+    const wrappedX = (nextHeadX + currentState.gridWidth) % currentState.gridWidth;
+    const wrappedY = (nextHeadY + currentState.gridHeight) % currentState.gridHeight;
+    if (wrappedX !== nextHeadX || wrappedY !== nextHeadY) {
+      newWallsWrapped++;
+    }
+    nextHeadX = wrappedX;
+    nextHeadY = wrappedY;
+  } else if (currentState.mode === 'maze') {
+    // Maze Mode: outer boundaries are impassable solid walls
+    if (
+      nextHeadX < 0 ||
+      nextHeadX >= currentState.gridWidth ||
+      nextHeadY < 0 ||
+      nextHeadY >= currentState.gridHeight
+    ) {
+      if (currentPowerUps.hasShield) {
+        return executeKineticDeflection();
+      } else {
+        return {
+          state: {
+            ...currentState,
+            isAlive: false,
+            deathReason: 'wall',
+          },
+          events: ['game_over'],
+        };
+      }
+    }
+  } else {
+    // Classic and Rush: solid boundaries with Quantum Phase shield
+    if (
+      nextHeadX < 0 ||
+      nextHeadX >= currentState.gridWidth ||
+      nextHeadY < 0 ||
+      nextHeadY >= currentState.gridHeight
+    ) {
+      wallCollision = true;
+    }
+
+    if (wallCollision) {
+      if (currentPowerUps.hasShield) {
+        currentPowerUps.hasShield = false;
+        shieldAbsorbed = true;
+        newShieldsUsed++;
+        newWallsWrapped++;
+        events.push('shield_absorb');
+        nextHeadX = (nextHeadX + currentState.gridWidth) % currentState.gridWidth;
+        nextHeadY = (nextHeadY + currentState.gridHeight) % currentState.gridHeight;
+      } else {
+        return {
+          state: {
+            ...currentState,
+            isAlive: false,
+            deathReason: 'wall',
+          },
+          events: ['game_over'],
+        };
+      }
+    }
+  }
+
+  // PRIORITY 5: Self-Collision (with Tail-Vacating Rule)
+  const tailWillVacate = currentState.pendingGrowth === 0 && !isHazardHitWithoutShield;
   const segmentsToCheck = tailWillVacate
     ? currentState.snake.slice(0, -1)
     : currentState.snake;
@@ -312,7 +629,45 @@ export function stepGame(
     }
   }
 
-  // 4. Clean Expired Food Items
+  // PRIORITY 5: Active Warp Gate (Stage Clear Condition)
+  // May occur ONLY when destination gate cell is otherwise valid and unobstructed:
+  // - Never bypasses obstacle collision (!hitObstacle)
+  // - Never bypasses self-collision (!hitSelf)
+  // - Never bypasses boundary collision (!wallCollision)
+  if (
+    warpGate &&
+    warpGate.active &&
+    nextHeadX === warpGate.x &&
+    nextHeadY === warpGate.y &&
+    !hitObstacle &&
+    !hitSelf &&
+    !wallCollision
+  ) {
+    events.push('level_up', 'bonus');
+    const newHead: GridCoord = { x: nextHeadX, y: nextHeadY };
+    const prevSnakeCopy = currentState.snake.map(s => ({ ...s }));
+    const newSnake: GridCoord[] = [newHead, ...currentState.snake.slice(0, -1)];
+    const isMazeMode = currentState.mode === 'maze';
+    const isFinalStage = isMazeMode && currentState.stage >= 6;
+    return {
+      state: {
+        ...currentState,
+        snake: newSnake,
+        prevSnake: prevSnakeCopy,
+        direction: nextDirection,
+        queuedDirections: remainingQueue,
+        isVictory: true,
+        isStageClear: isMazeMode,
+        isCampaignComplete: isFinalStage,
+        isAlive: false,
+        stageFoodEaten: newStageFoodEaten,
+        maxCombo: newMaxCombo,
+      },
+      events,
+    };
+  }
+
+  // Clean Expired Food Items
   const activeFoods = currentState.food.filter(item => {
     if (item.expiresAt && nowMs > item.expiresAt) {
       return false;
@@ -320,10 +675,10 @@ export function stepGame(
     return true;
   });
 
-  // 5. Food & Power-up Collection
+  // Food & Power-up Collection
   let eatenFood: FoodItem | undefined;
   const remainingFoods: FoodItem[] = [];
-  let scoreGain = 0;
+  let scoreGain = obstacleScoreBonus;
   let newPendingGrowth = currentState.pendingGrowth;
   let newFoodEaten = currentState.foodEaten;
   let newBonusEaten = currentState.bonusEaten;
@@ -357,6 +712,7 @@ export function stepGame(
     scoreGain += eatenFood.points * currentCombo;
     if (eatenFood.type === 'normal') {
       newFoodEaten++;
+      newStageFoodEaten = Math.min(10, newStageFoodEaten + 1);
       newPendingGrowth++;
       events.push('eat');
     } else if (eatenFood.type === 'bonus') {
@@ -373,24 +729,55 @@ export function stepGame(
     }
   }
 
-  // 6. Level Calculation
+  // maxCombo tracking: records highest combo reached during this run
+  newMaxCombo = Math.max(newMaxCombo, currentCombo);
+
+  // Level Calculation
   const newLevel = Math.floor(newFoodEaten / FOOD_PROGRESSION_PER_LEVEL) + 1;
   if (newLevel > currentState.level) {
     events.push('level_up');
   }
 
-  // 7. Update Snake Segments
+  // Update Snake Segments & Hazard Tail Severing
   const newHead: GridCoord = { x: nextHeadX, y: nextHeadY };
-  const prevSnakeCopy = currentState.snake.map(s => ({ ...s }));
   const newSnake: GridCoord[] = [newHead, ...currentState.snake];
 
-  if (newPendingGrowth > 0) {
-    newPendingGrowth--;
+  if (isHazardHitWithoutShield) {
+    // Unshielded hazard penalty: clear pending growth, remove 2 additional tail segments
+    newPendingGrowth = 0;
+    // Beyond normal movement (which removes 1 tail), pop 2 additional segments (total 3 pops)
+    for (let r = 0; r < 3; r++) {
+      if (newSnake.length > 1) {
+        newSnake.pop();
+      }
+    }
   } else {
-    newSnake.pop(); // Remove tail
+    if (newPendingGrowth > 0) {
+      newPendingGrowth--;
+    } else {
+      newSnake.pop(); // Normal tail pop
+    }
+  }
+
+  // PrevSnake alignment matching newSnake.length
+  const prevSnakeCopy = currentState.snake.slice(0, newSnake.length).map(s => ({ ...s }));
+  while (prevSnakeCopy.length < newSnake.length) {
+    prevSnakeCopy.push({ ...newSnake[prevSnakeCopy.length] });
+  }
+
+  // Calculate final score with hazard deduction (never below 0)
+  let finalScore = currentState.score + scoreGain;
+  if (isHazardHitWithoutShield) {
+    finalScore = Math.max(0, finalScore - 25);
   }
 
   const newMaxLength = Math.max(currentState.maxLength, newSnake.length);
+
+  // Check Warp Gate activation in Maze Mode
+  let updatedWarpGate = currentState.warpGate ? { ...currentState.warpGate } : null;
+  if (updatedWarpGate && currentState.mode === 'maze' && newStageFoodEaten >= 10) {
+    updatedWarpGate.active = true;
+  }
 
   // Check victory (board completely filled)
   if (newSnake.length >= currentState.gridWidth * currentState.gridHeight) {
@@ -399,7 +786,7 @@ export function stepGame(
         ...currentState,
         snake: newSnake,
         prevSnake: prevSnakeCopy,
-        score: currentState.score + scoreGain,
+        score: finalScore,
         foodEaten: newFoodEaten,
         bonusEaten: newBonusEaten,
         maxLength: newMaxLength,
@@ -410,16 +797,25 @@ export function stepGame(
         powerUpsCollected: newPowerUpsCollected,
         isVictory: true,
         isAlive: false,
+        obstacles: currentObstacles,
+        warpGate: updatedWarpGate,
+        stage: newStage,
+        stageFoodEaten: newStageFoodEaten,
+        maxCombo: newMaxCombo,
       },
       events: ['new_record'],
     };
   }
 
-  // 8. Respawn Food & Power-ups
+  // Respawn Food & Power-ups (ensuring no overlap with snake, obstacles, or warpGate)
   const occupiedForSpawn: GridCoord[] = [
     ...newSnake,
     ...remainingFoods.map(f => f.position),
+    ...currentObstacles.map(o => ({ x: o.x, y: o.y })),
   ];
+  if (updatedWarpGate) {
+    occupiedForSpawn.push({ x: updatedWarpGate.x, y: updatedWarpGate.y });
+  }
 
   // If no normal food exists on board, spawn one
   const hasNormalFood = remainingFoods.some(f => f.type === 'normal');
@@ -491,7 +887,7 @@ export function stepGame(
     }
   }
 
-  // 9. Slow-mo check
+  // Slow-mo check
   const isSlowMoActive = nowMs < currentPowerUps.slowMoUntil;
   const newTickInterval = calculateTickInterval(
     currentState.mode,
@@ -507,7 +903,7 @@ export function stepGame(
     queuedDirections: remainingQueue,
     pendingGrowth: newPendingGrowth,
     food: remainingFoods,
-    score: currentState.score + scoreGain,
+    score: finalScore,
     level: newLevel,
     foodEaten: newFoodEaten,
     bonusEaten: newBonusEaten,
@@ -520,6 +916,11 @@ export function stepGame(
     powerUpsCollected: newPowerUpsCollected,
     lastTickTime: nowMs,
     tickIntervalMs: newTickInterval,
+    obstacles: currentObstacles,
+    warpGate: updatedWarpGate,
+    stage: newStage,
+    stageFoodEaten: newStageFoodEaten,
+    maxCombo: newMaxCombo,
   };
 
   return {

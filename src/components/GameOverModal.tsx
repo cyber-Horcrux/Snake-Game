@@ -10,6 +10,7 @@ interface GameOverModalProps {
   onPlayAgain: () => void;
   onMainMenu: () => void;
   onOpenStats?: () => void;
+  onCampaignSelect?: () => void;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
@@ -19,11 +20,15 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onPlayAgain,
   onMainMenu,
   onOpenStats,
+  onCampaignSelect,
 }) => {
   const [copied, setCopied] = useState(false);
+  const isMaze = state.mode === 'maze';
 
   const handleShare = async () => {
-    const text = `I scored ${state.score} in Neon Snake (${state.mode.toUpperCase()} Mode)! Can you beat my record?`;
+    const text = isMaze
+      ? `I scored ${state.score} in Neon Snake (Maze Campaign Stage ${state.stage})! Can you beat my run?`
+      : `I scored ${state.score} in Neon Snake (${state.mode.toUpperCase()} Mode)! Can you beat my record?`;
     if (navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(text);
@@ -37,7 +42,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
 
   const getDeathMessage = () => {
     if (state.isVictory) return 'GRID OVERFLOW // COMPLETE ARENA SYNTHESIS';
-    if (state.deathReason === 'wall') return 'FATAL IMPACT // BOUNDARY COLLISION';
+    if (state.deathReason === 'wall') return 'FATAL IMPACT // BOUNDARY OR OBSTACLE COLLISION';
     if (state.deathReason === 'self') return 'FATAL OVERLAP // NEURAL SELF-COLLISION';
     return 'SYSTEM SIGNAL LOST';
   };
@@ -73,7 +78,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             color: accentColor,
           }}
         >
-          {state.mode} RUN TERMINATED
+          {isMaze ? `MAZE STAGE ${state.stage || 1} FAILED` : `${state.mode} RUN TERMINATED`}
         </div>
 
         {/* Title */}
@@ -97,22 +102,24 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         {/* Big Score Display */}
         <div className="w-full bg-[#05070E] border border-[#161B2E] rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 flex flex-col items-center shrink-0">
           <span className="text-[10px] sm:text-xs text-[#79869C] font-bold uppercase tracking-widest">
-            Final Score
+            {isMaze ? 'Campaign Score' : 'Final Score'}
           </span>
           <span className="text-3xl xs:text-4xl sm:text-5xl font-black font-mono-num text-[#00F5FF] leading-none my-1.5 drop-shadow-[0_0_15px_rgba(0,245,255,0.4)]">
             {state.score}
           </span>
           <span className="text-[11px] sm:text-xs text-[#79869C] font-mono">
-            Mode Best: <strong className="text-[#F0F6FC] font-mono-num">{bestScore}</strong>
+            {isMaze ? 'Campaign Best' : 'Mode Best'}: <strong className="text-[#F0F6FC] font-mono-num">{bestScore}</strong>
           </span>
         </div>
 
         {/* Detailed Run Statistics */}
         <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 w-full mb-4 sm:mb-5 shrink-0">
           <div className="bg-[#05070E] border border-[#161B2E] rounded-xl p-2 sm:p-2.5 flex flex-col items-center">
-            <span className="text-[9px] sm:text-[10px] text-[#79869C] font-bold uppercase">Food</span>
+            <span className="text-[9px] sm:text-[10px] text-[#79869C] font-bold uppercase">
+              {isMaze ? 'Cores' : 'Food'}
+            </span>
             <span className="text-base sm:text-lg font-bold font-mono-num text-[#10FFA0] mt-0.5">
-              {state.foodEaten}
+              {isMaze ? `${state.stageFoodEaten || 0}/10` : state.foodEaten}
             </span>
           </div>
 
@@ -124,9 +131,11 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           </div>
 
           <div className="bg-[#05070E] border border-[#161B2E] rounded-xl p-2 sm:p-2.5 flex flex-col items-center">
-            <span className="text-[9px] sm:text-[10px] text-[#79869C] font-bold uppercase">Level</span>
+            <span className="text-[9px] sm:text-[10px] text-[#79869C] font-bold uppercase">
+              {isMaze ? 'Stage' : 'Level'}
+            </span>
             <span className="text-base sm:text-lg font-bold font-mono-num text-[#00F5FF] mt-0.5">
-              {state.level}
+              {isMaze ? `${state.stage || 1}/6` : state.level}
             </span>
           </div>
         </div>
@@ -140,29 +149,40 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             className="w-full py-2.5 sm:py-3.5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider text-[#05070E] bg-gradient-to-r from-[#00F5FF] to-[#7928CA] hover:brightness-110 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_24px_rgba(0,245,255,0.4)] border border-white/20"
           >
             <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span>PLAY AGAIN [ENTER]</span>
+            <span>{isMaze ? 'RETRY STAGE [ENTER]' : 'PLAY AGAIN [ENTER]'}</span>
           </button>
 
-          <div className={`grid ${onOpenStats ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 sm:gap-2 w-full`}>
-            <button
-              type="button"
-              onClick={handleShare}
-              className="py-2 sm:py-2.5 rounded-xl text-xs font-bold text-[#F0F6FC] bg-[#05070E] hover:bg-[#161B2E] border border-[#161B2E] hover:border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-[#10FFA0]" />
-                  <span className="text-[#10FFA0]">COPIED</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-3.5 h-3.5 text-[#79869C]" />
-                  <span>SHARE</span>
-                </>
-              )}
-            </button>
+          <div className={`grid ${isMaze && onCampaignSelect ? 'grid-cols-3' : onOpenStats ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 sm:gap-2 w-full`}>
+            {isMaze && onCampaignSelect ? (
+              <button
+                type="button"
+                onClick={onCampaignSelect}
+                className="py-2 sm:py-2.5 rounded-xl text-xs font-bold text-[#F0F6FC] bg-[#05070E] hover:bg-[#161B2E] border border-[#161B2E] hover:border-[#9865FF]/60 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Trophy className="w-3.5 h-3.5 text-[#9865FF]" />
+                <span>STAGES</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleShare}
+                className="py-2 sm:py-2.5 rounded-xl text-xs font-bold text-[#F0F6FC] bg-[#05070E] hover:bg-[#161B2E] border border-[#161B2E] hover:border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#10FFA0]" />
+                    <span className="text-[#10FFA0]">COPIED</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5 text-[#79869C]" />
+                    <span>SHARE</span>
+                  </>
+                )}
+              </button>
+            )}
 
-            {onOpenStats && (
+            {onOpenStats && (!isMaze || !onCampaignSelect) && (
               <button
                 type="button"
                 onClick={onOpenStats}
@@ -170,6 +190,26 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
               >
                 <BarChart3 className="w-3.5 h-3.5 text-[#FFB800]" />
                 <span>DOSSIER</span>
+              </button>
+            )}
+
+            {isMaze && onCampaignSelect && (
+              <button
+                type="button"
+                onClick={handleShare}
+                className="py-2 sm:py-2.5 rounded-xl text-xs font-bold text-[#F0F6FC] bg-[#05070E] hover:bg-[#161B2E] border border-[#161B2E] hover:border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#10FFA0]" />
+                    <span className="text-[#10FFA0]">COPIED</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5 text-[#79869C]" />
+                    <span>SHARE</span>
+                  </>
+                )}
               </button>
             )}
 
@@ -187,3 +227,4 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
     </div>
   );
 };
+

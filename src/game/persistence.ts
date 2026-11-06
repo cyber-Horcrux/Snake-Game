@@ -2,7 +2,7 @@
  * Storage and Persistence Module
  * Robust schema validation, error handling, and fallback defaults.
  */
-import type { ControlMode, GameMode, GameSettings, ModeBestScores } from './types.ts';
+import type { ControlMode, GameMode, GameSettings, ModeBestScores, MazeProgress } from './types.ts';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from './constants.ts';
 
 export const DEFAULT_BEST_SCORES: ModeBestScores = {
@@ -163,3 +163,123 @@ export function saveSettings(settings: GameSettings, storage: StorageLike | null
     return false;
   }
 }
+
+// ==========================================
+// MAZE CAMPAIGN PROGRESS PERSISTENCE
+// ==========================================
+
+export const DEFAULT_MAZE_PROGRESS: MazeProgress = {
+  highestStageUnlocked: 1,
+  totalCampaignsWon: 0,
+  totalMazesCleared: 0,
+  bestCampaignScore: 0,
+};
+
+export function loadMazeProgress(storage: StorageLike | null = getBrowserStorage()): MazeProgress {
+  if (!storage) return { ...DEFAULT_MAZE_PROGRESS };
+
+  try {
+    const raw = storage.getItem(STORAGE_KEYS.MAZE_PROGRESS) || storage.getItem('neonsnake_maze_progress');
+    if (!raw) return { ...DEFAULT_MAZE_PROGRESS };
+
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) {
+      return { ...DEFAULT_MAZE_PROGRESS };
+    }
+
+    const rawStage = parsed.highestStageUnlocked;
+    const highestStageUnlocked =
+      typeof rawStage === 'number' && Number.isFinite(rawStage)
+        ? Math.max(1, Math.min(6, Math.floor(rawStage)))
+        : DEFAULT_MAZE_PROGRESS.highestStageUnlocked;
+
+    const rawWins = parsed.totalCampaignsWon;
+    const totalCampaignsWon =
+      typeof rawWins === 'number' && Number.isFinite(rawWins) && rawWins >= 0
+        ? Math.floor(rawWins)
+        : DEFAULT_MAZE_PROGRESS.totalCampaignsWon;
+
+    const rawCleared = parsed.totalMazesCleared;
+    const totalMazesCleared =
+      typeof rawCleared === 'number' && Number.isFinite(rawCleared) && rawCleared >= 0
+        ? Math.floor(rawCleared)
+        : DEFAULT_MAZE_PROGRESS.totalMazesCleared;
+
+    const rawBestScore = parsed.bestCampaignScore;
+    const bestCampaignScore =
+      typeof rawBestScore === 'number' && Number.isFinite(rawBestScore) && rawBestScore >= 0
+        ? Math.floor(rawBestScore)
+        : DEFAULT_MAZE_PROGRESS.bestCampaignScore;
+
+    return {
+      highestStageUnlocked,
+      totalCampaignsWon,
+      totalMazesCleared,
+      bestCampaignScore,
+    };
+  } catch {
+    return { ...DEFAULT_MAZE_PROGRESS };
+  }
+}
+
+export function saveMazeProgress(
+  progress: MazeProgress,
+  storage: StorageLike | null = getBrowserStorage()
+): boolean {
+  if (!storage) return false;
+
+  try {
+    const sanitized: MazeProgress = {
+      highestStageUnlocked: Math.max(1, Math.min(6, Math.floor(progress.highestStageUnlocked || 1))),
+      totalCampaignsWon: Math.max(0, Math.floor(progress.totalCampaignsWon || 0)),
+      totalMazesCleared: Math.max(0, Math.floor(progress.totalMazesCleared || 0)),
+      bestCampaignScore: Math.max(0, Math.floor(progress.bestCampaignScore || 0)),
+    };
+    storage.setItem(STORAGE_KEYS.MAZE_PROGRESS, JSON.stringify(sanitized));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function recordStageClear(
+  stageNumber: number,
+  runScore: number,
+  storage: StorageLike | null = getBrowserStorage()
+): MazeProgress {
+  const current = loadMazeProgress(storage);
+  const nextUnlock = Math.max(1, Math.min(6, stageNumber + 1));
+  const newHighest = Math.max(current.highestStageUnlocked, nextUnlock);
+  const newMazesCleared = current.totalMazesCleared + 1;
+  const isFinalStage = stageNumber >= 6;
+  const newWins = isFinalStage ? current.totalCampaignsWon + 1 : current.totalCampaignsWon;
+  const newBestScore = Math.max(current.bestCampaignScore, Math.floor(runScore || 0));
+
+  const updated: MazeProgress = {
+    highestStageUnlocked: newHighest,
+    totalCampaignsWon: newWins,
+    totalMazesCleared: newMazesCleared,
+    bestCampaignScore: newBestScore,
+  };
+
+  saveMazeProgress(updated, storage);
+  return updated;
+}
+
+export function recordCampaignCompletion(
+  finalScore: number,
+  storage: StorageLike | null = getBrowserStorage()
+): MazeProgress {
+  return recordStageClear(6, finalScore, storage);
+}
+
+export function resetMazeProgress(storage: StorageLike | null = getBrowserStorage()): boolean {
+  if (!storage) return false;
+  try {
+    storage.setItem(STORAGE_KEYS.MAZE_PROGRESS, JSON.stringify(DEFAULT_MAZE_PROGRESS));
+    return true;
+  } catch {
+    return false;
+  }
+}
+

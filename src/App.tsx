@@ -5,6 +5,7 @@ import type {
   GameEngineState,
   GameMode,
   GameSettings,
+  MazeProgress,
   ModeBestScores,
 } from './game/types.ts';
 import {
@@ -12,6 +13,11 @@ import {
   queueDirection,
   stepGame,
 } from './game/engine.ts';
+import {
+  createInitialMazeState,
+  advanceMazeStage,
+  getMazeStage,
+} from './game/mazes.ts';
 import { NeonRenderer } from './game/renderer.ts';
 import { soundEngine } from './game/audio.ts';
 import {
@@ -21,7 +27,10 @@ import {
 } from './game/controls.ts';
 import {
   loadBestScores,
+  loadMazeProgress,
   loadSettings,
+  recordStageClear,
+  recordCampaignCompletion,
   resetBestScores,
   saveSettings,
   updateBestScore,
@@ -33,6 +42,9 @@ import { GameOverModal } from './components/GameOverModal.tsx';
 import { HowToPlayModal } from './components/HowToPlayModal.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
 import { StatsModal } from './components/StatsModal.tsx';
+import { MazeStageSelectModal } from './components/MazeStageSelectModal.tsx';
+import { StageClearModal } from './components/StageClearModal.tsx';
+import { CampaignVictoryModal } from './components/CampaignVictoryModal.tsx';
 import { TouchDPad } from './components/TouchDPad.tsx';
 import {
   loadStats,
@@ -48,6 +60,7 @@ export default function App() {
   const [selectedMode, setSelectedMode] = useState<GameMode>('classic');
   const selectedModeRef = useRef<GameMode>('classic');
   const [bestScores, setBestScores] = useState<ModeBestScores>(() => loadBestScores());
+  const [mazeProgress, setMazeProgress] = useState<MazeProgress>(() => loadMazeProgress());
   const [settings, setSettings] = useState<GameSettings>(() => loadSettings());
   const [lifetimeStats, setLifetimeStats] = useState(() => loadStats());
   const [achievements, setAchievements] = useState(() => loadAchievements());
@@ -55,6 +68,10 @@ export default function App() {
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showStageSelect, setShowStageSelect] = useState(false);
+
+  // Single-recording guard against duplicate stage clears or campaign wins
+  const recordedClearRef = useRef<string | null>(null);
 
   // Reactive HUD state so UI updates as soon as food is collected or stats change
   const [hudState, setHudState] = useState({
@@ -65,6 +82,10 @@ export default function App() {
     hasShield: false,
     slowMoUntil: 0,
     combo: 1,
+    stage: 1,
+    stageName: 'THE INITIATION',
+    stageFoodEaten: 0,
+    isGateActive: false,
   });
 
   // Simulation Refs (Decoupled from React 60fps loop)
@@ -82,7 +103,7 @@ export default function App() {
   screenRef.current = screen;
   settingsRef.current = settings;
   selectedModeRef.current = selectedMode;
-  modalsOpenRef.current = showHowToPlay || showSettings || showStats;
+  modalsOpenRef.current = showHowToPlay || showSettings || showStats || showStageSelect;
 
   // Swipe Tracker & Touch State
   const swipeTrackerRef = useRef<SwipeTracker>(new SwipeTracker(24));
@@ -118,6 +139,39 @@ export default function App() {
     setScreen('gameover');
   }, []);
 
+  // Handle stage clear in Maze campaign
+  const handleStageClear = useCallback((state: GameEngineState) => {
+    screenRef.current = 'stage_clear';
+    soundEngine.play('level_up');
+    const clearKey = `stage-${state.stage}-score-${state.score}`;
+    if (recordedClearRef.current !== clearKey) {
+      recordedClearRef.current = clearKey;
+      const updated = recordStageClear(state.stage, state.score);
+      setMazeProgress(updated);
+    }
+    setScreen('stage_clear');
+  }, []);
+
+  // Handle final campaign victory in Maze mode
+  const handleCampaignVictory = useCallback((state: GameEngineState) => {
+    screenRef.current = 'campaign_victory';
+    soundEngine.play('achievement');
+    const victoryKey = `campaign-score-${state.score}`;
+    if (recordedClearRef.current !== victoryKey) {
+      recordedClearRef.current = victoryKey;
+      const updated = recordCampaignCompletion(state.score);
+      setMazeProgress(updated);
+      const { isNewBest } = updateBestScore('maze', state.score);
+      if (isNewBest) {
+        setBestScores(loadBestScores());
+      }
+      const { stats: updatedStats, newlyUnlocked } = recordRunCompletion(state);
+      setLifetimeStats(updatedStats);
+      setAchievements(loadAchievements());
+    }
+    setScreen('campaign_victory');
+  }, []);
+
   // Direction handler
   const handleSteer = useCallback((dir: Direction) => {
     if (screenRef.current === 'playing') {
@@ -125,9 +179,84 @@ export default function App() {
     }
   }, []);
 
-  // Start / Restart game
+  // Launch a specific curated Maze stage
+  const startMazeStage = useCallback((stageNumber: number = 1) => {
+    screenRef.current = 'playing';
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setSelectedMode('maze');
+    selectedModeRef.current = 'maze';
+    const targetStage = Math.max(1, Math.min(6, Math.floor(stageNumber)));
+    const newState = createInitialMazeState(targetStage);
+    gameStateRef.current = newState;
+    accumulatorRef.current = 0;
+    lastTimeRef.current = performance.now();
+    rendererRef.current.particles.reset();
+    rendererRef.current.reset();
+    setIsNewRecord(false);
+    setShowStageSelect(false);
+    recordedClearRef.current = null;
+    const cfg = getMazeStage(targetStage);
+    setHudState({
+      score: 0,
+      level: 1,
+      length: newState.snake.length,
+      mode: 'maze',
+      hasShield: false,
+      slowMoUntil: 0,
+      combo: 1,
+      stage: targetStage,
+      stageName: cfg.name,
+      stageFoodEaten: 0,
+      isGateActive: false,
+    });
+    setScreen('playing');
+    soundEngine.play('click');
+  }, []);
+
+  // Advance to next stage from StageClearModal
+  const handleContinueNextStage = useCallback(() => {
+    if (gameStateRef.current.stage >= 6) {
+      handleCampaignVictory(gameStateRef.current);
+      return;
+    }
+    const progression = advanceMazeStage(gameStateRef.current);
+    if (progression.isCampaignWon) {
+      handleCampaignVictory(progression.state);
+      return;
+    }
+    gameStateRef.current = progression.state;
+    accumulatorRef.current = 0;
+    lastTimeRef.current = performance.now();
+    rendererRef.current.reset();
+    recordedClearRef.current = null;
+    const cfg = getMazeStage(progression.state.stage);
+    setHudState({
+      score: progression.state.score,
+      level: progression.state.level,
+      length: progression.state.snake.length,
+      mode: 'maze',
+      hasShield: progression.state.powerUps.hasShield,
+      slowMoUntil: progression.state.powerUps.slowMoUntil,
+      combo: 1,
+      stage: progression.state.stage,
+      stageName: cfg.name,
+      stageFoodEaten: 0,
+      isGateActive: false,
+    });
+    screenRef.current = 'playing';
+    setScreen('playing');
+    soundEngine.play('click');
+  }, [handleCampaignVictory]);
+
+  // Start / Restart game (Classic, Zen, Rush, or Maze)
   const startGame = useCallback((mode?: GameMode) => {
     const targetMode = mode || selectedModeRef.current;
+    if (targetMode === 'maze') {
+      startMazeStage(1);
+      return;
+    }
     screenRef.current = 'playing';
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -137,7 +266,10 @@ export default function App() {
     accumulatorRef.current = 0;
     lastTimeRef.current = performance.now();
     rendererRef.current.particles.reset();
+    rendererRef.current.reset();
     setIsNewRecord(false);
+    setShowStageSelect(false);
+    recordedClearRef.current = null;
     setHudState({
       score: 0,
       level: 1,
@@ -146,10 +278,15 @@ export default function App() {
       hasShield: false,
       slowMoUntil: 0,
       combo: 1,
+      stage: 1,
+      stageName: '',
+      stageFoodEaten: 0,
+      isGateActive: false,
     });
     setScreen('playing');
     soundEngine.play('click');
-  }, []);
+  }, [startMazeStage]);
+
 
   // Resume game
   const resumeGame = useCallback(() => {
@@ -253,13 +390,14 @@ export default function App() {
 
       const key = e.key;
 
-      // When modals (How to Play, Settings, Pilot Dossier) are open, intercept keys
+      // When modals (How to Play, Settings, Pilot Dossier, Stage Select) are open, intercept keys
       if (modalsOpenRef.current) {
         if (key === 'Escape') {
           e.preventDefault();
           setShowHowToPlay(false);
           setShowSettings(false);
           setShowStats(false);
+          setShowStageSelect(false);
         }
         return;
       }
@@ -274,7 +412,29 @@ export default function App() {
       if (screenRef.current === 'title') {
         if (key === 'Enter' || key === ' ') {
           e.preventDefault();
-          startGame();
+          if (selectedModeRef.current === 'maze') {
+            setShowStageSelect(true);
+          } else {
+            startGame();
+          }
+        }
+        return;
+      }
+
+      // Stage clear continue
+      if (screenRef.current === 'stage_clear') {
+        if (key === 'Enter' || key === ' ') {
+          e.preventDefault();
+          handleContinueNextStage();
+        }
+        return;
+      }
+
+      // Campaign victory restart
+      if (screenRef.current === 'campaign_victory') {
+        if (key === 'Enter' || key === ' ' || key === 'r' || key === 'R') {
+          e.preventDefault();
+          startMazeStage(1);
         }
         return;
       }
@@ -283,7 +443,11 @@ export default function App() {
       if (screenRef.current === 'gameover') {
         if (key === 'Enter' || key === ' ' || key === 'r' || key === 'R') {
           e.preventDefault();
-          startGame();
+          if (gameStateRef.current.mode === 'maze') {
+            startMazeStage(gameStateRef.current.stage);
+          } else {
+            startGame();
+          }
         }
         return;
       }
@@ -332,7 +496,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSteer, startGame, resumeGame, pauseGame, toggleMute]);
+  }, [handleSteer, startGame, startMazeStage, handleContinueNextStage, resumeGame, pauseGame, toggleMute]);
 
   const shouldAcceptSwipes = shouldAcceptSwipeControls(settings.controlMode);
   const shouldAcceptSwipesRef = useRef(shouldAcceptSwipes);
@@ -465,6 +629,10 @@ export default function App() {
               hasShield: result.state.powerUps.hasShield,
               slowMoUntil: result.state.powerUps.slowMoUntil,
               combo: result.state.combo || 1,
+              stage: result.state.stage,
+              stageName: result.state.mode === 'maze' ? getMazeStage(result.state.stage).name : '',
+              stageFoodEaten: result.state.stageFoodEaten,
+              isGateActive: result.state.warpGate?.active || false,
             });
           } else if (result.state.combo === 1) {
             setHudState(prev => (prev.combo !== 1 ? { ...prev, combo: 1 } : prev));
@@ -484,6 +652,22 @@ export default function App() {
           }
 
           if (!result.state.isAlive || result.state.isVictory) {
+            // Maze Mode: Stage Clear or Campaign Victory
+            if (result.state.mode === 'maze' && result.state.isStageClear) {
+              if (result.state.warpGate) {
+                const gx = (result.state.warpGate.x + 0.5) * (canvas.width / result.state.gridWidth);
+                const gy = (result.state.warpGate.y + 0.5) * (canvas.height / result.state.gridHeight);
+                rendererRef.current.spawnWarpEntry(gx, gy);
+              }
+              if (result.state.isCampaignComplete) {
+                handleCampaignVictory(result.state);
+              } else {
+                handleStageClear(result.state);
+              }
+              break;
+            }
+
+            // Normal death / victory
             const head = result.state.snake[0];
             const px = (head.x + 0.5) * (canvas.width / result.state.gridWidth);
             const py = (head.y + 0.5) * (canvas.height / result.state.gridHeight);
@@ -519,7 +703,7 @@ export default function App() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [handleGameOver]);
+  }, [handleGameOver, handleStageClear, handleCampaignVictory]);
 
   // Canvas Resolution & ResizeObserver with dynamic dimension calculation
   useEffect(() => {
@@ -589,15 +773,19 @@ export default function App() {
         <div className="w-full shrink-0 z-20 px-2 sm:px-4 pt-1 sm:pt-2">
           <HeaderHUD
             score={hudState.score}
-            bestScore={bestScores[hudState.mode]}
+            bestScore={hudState.mode === 'maze' ? (mazeProgress.bestCampaignScore || 0) : bestScores[hudState.mode]}
             level={hudState.level}
             length={hudState.length}
             mode={hudState.mode}
             hasShield={hudState.hasShield}
             slowMoUntil={hudState.slowMoUntil}
             combo={hudState.combo}
+            stage={hudState.stage}
+            stageName={hudState.stageName}
+            stageFoodEaten={hudState.stageFoodEaten}
+            isGateActive={hudState.isGateActive}
             onPause={pauseGame}
-            onRestart={() => startGame(hudState.mode)}
+            onRestart={() => (hudState.mode === 'maze' ? startMazeStage(hudState.stage) : startGame(hudState.mode))}
             onToggleMute={toggleMute}
             sfxEnabled={settings.audio.sfxEnabled}
           />
@@ -654,7 +842,9 @@ export default function App() {
           selectedMode={selectedMode}
           onSelectMode={setSelectedMode}
           bestScores={bestScores}
-          onStartGame={() => startGame(selectedMode)}
+          mazeProgress={mazeProgress}
+          onStartGame={() => (selectedMode === 'maze' ? setShowStageSelect(true) : startGame(selectedMode))}
+          onOpenStageSelect={() => setShowStageSelect(true)}
           onOpenHowToPlay={() => setShowHowToPlay(true)}
           onOpenSettings={() => setShowSettings(true)}
           onOpenStats={() => setShowStats(true)}
@@ -666,9 +856,9 @@ export default function App() {
       {screen === 'paused' && (
         <PauseModal
           state={gameStateRef.current}
-          bestScore={bestScores[gameStateRef.current.mode]}
+          bestScore={gameStateRef.current.mode === 'maze' ? (mazeProgress.bestCampaignScore || 0) : bestScores[gameStateRef.current.mode]}
           onResume={resumeGame}
-          onRestart={() => startGame(gameStateRef.current.mode)}
+          onRestart={() => (gameStateRef.current.mode === 'maze' ? startMazeStage(gameStateRef.current.stage) : startGame(gameStateRef.current.mode))}
           onMainMenu={returnToMainMenu}
         />
       )}
@@ -676,13 +866,51 @@ export default function App() {
       {screen === 'gameover' && (
         <GameOverModal
           state={gameStateRef.current}
-          bestScore={bestScores[gameStateRef.current.mode]}
+          bestScore={gameStateRef.current.mode === 'maze' ? (mazeProgress.bestCampaignScore || 0) : bestScores[gameStateRef.current.mode]}
           isNewRecord={isNewRecord}
-          onPlayAgain={() => startGame(gameStateRef.current.mode)}
+          onPlayAgain={() => (gameStateRef.current.mode === 'maze' ? startMazeStage(gameStateRef.current.stage) : startGame(gameStateRef.current.mode))}
           onMainMenu={returnToMainMenu}
           onOpenStats={() => setShowStats(true)}
+          onCampaignSelect={() => {
+            setScreen('title');
+            setShowStageSelect(true);
+          }}
         />
       )}
+
+      {screen === 'stage_clear' && (
+        <StageClearModal
+          state={gameStateRef.current}
+          onContinue={handleContinueNextStage}
+          onCampaignSelect={() => {
+            setScreen('title');
+            setShowStageSelect(true);
+          }}
+          onMainMenu={returnToMainMenu}
+        />
+      )}
+
+      {screen === 'campaign_victory' && (
+        <CampaignVictoryModal
+          state={gameStateRef.current}
+          progress={mazeProgress}
+          onReplayCampaign={() => startMazeStage(1)}
+          onCampaignSelect={() => {
+            setScreen('title');
+            setShowStageSelect(true);
+          }}
+          onMainMenu={returnToMainMenu}
+        />
+      )}
+
+      {showStageSelect && (
+        <MazeStageSelectModal
+          progress={mazeProgress}
+          onSelectStage={startMazeStage}
+          onClose={() => setShowStageSelect(false)}
+        />
+      )}
+
 
       {showHowToPlay && (
         <HowToPlayModal onClose={() => setShowHowToPlay(false)} />

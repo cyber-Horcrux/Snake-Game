@@ -1,13 +1,15 @@
 import React from 'react';
-import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3 } from 'lucide-react';
-import type { GameMode, ModeBestScores } from '../game/types.ts';
+import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3, Compass } from 'lucide-react';
+import type { GameMode, MazeProgress, ModeBestScores } from '../game/types.ts';
 import { BrandLogo } from './branding/BrandLogo.tsx';
 
 interface TitleScreenProps {
   selectedMode: GameMode;
   onSelectMode: (mode: GameMode) => void;
   bestScores: ModeBestScores;
+  mazeProgress?: MazeProgress;
   onStartGame: () => void;
+  onOpenStageSelect?: () => void;
   onOpenHowToPlay: () => void;
   onOpenSettings: () => void;
   onOpenStats: () => void;
@@ -46,19 +48,41 @@ const MODES = [
     glow: 'shadow-[0_0_18px_rgba(255,0,122,0.28)]',
     badge: 'High Adrenaline',
   },
+  {
+    id: 'maze' as GameMode,
+    name: 'MAZE',
+    tagline: '6 curated tactical stages & Warp Gate extraction',
+    icon: Compass,
+    accent: '#9865FF',
+    border: 'border-[#9865FF]',
+    glow: 'shadow-[0_0_18px_rgba(152,101,255,0.28)]',
+    badge: 'Campaign',
+  },
 ];
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   selectedMode,
   onSelectMode,
   bestScores,
+  mazeProgress,
   onStartGame,
+  onOpenStageSelect,
   onOpenHowToPlay,
   onOpenSettings,
   onOpenStats,
   sfxEnabled,
   onToggleMute,
 }) => {
+  const isMaze = selectedMode === 'maze';
+
+  const handlePlayClick = () => {
+    if (isMaze && onOpenStageSelect) {
+      onOpenStageSelect();
+    } else {
+      onStartGame();
+    }
+  };
+
   return (
     <div className="absolute inset-0 z-20 flex flex-col justify-between items-center p-3 xs:p-4 sm:p-6 bg-[#05070E]/88 backdrop-blur-sm overflow-y-auto pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
       {/* Top Right Quick Controls */}
@@ -83,7 +107,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       </div>
 
       {/* Main Title Centerpiece */}
-      <div className="flex flex-col items-center text-center my-auto max-w-2xl w-full py-2 sm:py-4">
+      <div className="flex flex-col items-center text-center my-auto max-w-3xl w-full py-2 sm:py-4">
         {/* Apex Cyber-Viper Master Brand Logo */}
         <div className="mb-2 sm:mb-3 relative shrink-0">
           <BrandLogo
@@ -104,11 +128,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           ONE MORE RUN
         </p>
 
-        {/* Mode Selector Cards */}
-        <div className="mt-4 sm:mt-6 grid grid-cols-3 gap-2 xs:gap-2.5 sm:gap-3.5 w-full max-w-lg">
+        {/* Mode Selector Cards (Responsive 2x2 on Mobile, 4 Cols on Tablet/Desktop) */}
+        <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2 xs:gap-2.5 sm:gap-3 w-full max-w-2xl">
           {MODES.map(mode => {
             const isSelected = selectedMode === mode.id;
             const Icon = mode.icon;
+            const isMazeMode = mode.id === 'maze';
+            const bestDisplay = isMazeMode
+              ? `STAGE ${mazeProgress?.highestStageUnlocked || 1}/6`
+              : `BEST: ${bestScores[mode.id] || 0}`;
+
             return (
               <button
                 key={mode.id}
@@ -127,8 +156,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 <span className={`text-[11px] xs:text-xs sm:text-sm font-bold font-display tracking-wider ${isSelected ? 'text-[#F0F6FC]' : ''}`}>
                   {mode.name}
                 </span>
-                <span className="text-[9px] xs:text-[10px] text-[#79869C] font-mono-num mt-1 font-semibold">
-                  BEST: {bestScores[mode.id]}
+                <span className="text-[9px] xs:text-[10px] text-[#79869C] font-mono-num mt-1 font-semibold truncate max-w-full">
+                  {bestDisplay}
                 </span>
               </button>
             );
@@ -140,19 +169,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {MODES.find(m => m.id === selectedMode)?.tagline}
         </div>
 
-        {/* Large Primary PLAY RUN Button */}
+        {/* Large Primary Action Button */}
         <button
           type="button"
-          onClick={onStartGame}
+          onClick={handlePlayClick}
           data-start="true"
           className="mt-4 xs:mt-5 sm:mt-7 px-8 xs:px-12 sm:px-16 py-3 xs:py-3.5 sm:py-4 rounded-xl font-display font-black text-sm xs:text-base sm:text-lg tracking-wider text-[#05070E] bg-gradient-to-r from-[#00F5FF] via-[#38E1FF] to-[#7928CA] hover:brightness-110 active:scale-95 transition-all shadow-[0_0_28px_rgba(0,245,255,0.4)] flex items-center gap-2.5 sm:gap-3 cursor-pointer shrink-0 border border-white/20"
         >
-          <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
-          <span>PLAY RUN [ENTER]</span>
+          {isMaze ? <Compass className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />}
+          <span>{isMaze ? 'CAMPAIGN STAGES [ENTER]' : 'PLAY RUN [ENTER]'}</span>
         </button>
 
         {/* Secondary Buttons Grid */}
         <div className="mt-3.5 sm:mt-5 flex flex-wrap justify-center items-center gap-2 sm:gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={onOpenStageSelect}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#F0F6FC] bg-[#0B0E1A]/90 border border-[#9865FF]/50 hover:border-[#9865FF] text-[#9865FF] hover:text-[#F0F6FC] transition-all cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(152,101,255,0.2)]"
+          >
+            <Compass className="w-3.5 h-3.5 text-[#9865FF]" />
+            <span>CAMPAIGN</span>
+          </button>
+
           <button
             type="button"
             onClick={onOpenStats}

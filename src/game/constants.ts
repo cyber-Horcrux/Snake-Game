@@ -40,6 +40,11 @@ export const MODE_SPEEDS: Record<GameMode, { startMs: number; minMs: number; spe
     minMs: 48,
     speedStepMs: 6,
   },
+  maze: {
+    startMs: 140,
+    minMs: 70,
+    speedStepMs: 6,
+  },
 };
 
 export const POWER_UPS = {
@@ -113,5 +118,7 @@ export const STORAGE_KEYS = {
   SETTINGS: 'neon_snake_settings_v1',
   STATISTICS: 'neon_snake_lifetime_stats_v1',
   ACHIEVEMENTS: 'neon_snake_achievements_v1',
+  DAILY_CHALLENGES: 'neon_snake_daily_challenges_v1',
+  MAZE_PROGRESS: 'neon_snake_maze_progress_v1',
 };
 
