@@ -189,77 +189,174 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {MODES.find(m => m.id === selectedMode)?.tagline}
         </div>
 
-        {/* Large Primary Action Button */}
-        <button
-          type="button"
-          onClick={handlePlayClick}
-          data-start="true"
-          className="mt-4 xs:mt-5 sm:mt-7 px-8 xs:px-12 sm:px-16 py-3 xs:py-3.5 sm:py-4 rounded-xl font-display font-black text-sm xs:text-base sm:text-lg tracking-wider text-[#05070E] bg-gradient-to-r from-[#00F5FF] via-[#38E1FF] to-[#7928CA] hover:brightness-110 active:scale-95 transition-all shadow-[0_0_28px_rgba(0,245,255,0.4)] flex items-center gap-2.5 sm:gap-3 cursor-pointer shrink-0 border border-white/20"
-        >
-          {isMaze ? <Compass className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />}
-          <span>{isMaze ? 'CAMPAIGN STAGES [ENTER]' : 'PLAY RUN [ENTER]'}</span>
-        </button>
-
-        {/* Secondary Buttons Grid */}
-        <div className="mt-3.5 sm:mt-5 flex flex-wrap justify-center items-center gap-2 sm:gap-3 shrink-0">
+        {/* Main Menu Action Block: Prominent Primary Action + 2x3 Grid */}
+        <div className="w-full max-w-xs xs:max-w-sm sm:max-w-md lg:max-w-2xl mt-3 xs:mt-4 sm:mt-5 flex flex-col gap-2 xs:gap-2.5 sm:gap-3 shrink-0">
+          {/* Large Primary Action Button */}
           <button
             type="button"
-            onClick={onOpenDailyChallenges}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#FFD700] bg-[#0B0E1A]/90 border border-[#FFD700]/50 hover:border-[#FFD700] hover:text-[#FFF] transition-all cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(255,215,0,0.2)]"
+            onClick={handlePlayClick}
+            data-start="true"
+            aria-label={isMaze ? 'Campaign Stages [Enter]' : 'Play Run [Enter]'}
+            className="w-full py-3 xs:py-3.5 sm:py-4 px-4 rounded-xl font-display font-black text-xs xs:text-sm sm:text-base tracking-wider text-[#05070E] bg-gradient-to-r from-[#00F5FF] via-[#38E1FF] to-[#7928CA] hover:brightness-110 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none transition-all duration-150 motion-reduce:transition-none shadow-[0_0_24px_rgba(0,245,255,0.35)] hover:shadow-[0_0_32px_rgba(0,245,255,0.5)] flex items-center justify-center gap-2.5 sm:gap-3 cursor-pointer shrink-0 border border-white/20 min-h-[48px] xs:min-h-[52px] sm:min-h-[56px]"
           >
-            <Star className="w-3.5 h-3.5 text-[#FFD700] fill-[#FFD700]" />
-            <span>DAILY {trophyStars > 0 ? `(${trophyStars} ★)` : 'CHALLENGES'}</span>
-            {dailyCompletedCount < 3 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00F5FF] animate-pulse" />
+            {isMaze ? (
+              <Compass className="w-4 h-4 sm:w-5 sm:h-5 fill-current shrink-0" />
+            ) : (
+              <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current shrink-0" />
             )}
+            <span className="truncate">{isMaze ? 'CAMPAIGN STAGES [ENTER]' : 'PLAY RUN [ENTER]'}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={onOpenStageSelect}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#F0F6FC] bg-[#0B0E1A]/90 border border-[#9865FF]/50 hover:border-[#9865FF] text-[#9865FF] hover:text-[#F0F6FC] transition-all cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(152,101,255,0.2)]"
+          {/* Secondary 2-Column x 3-Row Action Grid */}
+          <div
+            className="grid grid-cols-2 gap-2 xs:gap-2.5 sm:gap-3 w-full"
+            role="menu"
+            aria-label="Secondary Actions"
           >
-            <Compass className="w-3.5 h-3.5 text-[#9865FF]" />
-            <span>CAMPAIGN</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenStats}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#F0F6FC] bg-[#0B0E1A]/90 border border-[#161B2E] hover:border-[#FFB800]/60 transition-all cursor-pointer active:scale-95 shadow-sm"
-          >
-            <BarChart3 className="w-3.5 h-3.5 text-[#FFB800]" />
-            <span>DOSSIER</span>
-          </button>
-
-          {onOpenSkinCollection && (
+            {/* Card 1: Daily Challenges */}
             <button
               type="button"
-              onClick={onOpenSkinCollection}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#00F5FF] bg-[#0B0E1A]/90 border border-[#00F5FF]/50 hover:border-[#00F5FF] hover:text-[#FFF] transition-all cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(0,245,255,0.2)]"
+              role="menuitem"
+              onClick={onOpenDailyChallenges}
+              aria-label={`Daily Challenges${trophyStars > 0 ? `, ${trophyStars} Trophy Stars earned` : ''}`}
+              className="relative flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#FFD700]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(255,215,0,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
             >
-              <Palette className="w-3.5 h-3.5 text-[#00F5FF]" />
-              <span>SNAKE SKINS</span>
+              <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#FFD700]/10 border border-[#FFD700]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-150">
+                  <Star className="w-3.5 h-3.5 text-[#FFD700] fill-[#FFD700]" />
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <span className="text-[10px] xs:text-[11px] sm:text-xs font-bold font-display tracking-wider text-[#F0F6FC] truncate">
+                    DAILY CHALLENGES
+                  </span>
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] text-[#79869C] font-mono tracking-tight truncate">
+                    {trophyStars > 0 ? `${trophyStars} ★ EARNED` : '3 DAILY OPS'}
+                  </span>
+                </div>
+              </div>
+              {dailyCompletedCount < 3 && (
+                <span
+                  className="w-1.5 h-1.5 rounded-full bg-[#00F5FF] motion-safe:animate-pulse shrink-0 ml-1.5"
+                  aria-label="Active challenges pending"
+                />
+              )}
             </button>
-          )}
 
-          <button
-            type="button"
-            onClick={onOpenHowToPlay}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#F0F6FC] bg-[#0B0E1A]/90 border border-[#161B2E] hover:border-[#00F5FF]/60 transition-all cursor-pointer active:scale-95 shadow-sm"
-          >
-            <HelpCircle className="w-3.5 h-3.5 text-[#00F5FF]" />
-            <span>HOW TO PLAY</span>
-          </button>
+            {/* Card 2: Campaign Stages */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onOpenStageSelect}
+              aria-label="Maze Campaign Stages"
+              className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#9865FF]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#9865FF] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(152,101,255,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
+            >
+              <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#9865FF]/10 border border-[#9865FF]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-150">
+                  <Compass className="w-3.5 h-3.5 text-[#9865FF]" />
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <span className="text-[10px] xs:text-[11px] sm:text-xs font-bold font-display tracking-wider text-[#F0F6FC] truncate">
+                    CAMPAIGN
+                  </span>
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] text-[#79869C] font-mono tracking-tight truncate">
+                    STAGE {mazeProgress?.highestStageUnlocked || 1}/6
+                  </span>
+                </div>
+              </div>
+            </button>
 
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#F0F6FC] bg-[#0B0E1A]/90 border border-[#161B2E] hover:border-[#7928CA]/60 transition-all cursor-pointer active:scale-95 shadow-sm"
-          >
-            <Settings className="w-3.5 h-3.5 text-[#7928CA]" />
-            <span>SETTINGS</span>
-          </button>
+            {/* Card 3: Snake Skins */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onOpenSkinCollection}
+              aria-label="Snake Skins Chassis Suite"
+              className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#00F5FF]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#00F5FF] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(0,245,255,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
+            >
+              <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#00F5FF]/10 border border-[#00F5FF]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-150">
+                  <Palette className="w-3.5 h-3.5 text-[#00F5FF]" />
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <span className="text-[10px] xs:text-[11px] sm:text-xs font-bold font-display tracking-wider text-[#F0F6FC] truncate">
+                    SNAKE SKINS
+                  </span>
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] text-[#79869C] font-mono tracking-tight truncate">
+                    CHASSIS SUITE
+                  </span>
+                </div>
+              </div>
+            </button>
+
+            {/* Card 4: Pilot Dossier */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onOpenStats}
+              aria-label="Pilot Dossier and Statistics"
+              className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#FFB800]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#FFB800] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(255,184,0,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
+            >
+              <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#FFB800]/10 border border-[#FFB800]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-150">
+                  <BarChart3 className="w-3.5 h-3.5 text-[#FFB800]" />
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <span className="text-[10px] xs:text-[11px] sm:text-xs font-bold font-display tracking-wider text-[#F0F6FC] truncate">
+                    DOSSIER
+                  </span>
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] text-[#79869C] font-mono tracking-tight truncate">
+                    STATS & MEDALS
+                  </span>
+                </div>
+              </div>
+            </button>
+
+            {/* Card 5: How to Play */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onOpenHowToPlay}
+              aria-label="How to Play Field Manual"
+              className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#00F5FF]/60 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#00F5FF] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(0,245,255,0.18)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
+            >
+              <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#00F5FF]/10 border border-[#00F5FF]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-150">
+                  <HelpCircle className="w-3.5 h-3.5 text-[#00F5FF]" />
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <span className="text-[10px] xs:text-[11px] sm:text-xs font-bold font-display tracking-wider text-[#F0F6FC] truncate">
+                    HOW TO PLAY
+                  </span>
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] text-[#79869C] font-mono tracking-tight truncate">
+                    FIELD MANUAL
+                  </span>
+                </div>
+              </div>
+            </button>
+
+            {/* Card 6: Settings */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onOpenSettings}
+              aria-label="Game Settings"
+              className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#7928CA]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#7928CA] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(121,40,202,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
+            >
+              <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#7928CA]/10 border border-[#7928CA]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-150">
+                  <Settings className="w-3.5 h-3.5 text-[#9865FF]" />
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <span className="text-[10px] xs:text-[11px] sm:text-xs font-bold font-display tracking-wider text-[#F0F6FC] truncate">
+                    SETTINGS
+                  </span>
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] text-[#79869C] font-mono tracking-tight truncate">
+                    AUDIO & CONTROLS
+                  </span>
+                </div>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 
