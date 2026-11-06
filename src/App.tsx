@@ -46,6 +46,13 @@ import { MazeStageSelectModal } from './components/MazeStageSelectModal.tsx';
 import { StageClearModal } from './components/StageClearModal.tsx';
 import { CampaignVictoryModal } from './components/CampaignVictoryModal.tsx';
 import { TouchDPad } from './components/TouchDPad.tsx';
+import { DailyChallengesModal } from './components/DailyChallengesModal.tsx';
+import {
+  loadDailyChallengeState,
+  recordDailyChallengeRun,
+  type DailyChallengeUserState,
+  type RunEvaluationResult,
+} from './game/challenges.ts';
 import {
   loadStats,
   loadAchievements,
@@ -64,11 +71,25 @@ export default function App() {
   const [settings, setSettings] = useState<GameSettings>(() => loadSettings());
   const [lifetimeStats, setLifetimeStats] = useState(() => loadStats());
   const [achievements, setAchievements] = useState(() => loadAchievements());
+  const [dailyState, setDailyState] = useState<DailyChallengeUserState>(() => loadDailyChallengeState());
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showStageSelect, setShowStageSelect] = useState(false);
+  const [showDailyChallenges, setShowDailyChallenges] = useState(false);
+
+  // Run start timestamp for precise UTC date challenge attribution
+  const runStartTimeRef = useRef<number>(Date.now());
+
+  // Tracks active Maze campaign session to ensure per-stage deltas and stable start timestamp
+  const mazeCampaignRef = useRef<{
+    campaignId: string;
+    startTime: number;
+    creditedFood: number;
+    creditedShields: number;
+    clearedStages: Set<number>;
+  } | null>(null);
 
   // Single-recording guard against duplicate stage clears or campaign wins
   const recordedClearRef = useRef<string | null>(null);
@@ -103,7 +124,7 @@ export default function App() {
   screenRef.current = screen;
   settingsRef.current = settings;
   selectedModeRef.current = selectedMode;
-  modalsOpenRef.current = showHowToPlay || showSettings || showStats || showStageSelect;
+  modalsOpenRef.current = showHowToPlay || showSettings || showStats || showStageSelect || showDailyChallenges;
 
   // Swipe Tracker & Touch State
   const swipeTrackerRef = useRef<SwipeTracker>(new SwipeTracker(24));
@@ -132,7 +153,38 @@ export default function App() {
     const { stats: updatedStats, newlyUnlocked } = recordRunCompletion(finalState);
     setLifetimeStats(updatedStats);
     setAchievements(loadAchievements());
-    if (newlyUnlocked.length > 0) {
+
+    // Record daily challenge progression & Trophy Stars
+    let challengeEval: RunEvaluationResult;
+    if (finalState.mode === 'maze' && mazeCampaignRef.current) {
+      const campaign = mazeCampaignRef.current;
+      const deltaFood = Math.max(0, finalState.foodEaten - campaign.creditedFood);
+      const deltaShields = Math.max(0, (finalState.shieldsUsed || 0) - campaign.creditedShields);
+      const deltaCores = finalState.stageFoodEaten !== undefined ? finalState.stageFoodEaten : deltaFood;
+
+      campaign.creditedFood = finalState.foodEaten;
+      campaign.creditedShields = finalState.shieldsUsed || 0;
+
+      const eventId = `${campaign.campaignId}-stage-${finalState.stage}-gameover`;
+      challengeEval = recordDailyChallengeRun(finalState, campaign.startTime, undefined, {
+        eventId,
+        stageDelta: {
+          foodEaten: deltaFood,
+          shieldsUsed: deltaShields,
+          mazeCores: deltaCores,
+          isStageClear: false,
+        },
+      });
+    } else {
+      const eventId = `run-${runStartTimeRef.current}-${finalState.score}-${finalState.foodEaten}`;
+      challengeEval = recordDailyChallengeRun(finalState, runStartTimeRef.current, undefined, {
+        eventId,
+      });
+    }
+
+    setDailyState(challengeEval.state);
+
+    if (newlyUnlocked.length > 0 || challengeEval.starsAwarded > 0) {
       soundEngine.play('achievement');
     }
 
@@ -148,6 +200,37 @@ export default function App() {
       recordedClearRef.current = clearKey;
       const updated = recordStageClear(state.stage, state.score);
       setMazeProgress(updated);
+
+      // Record daily challenge progression & Trophy Stars with stage delta
+      const campaign = mazeCampaignRef.current;
+      const startTime = campaign ? campaign.startTime : runStartTimeRef.current;
+      const deltaFood = campaign ? Math.max(0, state.foodEaten - campaign.creditedFood) : state.foodEaten;
+      const deltaShields = campaign ? Math.max(0, (state.shieldsUsed || 0) - campaign.creditedShields) : (state.shieldsUsed || 0);
+      const deltaCores = state.stageFoodEaten !== undefined ? state.stageFoodEaten : deltaFood;
+      const isNewStageClear = campaign ? !campaign.clearedStages.has(state.stage) : true;
+
+      if (campaign) {
+        campaign.clearedStages.add(state.stage);
+        campaign.creditedFood = state.foodEaten;
+        campaign.creditedShields = state.shieldsUsed || 0;
+      }
+
+      const eventId = campaign ? `${campaign.campaignId}-stage-${state.stage}-clear` : `maze-stage-${state.stage}-${Date.now()}`;
+
+      const challengeEval = recordDailyChallengeRun(state, startTime, undefined, {
+        eventId,
+        stageDelta: {
+          foodEaten: deltaFood,
+          shieldsUsed: deltaShields,
+          mazeCores: deltaCores,
+          isStageClear: isNewStageClear,
+        },
+      });
+
+      setDailyState(challengeEval.state);
+      if (challengeEval.starsAwarded > 0) {
+        soundEngine.play('achievement');
+      }
     }
     setScreen('stage_clear');
   }, []);
@@ -168,6 +251,34 @@ export default function App() {
       const { stats: updatedStats, newlyUnlocked } = recordRunCompletion(state);
       setLifetimeStats(updatedStats);
       setAchievements(loadAchievements());
+
+      // Record daily challenge progression & Trophy Stars
+      const campaign = mazeCampaignRef.current;
+      const startTime = campaign ? campaign.startTime : runStartTimeRef.current;
+      const deltaFood = campaign ? Math.max(0, state.foodEaten - campaign.creditedFood) : state.foodEaten;
+      const deltaShields = campaign ? Math.max(0, (state.shieldsUsed || 0) - campaign.creditedShields) : (state.shieldsUsed || 0);
+      const deltaCores = state.stageFoodEaten !== undefined ? state.stageFoodEaten : deltaFood;
+      const isNewStageClear = campaign ? !campaign.clearedStages.has(6) : true;
+
+      if (campaign) {
+        campaign.clearedStages.add(6);
+        campaign.creditedFood = state.foodEaten;
+        campaign.creditedShields = state.shieldsUsed || 0;
+      }
+
+      const eventId = campaign ? `${campaign.campaignId}-victory` : `maze-victory-${Date.now()}`;
+
+      const challengeEval = recordDailyChallengeRun(state, startTime, undefined, {
+        eventId,
+        stageDelta: {
+          foodEaten: deltaFood,
+          shieldsUsed: deltaShields,
+          mazeCores: deltaCores,
+          isStageClear: isNewStageClear,
+        },
+      });
+
+      setDailyState(challengeEval.state);
     }
     setScreen('campaign_victory');
   }, []);
@@ -182,6 +293,15 @@ export default function App() {
   // Launch a specific curated Maze stage
   const startMazeStage = useCallback((stageNumber: number = 1) => {
     screenRef.current = 'playing';
+    const now = Date.now();
+    runStartTimeRef.current = now;
+    mazeCampaignRef.current = {
+      campaignId: `maze-campaign-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      startTime: now,
+      creditedFood: 0,
+      creditedShields: 0,
+      clearedStages: new Set<number>(),
+    };
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -196,6 +316,7 @@ export default function App() {
     rendererRef.current.reset();
     setIsNewRecord(false);
     setShowStageSelect(false);
+    setShowDailyChallenges(false);
     recordedClearRef.current = null;
     const cfg = getMazeStage(targetStage);
     setHudState({
@@ -217,6 +338,7 @@ export default function App() {
 
   // Advance to next stage from StageClearModal
   const handleContinueNextStage = useCallback(() => {
+    if (screenRef.current !== 'stage_clear') return;
     if (gameStateRef.current.stage >= 6) {
       handleCampaignVictory(gameStateRef.current);
       return;
@@ -229,6 +351,10 @@ export default function App() {
     gameStateRef.current = progression.state;
     accumulatorRef.current = 0;
     lastTimeRef.current = performance.now();
+    // Maintain campaign's stable start timestamp and attribution
+    if (mazeCampaignRef.current) {
+      runStartTimeRef.current = mazeCampaignRef.current.startTime;
+    }
     rendererRef.current.reset();
     recordedClearRef.current = null;
     const cfg = getMazeStage(progression.state.stage);
@@ -258,6 +384,8 @@ export default function App() {
       return;
     }
     screenRef.current = 'playing';
+    runStartTimeRef.current = Date.now();
+    mazeCampaignRef.current = null;
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -269,6 +397,7 @@ export default function App() {
     rendererRef.current.reset();
     setIsNewRecord(false);
     setShowStageSelect(false);
+    setShowDailyChallenges(false);
     recordedClearRef.current = null;
     setHudState({
       score: 0,
@@ -390,7 +519,7 @@ export default function App() {
 
       const key = e.key;
 
-      // When modals (How to Play, Settings, Pilot Dossier, Stage Select) are open, intercept keys
+      // When modals (How to Play, Settings, Pilot Dossier, Stage Select, Daily Challenges) are open, intercept keys
       if (modalsOpenRef.current) {
         if (key === 'Escape') {
           e.preventDefault();
@@ -398,6 +527,7 @@ export default function App() {
           setShowSettings(false);
           setShowStats(false);
           setShowStageSelect(false);
+          setShowDailyChallenges(false);
         }
         return;
       }
@@ -459,7 +589,11 @@ export default function App() {
           resumeGame();
         } else if (key === 'r' || key === 'R') {
           e.preventDefault();
-          startGame();
+          if (gameStateRef.current.mode === 'maze') {
+            startMazeStage(gameStateRef.current.stage);
+          } else {
+            startGame();
+          }
         }
         return;
       }
@@ -474,7 +608,11 @@ export default function App() {
 
         if (key === 'r' || key === 'R') {
           e.preventDefault();
-          startGame();
+          if (gameStateRef.current.mode === 'maze') {
+            startMazeStage(gameStateRef.current.stage);
+          } else {
+            startGame();
+          }
           return;
         }
 
@@ -642,7 +780,7 @@ export default function App() {
             const head = result.state.snake[0];
             const px = (head.x + 0.5) * (canvas.width / result.state.gridWidth);
             const py = (head.y + 0.5) * (canvas.height / result.state.gridHeight);
-            rendererRef.current.particles.spawn(px, py, '#9865FF', 24, 220, 5);
+            rendererRef.current.spawnShieldFlash(px, py);
             rendererRef.current.triggerScreenShake(10, 0.3);
 
             setHudState(prev => ({
@@ -845,11 +983,14 @@ export default function App() {
           mazeProgress={mazeProgress}
           onStartGame={() => (selectedMode === 'maze' ? setShowStageSelect(true) : startGame(selectedMode))}
           onOpenStageSelect={() => setShowStageSelect(true)}
+          onOpenDailyChallenges={() => setShowDailyChallenges(true)}
           onOpenHowToPlay={() => setShowHowToPlay(true)}
           onOpenSettings={() => setShowSettings(true)}
           onOpenStats={() => setShowStats(true)}
           sfxEnabled={settings.audio.sfxEnabled}
           onToggleMute={toggleMute}
+          trophyStars={dailyState.lifetimeStars}
+          dailyCompletedCount={dailyState.challenges.filter(c => c.completed).length}
         />
       )}
 
@@ -908,6 +1049,13 @@ export default function App() {
           progress={mazeProgress}
           onSelectStage={startMazeStage}
           onClose={() => setShowStageSelect(false)}
+        />
+      )}
+
+      {showDailyChallenges && (
+        <DailyChallengesModal
+          dailyState={dailyState}
+          onClose={() => setShowDailyChallenges(false)}
         />
       )}
 

@@ -174,7 +174,8 @@ export type AppScreen =
   | 'campaign_victory'
   | 'settings'
   | 'how_to_play'
-  | 'stats';
+  | 'stats'
+  | 'challenges';
 
 export type GameAudioEvent = 
   | 'click'

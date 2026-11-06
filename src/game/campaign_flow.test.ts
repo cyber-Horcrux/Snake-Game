@@ -19,7 +19,7 @@ import {
   stepGame,
   queueDirection,
 } from './engine.ts';
-import type { GameEngineState, MazeProgress } from './types.ts';
+import type { GameEngineState, MazeProgress, Direction, GridCoord } from './types.ts';
 
 // In-memory mock storage for deterministic persistence testing
 class MemoryStorage {
@@ -327,4 +327,220 @@ test('Regression: Classic mode wall, food, power-up, and game-over flows remain 
   assert.equal(stepped.state.score, 10);
   assert.equal(stepped.state.foodEaten, 1);
   assert.equal(stepped.state.isAlive, true);
+});
+
+test('Full Campaign: Complete run through Stages 1 to 6 culminates in campaign victory with no Stage 7', () => {
+  const storage = new MemoryStorage();
+  let currentProgress = loadMazeProgress(storage);
+  assert.equal(currentProgress.highestStageUnlocked, 1);
+  assert.equal(currentProgress.totalCampaignsWon, 0);
+
+  let cumulativeScore = 0;
+  let currentState = createInitialMazeState(1);
+
+  for (let stageNum = 1; stageNum <= 6; stageNum++) {
+    assert.equal(currentState.stage, stageNum);
+    assert.equal(currentState.mode, 'maze');
+    assert.equal(currentState.isAlive, true);
+
+    const gate = currentState.warpGate!;
+    let approachHead: GridCoord;
+    let approachDir: Direction;
+    if (gate.x === 23) {
+      approachHead = { x: 22, y: gate.y };
+      approachDir = 'RIGHT';
+    } else if (gate.x === 0) {
+      approachHead = { x: 1, y: gate.y };
+      approachDir = 'LEFT';
+    } else if (gate.y === 0) {
+      approachHead = { x: gate.x, y: 1 };
+      approachDir = 'UP';
+    } else {
+      approachHead = { x: gate.x, y: 22 };
+      approachDir = 'DOWN';
+    }
+
+    const preGateState: GameEngineState = {
+      ...currentState,
+      stage: stageNum,
+      score: cumulativeScore + 300,
+      stageFoodEaten: 10,
+      warpGate: { ...gate, active: true },
+      snake: [
+        approachHead,
+        { x: approachHead.x, y: approachHead.y + (approachDir === 'UP' ? 1 : -1) },
+        { x: approachHead.x, y: approachHead.y + (approachDir === 'UP' ? 2 : -2) },
+      ],
+      direction: approachDir,
+      queuedDirections: [],
+      isAlive: true,
+    };
+
+    const gateEntry = stepGame(preGateState, 5000 + stageNum * 1000);
+    assert.equal(gateEntry.state.isStageClear, true);
+    assert.equal(gateEntry.state.isVictory, true);
+    cumulativeScore = gateEntry.state.score;
+
+    if (stageNum < 6) {
+      assert.equal(gateEntry.state.isCampaignComplete, false);
+      currentProgress = recordStageClear(stageNum, cumulativeScore, storage);
+      assert.equal(currentProgress.highestStageUnlocked, stageNum + 1);
+
+      // Advance to next stage
+      const advancement = advanceMazeStage(gateEntry.state);
+      assert.equal(advancement.isCampaignWon, false);
+      assert.equal(advancement.state.stage, stageNum + 1);
+      currentState = advancement.state;
+    } else {
+      // Stage 6 final victory!
+      assert.equal(gateEntry.state.isCampaignComplete, true);
+      currentProgress = recordCampaignCompletion(cumulativeScore, storage);
+      assert.equal(currentProgress.highestStageUnlocked, 6);
+      assert.equal(currentProgress.totalCampaignsWon, 1);
+      assert.equal(currentProgress.bestCampaignScore, cumulativeScore);
+
+      // Verify advanceMazeStage on Stage 6 caps at 6 and never loads Stage 7
+      const finalAdvancement = advanceMazeStage(gateEntry.state);
+      assert.equal(finalAdvancement.isCampaignWon, true);
+      assert.equal(finalAdvancement.state.stage, 6);
+      assert.equal(finalAdvancement.state.isCampaignComplete, true);
+    }
+  }
+});
+
+test('Interrupted Campaign: Failure on mid-campaign stage does not increment campaign victories or unlock beyond failure point', () => {
+  const storage = new MemoryStorage();
+  // Player previously unlocked up to Stage 3
+  saveMazeProgress({
+    highestStageUnlocked: 3,
+    totalCampaignsWon: 0,
+    totalMazesCleared: 2,
+    bestCampaignScore: 600,
+  }, storage);
+
+  // Start Stage 3
+  const state = createInitialMazeState(3);
+  assert.equal(state.stage, 3);
+
+  // Position snake heading into boundary wall
+  const crashingState: GameEngineState = {
+    ...state,
+    snake: [
+      { x: 0, y: 5 },
+      { x: 1, y: 5 },
+      { x: 2, y: 5 },
+    ],
+    direction: 'LEFT',
+    queuedDirections: [],
+    powerUps: { slowMoUntil: 0, hasShield: false },
+    isAlive: true,
+  };
+
+  const crashResult = stepGame(crashingState, 1000);
+  assert.equal(crashResult.state.isAlive, false);
+  assert.equal(crashResult.state.isVictory, false);
+  assert.equal(crashResult.state.isStageClear, false);
+  assert.equal(crashResult.state.isCampaignComplete, false);
+  assert.equal(crashResult.state.deathReason, 'wall');
+
+  // Verify persistence is completely untainted by failure
+  const postFailProgress = loadMazeProgress(storage);
+  assert.equal(postFailProgress.highestStageUnlocked, 3);
+  assert.equal(postFailProgress.totalCampaignsWon, 0);
+  assert.equal(postFailProgress.totalMazesCleared, 2);
+  assert.equal(postFailProgress.bestCampaignScore, 600);
+});
+
+test('Obstacle Mechanics: Aegis Shield shatters breakable barriers and awards bonus score', () => {
+  const state = createInitialMazeState(2);
+  // Find a barrier obstacle in Stage 2
+  const barrier = state.obstacles.find(o => o.type === 'barrier');
+  assert.ok(barrier, 'Stage 2 must contain breakable barriers');
+
+  const preBarrierState: GameEngineState = {
+    ...state,
+    snake: [
+      { x: barrier!.x - 1, y: barrier!.y },
+      { x: barrier!.x - 2, y: barrier!.y },
+      { x: barrier!.x - 3, y: barrier!.y },
+    ],
+    direction: 'RIGHT',
+    queuedDirections: [],
+    powerUps: { slowMoUntil: 0, hasShield: true },
+    isAlive: true,
+    score: 100,
+  };
+
+  const step = stepGame(preBarrierState, 1000);
+  assert.equal(step.state.isAlive, true);
+  assert.equal(step.shieldAbsorbed, true);
+  assert.equal(step.state.powerUps.hasShield, false);
+  assert.equal(step.state.score, 150); // +50 bonus pts for barrier destruction
+  assert.ok(!step.state.obstacles.some(o => o.id === barrier!.id), 'Barrier obstacle must be removed');
+  assert.ok(step.events.includes('shield_absorb'));
+});
+
+test('Obstacle Mechanics: Aegis Shield safely deflects from indestructible walls in Maze mode', () => {
+  const state = createInitialMazeState(1);
+  const wall = state.obstacles.find(o => o.type === 'wall');
+  assert.ok(wall, 'Stage 1 must contain indestructible walls');
+
+  const preWallState: GameEngineState = {
+    ...state,
+    snake: [
+      { x: wall!.x - 1, y: wall!.y },
+      { x: wall!.x - 2, y: wall!.y },
+      { x: wall!.x - 3, y: wall!.y },
+    ],
+    direction: 'RIGHT',
+    queuedDirections: [],
+    powerUps: { slowMoUntil: 0, hasShield: true },
+    isAlive: true,
+  };
+
+  const step = stepGame(preWallState, 1000);
+  assert.equal(step.state.isAlive, true);
+  assert.equal(step.shieldAbsorbed, true);
+  // Snake was deflected rather than dying
+  assert.ok(step.state.direction !== 'RIGHT');
+});
+
+test('Regression: Zen mode wraparounds and Rush mode speed/multipliers operate correctly', () => {
+  // 1. Zen mode boundary wraparound
+  const zenState = createInitialState('zen', 10, 10);
+  const zenAtEdge: GameEngineState = {
+    ...zenState,
+    snake: [
+      { x: 9, y: 5 },
+      { x: 8, y: 5 },
+      { x: 7, y: 5 },
+    ],
+    direction: 'RIGHT',
+    queuedDirections: [],
+    isAlive: true,
+    wallsWrapped: 0,
+  };
+  const zenStepped = stepGame(zenAtEdge, 1000);
+  assert.equal(zenStepped.state.isAlive, true);
+  assert.equal(zenStepped.state.snake[0].x, 0); // Wrapped around to x=0
+  assert.equal(zenStepped.state.wallsWrapped, 1);
+
+  // 2. Rush mode 1.5x score multiplier
+  const rushState = createInitialState('rush', 10, 10);
+  assert.equal(rushState.mode, 'rush');
+  const rushWithFood: GameEngineState = {
+    ...rushState,
+    food: [{ id: 'rf1', type: 'normal', position: { x: 4, y: 5 }, points: 15 }], // 10 * 1.5
+    snake: [
+      { x: 3, y: 5 },
+      { x: 2, y: 5 },
+      { x: 1, y: 5 },
+    ],
+    direction: 'RIGHT',
+    queuedDirections: [],
+    score: 0,
+  };
+  const rushStepped = stepGame(rushWithFood, 1000);
+  assert.equal(rushStepped.state.score, 15);
+  assert.equal(rushStepped.state.foodEaten, 1);
 });

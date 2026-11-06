@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3, Compass } from 'lucide-react';
+import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3, Compass, Star } from 'lucide-react';
 import type { GameMode, MazeProgress, ModeBestScores } from '../game/types.ts';
 import { BrandLogo } from './branding/BrandLogo.tsx';
 
@@ -10,11 +10,14 @@ interface TitleScreenProps {
   mazeProgress?: MazeProgress;
   onStartGame: () => void;
   onOpenStageSelect?: () => void;
+  onOpenDailyChallenges?: () => void;
   onOpenHowToPlay: () => void;
   onOpenSettings: () => void;
   onOpenStats: () => void;
   sfxEnabled: boolean;
   onToggleMute: () => void;
+  trophyStars?: number;
+  dailyCompletedCount?: number;
 }
 
 const MODES = [
@@ -67,11 +70,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   mazeProgress,
   onStartGame,
   onOpenStageSelect,
+  onOpenDailyChallenges,
   onOpenHowToPlay,
   onOpenSettings,
   onOpenStats,
   sfxEnabled,
   onToggleMute,
+  trophyStars = 0,
+  dailyCompletedCount = 0,
 }) => {
   const isMaze = selectedMode === 'maze';
 
@@ -128,44 +134,46 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           ONE MORE RUN
         </p>
 
-        {/* Mode Selector Cards (Responsive 2x2 on Mobile, 4 Cols on Tablet/Desktop) */}
-        <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2 xs:gap-2.5 sm:gap-3 w-full max-w-2xl">
-          {MODES.map(mode => {
-            const isSelected = selectedMode === mode.id;
-            const Icon = mode.icon;
-            const isMazeMode = mode.id === 'maze';
-            const bestDisplay = isMazeMode
-              ? `STAGE ${mazeProgress?.highestStageUnlocked || 1}/6`
-              : `BEST: ${bestScores[mode.id] || 0}`;
+        {/* Mode Selector Cards (Responsive 2x2 on Mobile/Tablet, 4 Cols on Desktop) */}
+        <div className="@container w-full max-w-xs xs:max-w-sm sm:max-w-md lg:max-w-2xl mt-3 xs:mt-4 sm:mt-6">
+          <div className="grid grid-cols-2 @[640px]:grid-cols-4 lg:grid-cols-4 gap-2 xs:gap-2.5 sm:gap-3 w-full">
+            {MODES.map(mode => {
+              const isSelected = selectedMode === mode.id;
+              const Icon = mode.icon;
+              const isMazeMode = mode.id === 'maze';
+              const bestDisplay = isMazeMode
+                ? `STAGE ${mazeProgress?.highestStageUnlocked || 1}/6`
+                : `BEST: ${bestScores[mode.id] || 0}`;
 
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => onSelectMode(mode.id)}
-                className={`relative flex flex-col items-center p-2.5 sm:p-3.5 rounded-xl border transition-all text-center cursor-pointer active:scale-95 ${
-                  isSelected
-                    ? `${mode.border} bg-[#0B0E1A] ${mode.glow} scale-[1.02] sm:scale-105 z-10`
-                    : 'border-[#161B2E] bg-[#0B0E1A]/60 hover:border-slate-700 text-[#79869C]'
-                }`}
-              >
-                <Icon
-                  className="w-4 h-4 sm:w-5 sm:h-5 mb-1 transition-colors"
-                  style={{ color: isSelected ? mode.accent : undefined }}
-                />
-                <span className={`text-[11px] xs:text-xs sm:text-sm font-bold font-display tracking-wider ${isSelected ? 'text-[#F0F6FC]' : ''}`}>
-                  {mode.name}
-                </span>
-                <span className="text-[9px] xs:text-[10px] text-[#79869C] font-mono-num mt-1 font-semibold truncate max-w-full">
-                  {bestDisplay}
-                </span>
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => onSelectMode(mode.id)}
+                  className={`relative flex flex-col items-center justify-center p-2.5 xs:p-3 sm:p-3.5 rounded-xl border transition-all text-center cursor-pointer active:scale-95 min-h-[4.5rem] xs:min-h-[4.75rem] sm:min-h-[5.25rem] h-full ${
+                    isSelected
+                      ? 'border-[#00F5FF] bg-[#0B0E1A] shadow-[0_0_18px_rgba(0,245,255,0.28)] scale-[1.02] z-10'
+                      : 'border-[#161B2E] bg-[#0B0E1A]/60 hover:border-slate-700 text-[#79869C]'
+                  }`}
+                >
+                  <Icon
+                    className="w-4 h-4 sm:w-5 sm:h-5 mb-1 shrink-0 transition-colors"
+                    style={{ color: isSelected ? mode.accent : undefined }}
+                  />
+                  <span className={`text-[11px] xs:text-xs sm:text-sm font-bold font-display tracking-wider leading-tight ${isSelected ? 'text-[#F0F6FC]' : ''}`}>
+                    {mode.name}
+                  </span>
+                  <span className="text-[9px] xs:text-[10px] text-[#79869C] font-mono-num mt-1 font-semibold truncate max-w-full leading-none">
+                    {bestDisplay}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Mode Tagline Description */}
-        <div className="mt-2 sm:mt-3 text-[11px] sm:text-xs text-[#79869C] font-medium min-h-[1.25rem] px-2 truncate max-w-md">
+        <div className="mt-2 sm:mt-2.5 text-[11px] sm:text-xs text-[#79869C] font-medium min-h-[1.25rem] px-2 text-center max-w-md">
           {MODES.find(m => m.id === selectedMode)?.tagline}
         </div>
 
@@ -182,6 +190,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         {/* Secondary Buttons Grid */}
         <div className="mt-3.5 sm:mt-5 flex flex-wrap justify-center items-center gap-2 sm:gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={onOpenDailyChallenges}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#FFD700] bg-[#0B0E1A]/90 border border-[#FFD700]/50 hover:border-[#FFD700] hover:text-[#FFF] transition-all cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(255,215,0,0.2)]"
+          >
+            <Star className="w-3.5 h-3.5 text-[#FFD700] fill-[#FFD700]" />
+            <span>DAILY {trophyStars > 0 ? `(${trophyStars} ★)` : 'CHALLENGES'}</span>
+            {dailyCompletedCount < 3 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00F5FF] animate-pulse" />
+            )}
+          </button>
+
           <button
             type="button"
             onClick={onOpenStageSelect}
