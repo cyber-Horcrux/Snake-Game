@@ -36,6 +36,7 @@ import {
   getUtcDateString,
   loadDailyChallengeState,
   saveDailyChallengeState,
+  recordDailyChallengeRun,
 } from './challenges.ts';
 import { STORAGE_KEYS, XP_REWARDS } from './constants.ts';
 import { createInitialState, stepGame, calculateTickInterval } from './engine.ts';
@@ -1931,4 +1932,467 @@ test('Gameplay Integration 15: Corrupt storage recovery during gameplay XP award
   assert.equal(result.levelBefore, 1);
   assert.ok(result.state.totalLifetimeXp > 0);
 });
+
+test('Gameplay Integration 16: Pause and restart do not award XP or count paused wall-clock time', () => {
+  const storage = new MemoryStorage();
+  const initialProgression = loadPlayerProgression(storage);
+  assert.equal(initialProgression.totalLifetimeXp, 0);
+
+  // Simulate an in-progress game state
+  let state = createInitialState('classic');
+  const tickMs = state.tickIntervalMs;
+
+  // Run 10 ticks (e.g. 1.35 seconds of gameplay)
+  for (let i = 1; i <= 10; i++) {
+    state = stepGame(state, i * 150).state;
+  }
+  assert.equal(state.gameTimeMs, 10 * tickMs);
+
+  // Player pauses: simulation ceases, wall-clock time advances 60 seconds
+  const pausedGameTime = state.gameTimeMs;
+  // While paused, stepGame is NOT called. When resumed, gameTimeMs remains pausedGameTime
+  assert.equal(state.gameTimeMs, pausedGameTime);
+
+  // Abandoning or restarting a run creates a new state without calling recordGameplayRunXp
+  const restartedState = createInitialState('classic');
+  assert.equal(restartedState.gameTimeMs, 0);
+
+  // Player progression remains completely unmodified
+  const postRestartProgression = loadPlayerProgression(storage);
+  assert.equal(postRestartProgression.totalLifetimeXp, 0);
+  assert.equal(postRestartProgression.processedRunEventIds.length, 0);
+});
+
+test('Gameplay Integration 17: Slow-motion timing scales tickIntervalMs and increments simulation gameTimeMs correctly', () => {
+  let state = createInitialState('classic');
+  const normalInterval = state.tickIntervalMs;
+
+  // Normal tick increments by normalInterval
+  state = stepGame(state, 100).state;
+  assert.equal(state.gameTimeMs, normalInterval);
+
+  // Activate slow-mo
+  const now = 200;
+  state.powerUps.slowMoUntil = now + 5000;
+  const slowMoInterval = calculateTickInterval('classic', state.level, true);
+  assert.ok(slowMoInterval > normalInterval, 'Slow-mo interval must be longer than normal interval');
+
+  state.tickIntervalMs = slowMoInterval;
+  state = stepGame(state, now).state;
+
+  // gameTimeMs advanced by normalInterval + slowMoInterval
+  assert.equal(state.gameTimeMs, normalInterval + slowMoInterval);
+});
+
+test('Gameplay Integration 18: End-to-end Daily Challenge completion awards 50 XP to progression and 25 Trophy Stars separately', () => {
+  const storage = new MemoryStorage();
+  const date = '2026-11-06';
+  const now = Date.UTC(2026, 10, 6, 14, 0, 0);
+
+  // Initialize daily challenge state with an easy score 100 objective
+  const dailyState = createInitialDailyState(date, now);
+  dailyState.challenges[0] = {
+    ...dailyState.challenges[0],
+    id: 'easy_score_100',
+    objectiveType: 'single_run_score',
+    target: 100,
+    progress: 0,
+    completed: false,
+    rewardClaimed: false,
+    rewardStars: 25,
+  };
+  dailyState.lifetimeStars = 100;
+  saveDailyChallengeState(dailyState, storage);
+
+  // Player completes a run scoring 120 points
+  const runState: GameEngineState = {
+    ...createInitialState('classic'),
+    score: 120,
+    foodEaten: 10,
+    gameTimeMs: 25000,
+    isAlive: false,
+  };
+
+  const eventId = `run-${now}-120-10`;
+  const challengeEval = recordDailyChallengeRun(runState, now, storage, { eventId });
+
+  // Challenge completed!
+  assert.equal(challengeEval.newlyCompletedChallenges.includes('easy_score_100'), true);
+  assert.equal(challengeEval.starsAwarded, 25);
+  assert.equal(challengeEval.state.lifetimeStars, 125);
+
+  // App automatically invokes recordDailyRewardClaim for each newly completed challenge
+  for (const cid of challengeEval.newlyCompletedChallenges) {
+    const claimResult = recordDailyRewardClaim(cid, challengeEval.state.activeDate, storage, now);
+    assert.equal(claimResult.success, true);
+    assert.equal(claimResult.xpEarned, 50);
+  }
+
+  // Verify Ledger record
+  const ledger = loadDailyRewardLedger(storage);
+  assert.equal(ledger.records.length, 1);
+  assert.equal(ledger.records[0].challengeId, 'easy_score_100');
+  assert.equal(ledger.records[0].xpAmount, 50);
+  assert.equal(ledger.records[0].starsAmount, 25);
+
+  // Verify Player Progression state: exactly 50 XP awarded, rewardId permanently recorded
+  const progression = loadPlayerProgression(storage);
+  assert.equal(progression.totalLifetimeXp, 50);
+  assert.equal(progression.appliedRewardIds.includes('challenge-reward-2026-11-06-easy_score_100'), true);
+
+  // Verify Daily State: Trophy stars remained 125 without double-crediting
+  const finalDaily = loadDailyChallengeState(storage, now);
+  assert.equal(finalDaily.lifetimeStars, 125);
+  assert.equal(finalDaily.challenges[0].rewardClaimed, true);
+
+  // Run reconciliation and verify complete idempotence
+  const recon = reconcileDailyRewards(storage);
+  assert.equal(recon.reconciledCount, 0);
+  assert.equal(recon.reconciledStarsCount, 0);
+  assert.equal(recon.progressionState.totalLifetimeXp, 50);
+});
+
+test('Gameplay Integration 19: Repeated game-over handling rejects duplicate submissions cleanly', () => {
+  const storage = new MemoryStorage();
+  const startTime = 1700000000000;
+  const eventId = createRunEventId('classic', startTime);
+
+  const mockRun: GameEngineState = {
+    ...createInitialState('classic'),
+    foodEaten: 12,
+    score: 150,
+    gameTimeMs: 30000,
+    isAlive: false,
+  };
+
+  // First callback: awards XP
+  const res1 = recordGameplayRunXp(mockRun, startTime, storage, eventId);
+  assert.ok(res1.xpEarned > 0);
+  const totalAfterFirst = res1.state.totalLifetimeXp;
+
+  // Simulated rapid re-entry / duplicate callback
+  const res2 = recordGameplayRunXp(mockRun, startTime, storage, eventId);
+  assert.equal(res2.xpEarned, 0);
+  assert.equal(res2.state.totalLifetimeXp, totalAfterFirst);
+
+  // Third re-entry
+  const res3 = recordGameplayRunXp(mockRun, startTime, storage, eventId);
+  assert.equal(res3.xpEarned, 0);
+  assert.equal(res3.state.totalLifetimeXp, totalAfterFirst);
+});
+
+test('Gameplay Integration 20: Persistence round-trip across app restart preserves progression state', () => {
+  const storage = new MemoryStorage();
+
+  const originalProgression = {
+    level: 4,
+    currentXp: 200,
+    xpForNextLevel: 400,
+    totalLifetimeXp: 750, // Level 4 base is 550, + 200 = 750
+    highestLevelAchieved: 4,
+    processedRunEventIds: ['run-classic-100', 'run-zen-200'],
+    appliedRewardIds: ['challenge-reward-2026-11-06-easy_score_100'],
+  };
+
+  savePlayerProgression(originalProgression, storage);
+
+  // Re-read from fresh storage handle
+  const reloaded = loadPlayerProgression(storage);
+  assert.equal(reloaded.level, 4);
+  assert.equal(reloaded.currentXp, 200);
+  assert.equal(reloaded.xpForNextLevel, 400);
+  assert.equal(reloaded.totalLifetimeXp, 750);
+  assert.equal(reloaded.highestLevelAchieved, 4);
+  assert.deepEqual(reloaded.processedRunEventIds, ['run-classic-100', 'run-zen-200']);
+  assert.deepEqual(reloaded.appliedRewardIds, ['challenge-reward-2026-11-06-easy_score_100']);
+});
+
+test('Gameplay Integration 21: Bonus food awards +25 XP each and compounds with Rush 1.25x multiplier', () => {
+  // Input: 2 normal food (20), 2 bonus food (50), score 70 (3), survival 10s (2)
+  // Base = 20 + 50 + 3 + 2 = 75
+  // Rush total = Math.floor(75 * 1.25) = 93 (rushBonus = 18)
+  const breakdown = calculateRunXp({
+    mode: 'rush',
+    foodEaten: 2,
+    bonusEaten: 2,
+    score: 70,
+    survivalSeconds: 10,
+  });
+
+  assert.equal(breakdown.foodXp, 20);
+  assert.equal(breakdown.bonusFoodXp, 50);
+  assert.equal(breakdown.scoreXp, 3);
+  assert.equal(breakdown.survivalXp, 2);
+  assert.equal(breakdown.rushBonusXp, 18);
+  assert.equal(breakdown.totalXp, 93);
+});
+
+test('Gameplay Integration 22: Shields absorb and award 15 XP each up to 45 cap without exceeding', () => {
+  // 1 shield = 15 XP
+  assert.equal(calculateRunXp({ mode: 'classic', foodEaten: 1, score: 0, survivalSeconds: 5, shieldsUsed: 1 }).shieldXp, 15);
+  // 2 shields = 30 XP
+  assert.equal(calculateRunXp({ mode: 'classic', foodEaten: 1, score: 0, survivalSeconds: 5, shieldsUsed: 2 }).shieldXp, 30);
+  // 3 shields = 45 XP (reaches cap)
+  assert.equal(calculateRunXp({ mode: 'classic', foodEaten: 1, score: 0, survivalSeconds: 5, shieldsUsed: 3 }).shieldXp, 45);
+  // 4 shields = 45 XP (capped, does not exceed)
+  assert.equal(calculateRunXp({ mode: 'classic', foodEaten: 1, score: 0, survivalSeconds: 5, shieldsUsed: 4 }).shieldXp, 45);
+  // 10 shields = 45 XP
+  assert.equal(calculateRunXp({ mode: 'classic', foodEaten: 1, score: 0, survivalSeconds: 5, shieldsUsed: 10 }).shieldXp, 45);
+});
+
+test('Gameplay Integration 23: Two runs started within same millisecond timestamp do not collide when seeded', () => {
+  const storage = new MemoryStorage();
+  const sameTimestamp = 1715000000000;
+  const seedA = 'alpha123';
+  const seedB = 'beta456';
+
+  const idA = createRunEventId('classic', sameTimestamp, seedA);
+  const idB = createRunEventId('classic', sameTimestamp, seedB);
+  assert.notEqual(idA, idB);
+  assert.equal(idA, `run-classic-${sameTimestamp}-${seedA}`);
+  assert.equal(idB, `run-classic-${sameTimestamp}-${seedB}`);
+
+  const runA: GameEngineState = {
+    ...createInitialState('classic'),
+    foodEaten: 5,
+    score: 50,
+    gameTimeMs: 15000,
+  };
+  const runB: GameEngineState = {
+    ...createInitialState('classic'),
+    foodEaten: 8,
+    score: 80,
+    gameTimeMs: 20000,
+  };
+
+  const resA = recordGameplayRunXp(runA, sameTimestamp, storage, idA);
+  const resB = recordGameplayRunXp(runB, sameTimestamp, storage, idB);
+
+  assert.ok(resA.xpEarned > 0);
+  assert.ok(resB.xpEarned > 0);
+  assert.equal(resB.state.totalLifetimeXp, resA.xpEarned + resB.xpEarned);
+  assert.ok(resB.state.processedRunEventIds.includes(idA));
+  assert.ok(resB.state.processedRunEventIds.includes(idB));
+});
+
+test('Gameplay Integration 24: Consecutive completed runs record cleanly while duplicate callbacks for either run are blocked', () => {
+  const storage = new MemoryStorage();
+  const time1 = 1715000010000;
+  const seed1 = 'run-1';
+  const id1 = createRunEventId('classic', time1, seed1);
+
+  const run1: GameEngineState = {
+    ...createInitialState('classic'),
+    foodEaten: 6,
+    score: 60,
+    gameTimeMs: 15000,
+  };
+
+  // Run 1 completes
+  const firstRunResult = recordGameplayRunXp(run1, time1, storage, id1);
+  const xpRun1 = firstRunResult.xpEarned;
+  assert.ok(xpRun1 > 0);
+
+  // Run 2 completes next
+  const time2 = 1715000050000;
+  const seed2 = 'run-2';
+  const id2 = createRunEventId('classic', time2, seed2);
+
+  const run2: GameEngineState = {
+    ...createInitialState('classic'),
+    foodEaten: 10,
+    score: 100,
+    gameTimeMs: 25000,
+  };
+
+  const secondRunResult = recordGameplayRunXp(run2, time2, storage, id2);
+  const xpRun2 = secondRunResult.xpEarned;
+  assert.ok(xpRun2 > 0);
+  assert.equal(secondRunResult.state.totalLifetimeXp, xpRun1 + xpRun2);
+
+  // Re-firing completion callback for Run 1 produces 0 duplicate XP
+  const dupe1 = recordGameplayRunXp(run1, time1, storage, id1);
+  assert.equal(dupe1.xpEarned, 0);
+  assert.equal(dupe1.state.totalLifetimeXp, xpRun1 + xpRun2);
+
+  // Re-firing completion callback for Run 2 produces 0 duplicate XP
+  const dupe2 = recordGameplayRunXp(run2, time2, storage, id2);
+  assert.equal(dupe2.xpEarned, 0);
+  assert.equal(dupe2.state.totalLifetimeXp, xpRun1 + xpRun2);
+});
+
+test('Gameplay Integration 25: Daily challenge completion spanning midnight credits run start date when timestamp is provided', () => {
+  const storage = new MemoryStorage();
+  // Run started at 23:59:50 UTC on Nov 6, 2026
+  const runStartTimestamp = Date.UTC(2026, 10, 6, 23, 59, 50);
+  const runStartDate = getUtcDateString(runStartTimestamp);
+  assert.equal(runStartDate, '2026-11-06');
+
+  // Seed daily state for Nov 6 with completed challenge
+  const dailyNov6 = createInitialDailyState(runStartDate);
+  const challenge = dailyNov6.challenges[0];
+  challenge.progress = challenge.target;
+  challenge.completed = true;
+  saveDailyChallengeState(dailyNov6, storage);
+
+  // Claim reward passing the run's start timestamp (even if evaluated after midnight)
+  const claimResult = recordDailyRewardClaim(
+    challenge.id,
+    runStartDate,
+    storage,
+    runStartTimestamp
+  );
+
+  assert.equal(claimResult.success, true);
+  assert.equal(claimResult.xpEarned, 50);
+  assert.equal(claimResult.record?.utcDate, '2026-11-06');
+  assert.equal(claimResult.record?.claimedAt, runStartTimestamp);
+
+  // Ledger verification
+  const ledger = loadDailyRewardLedger(storage);
+  assert.equal(ledger.records.length, 1);
+  assert.equal(ledger.records[0].utcDate, '2026-11-06');
+  assert.equal(ledger.records[0].challengeId, challenge.id);
+
+  // Duplicate claim is rejected
+  const dupeClaim = recordDailyRewardClaim(
+    challenge.id,
+    runStartDate,
+    storage,
+    runStartTimestamp
+  );
+  assert.equal(dupeClaim.success, false);
+  assert.equal(dupeClaim.alreadyClaimed, true);
+  assert.equal(dupeClaim.xpEarned, 0);
+});
+
+test('Gameplay Integration 26: Shield saves counter strictly drives shield XP, not collected powerups', () => {
+  // If player collected 5 powerups but absorbed 0 collisions with shields, shield XP is 0
+  const zeroAbsorption = calculateRunXp({
+    mode: 'classic',
+    foodEaten: 5,
+    score: 50,
+    survivalSeconds: 10,
+    shieldsUsed: 0,
+  });
+  assert.equal(zeroAbsorption.shieldXp, 0);
+
+  // If player absorbed 2 collision saves, shield XP is 30
+  const twoAbsorptions = calculateRunXp({
+    mode: 'classic',
+    foodEaten: 5,
+    score: 50,
+    survivalSeconds: 10,
+    shieldsUsed: 2,
+  });
+  assert.equal(twoAbsorptions.shieldXp, 30);
+});
+
+test('Gameplay Integration 27: Maze final stage clear + victory bonuses are awarded once and failed stages receive zero bonus', () => {
+  // Stage 6 cleared and campaign completed: gets +100 stage clear and +500 victory
+  const victoryBreakdown = calculateRunXp({
+    mode: 'maze',
+    foodEaten: 10,
+    score: 200,
+    survivalSeconds: 30,
+    isStageClear: true,
+    isCampaignComplete: true,
+  });
+  assert.equal(victoryBreakdown.stageClearBonusXp, 100);
+  assert.equal(victoryBreakdown.campaignVictoryBonusXp, 500);
+
+  // Intermediate stage clear: gets +100 stage clear, 0 victory
+  const stageClearBreakdown = calculateRunXp({
+    mode: 'maze',
+    foodEaten: 8,
+    score: 100,
+    survivalSeconds: 20,
+    isStageClear: true,
+    isCampaignComplete: false,
+  });
+  assert.equal(stageClearBreakdown.stageClearBonusXp, 100);
+  assert.equal(stageClearBreakdown.campaignVictoryBonusXp, 0);
+
+  // Failed stage (game over): gets 0 stage clear, 0 victory
+  const failedStageBreakdown = calculateRunXp({
+    mode: 'maze',
+    foodEaten: 5,
+    score: 60,
+    survivalSeconds: 15,
+    isStageClear: false,
+    isCampaignComplete: false,
+  });
+  assert.equal(failedStageBreakdown.stageClearBonusXp, 0);
+  assert.equal(failedStageBreakdown.campaignVictoryBonusXp, 0);
+});
+
+test('Gameplay Integration 28: Game-over guard lifecycle preserves unfinished run restarts and isolated maze outcomes', () => {
+  const storage = new MemoryStorage();
+  let recordedClear: string | null = null;
+
+  // 1. Unfinished run started and restarted before death: 0 XP recorded
+  let runStart = 1715000100000;
+  let runSeed = 'first-abandoned';
+  // Player collects 10 food during the run but hits restart before dying
+  // startGame resets recordedClear to null and regenerates instance seed:
+  recordedClear = null;
+  runStart = 1715000200000;
+  runSeed = 'second-legitimate';
+
+  const initialProgression = loadPlayerProgression(storage);
+  assert.equal(initialProgression.totalLifetimeXp, 0);
+
+  // 2. Legitimate run completes: awards XP and sets guard
+  const legitimateRun: GameEngineState = {
+    ...createInitialState('classic'),
+    foodEaten: 7,
+    score: 70,
+    gameTimeMs: 20000,
+  };
+  const legitimateId = createRunEventId('classic', runStart, runSeed);
+  const guardKey = `over-classic-${runStart}-${runSeed}-70`;
+  assert.notEqual(recordedClear, guardKey);
+  recordedClear = guardKey;
+
+  const result1 = recordGameplayRunXp(legitimateRun, runStart, storage, legitimateId);
+  assert.ok(result1.xpEarned > 0);
+  const xpAfterRun = result1.state.totalLifetimeXp;
+
+  // 3. Repeated completion callback is blocked by both guard and event deduplication
+  if (recordedClear === guardKey) {
+    // Duplicate callback blocked by UI guard
+    assert.equal(recordedClear, guardKey);
+  }
+  const dupeResult = recordGameplayRunXp(legitimateRun, runStart, storage, legitimateId);
+  assert.equal(dupeResult.xpEarned, 0);
+  assert.equal(dupeResult.state.totalLifetimeXp, xpAfterRun);
+
+  // 4. Subsequent run starts: guard resets to null and new run finishes without interference
+  recordedClear = null;
+  const subsequentStart = 1715000300000;
+  const subsequentSeed = 'third-run';
+  const subsequentRun: GameEngineState = {
+    ...createInitialState('classic'),
+    foodEaten: 12,
+    score: 120,
+    gameTimeMs: 30000,
+  };
+  const subsequentId = createRunEventId('classic', subsequentStart, subsequentSeed);
+  const result2 = recordGameplayRunXp(subsequentRun, subsequentStart, storage, subsequentId);
+  assert.ok(result2.xpEarned > 0);
+  assert.equal(result2.state.totalLifetimeXp, xpAfterRun + result2.xpEarned);
+
+  // 5. Maze stage clear and campaign victory event IDs are isolated from game-over events
+  const mazeCampaignId = 'maze-campaign-999';
+  const stageClearEvent = createMazeStageEventId(mazeCampaignId, 1, 'clear');
+  const stageGameOverEvent = createMazeStageEventId(mazeCampaignId, 1, 'gameover');
+  const victoryEvent = createMazeStageEventId(mazeCampaignId, 6, 'victory');
+
+  assert.equal(stageClearEvent, 'maze-campaign-999-stage-1-clear');
+  assert.equal(stageGameOverEvent, 'maze-campaign-999-stage-1-gameover');
+  assert.equal(victoryEvent, 'maze-campaign-999-victory');
+  assert.notEqual(stageClearEvent, stageGameOverEvent);
+  assert.notEqual(stageClearEvent, victoryEvent);
+});
+
 

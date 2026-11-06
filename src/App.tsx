@@ -8,6 +8,8 @@ import type {
   MazeProgress,
   MazeStageSnapshot,
   ModeBestScores,
+  PlayerProgressionState,
+  XpEarnResult,
 } from './game/types.ts';
 import {
   createInitialState,
@@ -68,7 +70,9 @@ import {
   createMazeStageEventId,
   recordGameplayRunXp,
   recordMazeStageXp,
+  recordDailyRewardClaim,
   reconcileDailyRewards,
+  loadPlayerProgression,
 } from './game/levels.ts';
 
 export default function App() {
@@ -82,6 +86,8 @@ export default function App() {
   const [lifetimeStats, setLifetimeStats] = useState(() => loadStats());
   const [achievements, setAchievements] = useState(() => loadAchievements());
   const [dailyState, setDailyState] = useState<DailyChallengeUserState>(() => loadDailyChallengeState());
+  const [progressionState, setProgressionState] = useState<PlayerProgressionState>(() => loadPlayerProgression());
+  const [lastXpResult, setLastXpResult] = useState<XpEarnResult | null>(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -89,8 +95,9 @@ export default function App() {
   const [showStageSelect, setShowStageSelect] = useState(false);
   const [showDailyChallenges, setShowDailyChallenges] = useState(false);
 
-  // Run start timestamp for precise UTC date challenge attribution
+  // Run start timestamp and unique instance identifier for collision-safe run event IDs
   const runStartTimeRef = useRef<number>(Date.now());
+  const runInstanceIdRef = useRef<string>(Math.random().toString(36).slice(2, 9));
 
   // Tracks active Maze campaign session to ensure per-stage deltas and stable start timestamp
   const mazeCampaignRef = useRef<{
@@ -143,7 +150,10 @@ export default function App() {
 
   // Reconcile Daily Challenge rewards upon app startup
   useEffect(() => {
-    reconcileDailyRewards();
+    const recon = reconcileDailyRewards();
+    if (recon.reconciledCount > 0) {
+      setProgressionState(recon.progressionState);
+    }
   }, []);
 
   // Sync soundEngine settings
@@ -165,6 +175,14 @@ export default function App() {
     setIsNewRecord(isNewBest);
     setBestScores(loadBestScores());
 
+    // Single-recording guard against duplicate game-over callbacks
+    const overKey = `over-${finalState.mode}-${runStartTimeRef.current}-${runInstanceIdRef.current}-${finalState.score}`;
+    if (recordedClearRef.current === overKey) {
+      setScreen('gameover');
+      return;
+    }
+    recordedClearRef.current = overKey;
+
     // Record telemetry in pilot dossier and check achievement unlock
     const { stats: updatedStats, newlyUnlocked } = recordRunCompletion(finalState);
     setLifetimeStats(updatedStats);
@@ -172,8 +190,19 @@ export default function App() {
 
     // Record daily challenge progression & Trophy Stars
     let challengeEval: RunEvaluationResult;
-    if (finalState.mode === 'maze' && mazeCampaignRef.current) {
-      const campaign = mazeCampaignRef.current;
+    const claimTime = finalState.mode === 'maze'
+      ? (mazeCampaignRef.current?.startTime ?? runStartTimeRef.current)
+      : runStartTimeRef.current;
+
+    if (finalState.mode === 'maze') {
+      const campaign = mazeCampaignRef.current || {
+        campaignId: `maze-campaign-${runStartTimeRef.current}`,
+        startTime: runStartTimeRef.current,
+        creditedFood: 0,
+        creditedShields: 0,
+        clearedStages: new Set<number>(),
+        currentStageSnapshot: createMazeStageSnapshot(finalState),
+      };
       const deltaFood = Math.max(0, finalState.foodEaten - campaign.creditedFood);
       const deltaShields = Math.max(0, (finalState.shieldsUsed || 0) - campaign.creditedShields);
       const deltaCores = finalState.stageFoodEaten !== undefined ? finalState.stageFoodEaten : deltaFood;
@@ -196,16 +225,30 @@ export default function App() {
       const snapshot = campaign.currentStageSnapshot || createMazeStageSnapshot(finalState);
       const stageDelta = calculateMazeStageDelta(finalState, snapshot, false, false);
       const mazeEventId = createMazeStageEventId(campaign.campaignId, finalState.stage, 'gameover');
-      recordMazeStageXp(stageDelta, mazeEventId);
+      const mazeXpResult = recordMazeStageXp(stageDelta, mazeEventId);
+      setProgressionState(mazeXpResult.state);
+      setLastXpResult(mazeXpResult);
     } else {
-      const eventId = `run-${runStartTimeRef.current}-${finalState.score}-${finalState.foodEaten}`;
+      const eventId = `run-${runStartTimeRef.current}-${runInstanceIdRef.current}-${finalState.score}-${finalState.foodEaten}`;
       challengeEval = recordDailyChallengeRun(finalState, runStartTimeRef.current, undefined, {
         eventId,
       });
 
-      // Award standard run XP (Classic, Zen, Rush)
-      const runEventId = createRunEventId(finalState.mode, runStartTimeRef.current);
-      recordGameplayRunXp(finalState, runStartTimeRef.current, undefined, runEventId);
+      // Award standard run XP (Classic, Zen, Rush) with collision-safe instance seed
+      const runEventId = createRunEventId(finalState.mode, runStartTimeRef.current, runInstanceIdRef.current);
+      const runXpResult = recordGameplayRunXp(finalState, runStartTimeRef.current, undefined, runEventId);
+      setProgressionState(runXpResult.state);
+      setLastXpResult(runXpResult);
+    }
+
+    // Award 50 XP per newly completed daily challenge through the Daily Reward Ledger
+    if (challengeEval.newlyCompletedChallenges && challengeEval.newlyCompletedChallenges.length > 0) {
+      for (const challengeId of challengeEval.newlyCompletedChallenges) {
+        const claimResult = recordDailyRewardClaim(challengeId, challengeEval.state.activeDate, undefined, claimTime);
+        if (claimResult.success) {
+          setProgressionState(claimResult.progressionState);
+        }
+      }
     }
 
     setDailyState(challengeEval.state);
@@ -221,14 +264,14 @@ export default function App() {
   const handleStageClear = useCallback((state: GameEngineState) => {
     screenRef.current = 'stage_clear';
     soundEngine.play('level_up');
-    const clearKey = `stage-${state.stage}-score-${state.score}`;
+    const campaign = mazeCampaignRef.current;
+    const clearKey = `stage-${campaign ? campaign.campaignId : 'maze'}-${state.stage}-score-${state.score}`;
     if (recordedClearRef.current !== clearKey) {
       recordedClearRef.current = clearKey;
       const updated = recordStageClear(state.stage, state.score);
       setMazeProgress(updated);
 
       // Record daily challenge progression & Trophy Stars with stage delta
-      const campaign = mazeCampaignRef.current;
       const startTime = campaign ? campaign.startTime : runStartTimeRef.current;
       const deltaFood = campaign ? Math.max(0, state.foodEaten - campaign.creditedFood) : state.foodEaten;
       const deltaShields = campaign ? Math.max(0, (state.shieldsUsed || 0) - campaign.creditedShields) : (state.shieldsUsed || 0);
@@ -258,7 +301,19 @@ export default function App() {
         const snapshot = campaign.currentStageSnapshot || createMazeStageSnapshot(state);
         const stageDelta = calculateMazeStageDelta(state, snapshot, true, false);
         const stageEventId = createMazeStageEventId(campaign.campaignId, state.stage, 'clear');
-        recordMazeStageXp(stageDelta, stageEventId);
+        const stageXpResult = recordMazeStageXp(stageDelta, stageEventId);
+        setProgressionState(stageXpResult.state);
+        setLastXpResult(stageXpResult);
+      }
+
+      // Award 50 XP per newly completed daily challenge through the Daily Reward Ledger
+      if (challengeEval.newlyCompletedChallenges && challengeEval.newlyCompletedChallenges.length > 0) {
+        for (const challengeId of challengeEval.newlyCompletedChallenges) {
+          const claimResult = recordDailyRewardClaim(challengeId, challengeEval.state.activeDate, undefined, startTime);
+          if (claimResult.success) {
+            setProgressionState(claimResult.progressionState);
+          }
+        }
       }
 
       setDailyState(challengeEval.state);
@@ -273,7 +328,8 @@ export default function App() {
   const handleCampaignVictory = useCallback((state: GameEngineState) => {
     screenRef.current = 'campaign_victory';
     soundEngine.play('achievement');
-    const victoryKey = `campaign-score-${state.score}`;
+    const campaign = mazeCampaignRef.current;
+    const victoryKey = `campaign-${campaign ? campaign.campaignId : 'maze'}-score-${state.score}`;
     if (recordedClearRef.current !== victoryKey) {
       recordedClearRef.current = victoryKey;
       const updated = recordCampaignCompletion(state.score);
@@ -287,7 +343,6 @@ export default function App() {
       setAchievements(loadAchievements());
 
       // Record daily challenge progression & Trophy Stars
-      const campaign = mazeCampaignRef.current;
       const startTime = campaign ? campaign.startTime : runStartTimeRef.current;
       const deltaFood = campaign ? Math.max(0, state.foodEaten - campaign.creditedFood) : state.foodEaten;
       const deltaShields = campaign ? Math.max(0, (state.shieldsUsed || 0) - campaign.creditedShields) : (state.shieldsUsed || 0);
@@ -317,7 +372,19 @@ export default function App() {
         const snapshot = campaign.currentStageSnapshot || createMazeStageSnapshot(state);
         const stageDelta = calculateMazeStageDelta(state, snapshot, true, true);
         const victoryEventId = createMazeStageEventId(campaign.campaignId, 6, 'victory');
-        recordMazeStageXp(stageDelta, victoryEventId);
+        const victoryXpResult = recordMazeStageXp(stageDelta, victoryEventId);
+        setProgressionState(victoryXpResult.state);
+        setLastXpResult(victoryXpResult);
+      }
+
+      // Award 50 XP per newly completed daily challenge through the Daily Reward Ledger
+      if (challengeEval.newlyCompletedChallenges && challengeEval.newlyCompletedChallenges.length > 0) {
+        for (const challengeId of challengeEval.newlyCompletedChallenges) {
+          const claimResult = recordDailyRewardClaim(challengeId, challengeEval.state.activeDate, undefined, startTime);
+          if (claimResult.success) {
+            setProgressionState(claimResult.progressionState);
+          }
+        }
       }
 
       setDailyState(challengeEval.state);
@@ -337,6 +404,7 @@ export default function App() {
     screenRef.current = 'playing';
     const now = Date.now();
     runStartTimeRef.current = now;
+    runInstanceIdRef.current = Math.random().toString(36).slice(2, 9);
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -361,6 +429,7 @@ export default function App() {
     setShowStageSelect(false);
     setShowDailyChallenges(false);
     recordedClearRef.current = null;
+    setLastXpResult(null);
     const cfg = getMazeStage(targetStage);
     setHudState({
       score: 0,
@@ -429,6 +498,7 @@ export default function App() {
     }
     screenRef.current = 'playing';
     runStartTimeRef.current = Date.now();
+    runInstanceIdRef.current = Math.random().toString(36).slice(2, 9);
     mazeCampaignRef.current = null;
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -443,6 +513,7 @@ export default function App() {
     setShowStageSelect(false);
     setShowDailyChallenges(false);
     recordedClearRef.current = null;
+    setLastXpResult(null);
     setHudState({
       score: 0,
       level: 1,
@@ -486,6 +557,7 @@ export default function App() {
   // Main menu
   const returnToMainMenu = useCallback(() => {
     screenRef.current = 'title';
+    recordedClearRef.current = null;
     setScreen('title');
     soundEngine.play('click');
   }, []);
@@ -1025,6 +1097,7 @@ export default function App() {
           onSelectMode={setSelectedMode}
           bestScores={bestScores}
           mazeProgress={mazeProgress}
+          progression={progressionState}
           onStartGame={() => (selectedMode === 'maze' ? setShowStageSelect(true) : startGame(selectedMode))}
           onOpenStageSelect={() => setShowStageSelect(true)}
           onOpenDailyChallenges={() => setShowDailyChallenges(true)}
@@ -1053,6 +1126,8 @@ export default function App() {
           state={gameStateRef.current}
           bestScore={gameStateRef.current.mode === 'maze' ? (mazeProgress.bestCampaignScore || 0) : bestScores[gameStateRef.current.mode]}
           isNewRecord={isNewRecord}
+          xpEarnResult={lastXpResult}
+          progression={progressionState}
           onPlayAgain={() => (gameStateRef.current.mode === 'maze' ? startMazeStage(gameStateRef.current.stage) : startGame(gameStateRef.current.mode))}
           onMainMenu={returnToMainMenu}
           onOpenStats={() => setShowStats(true)}
@@ -1066,6 +1141,8 @@ export default function App() {
       {screen === 'stage_clear' && (
         <StageClearModal
           state={gameStateRef.current}
+          xpEarnResult={lastXpResult}
+          progression={progressionState}
           onContinue={handleContinueNextStage}
           onCampaignSelect={() => {
             setScreen('title');
@@ -1079,6 +1156,8 @@ export default function App() {
         <CampaignVictoryModal
           state={gameStateRef.current}
           progress={mazeProgress}
+          xpEarnResult={lastXpResult}
+          progression={progressionState}
           onReplayCampaign={() => startMazeStage(1)}
           onCampaignSelect={() => {
             setScreen('title');
@@ -1121,6 +1200,7 @@ export default function App() {
         <StatsModal
           stats={lifetimeStats}
           achievements={achievements}
+          progression={progressionState}
           onResetStats={handleResetStats}
           onClose={() => setShowStats(false)}
         />

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { X, Award, BarChart3, CheckCircle2, Lock, Flame, Shield } from 'lucide-react';
-import type { Achievement, LifetimeStats } from '../game/types.ts';
+import type { Achievement, LifetimeStats, PlayerProgressionState } from '../game/types.ts';
+import { getLevelTitle } from '../game/levels.ts';
+import { MAX_PLAYER_LEVEL } from '../game/constants.ts';
 import { BrandLogo } from './branding/BrandLogo.tsx';
 
 interface StatsModalProps {
   stats: LifetimeStats;
   achievements: Achievement[];
+  progression?: PlayerProgressionState;
   onResetStats: () => void;
   onClose: () => void;
 }
@@ -13,6 +16,7 @@ interface StatsModalProps {
 export const StatsModal: React.FC<StatsModalProps> = ({
   stats,
   achievements,
+  progression,
   onResetStats,
   onClose,
 }) => {
@@ -96,6 +100,85 @@ export const StatsModal: React.FC<StatsModalProps> = ({
           {/* Tab 1: Telemetry Stats */}
           {activeTab === 'stats' && (
             <div className="space-y-4">
+              {/* Pilot Progression Section */}
+              {progression && (() => {
+                const level = Math.max(1, Math.min(MAX_PLAYER_LEVEL, progression.level || 1));
+                const isMax = level >= MAX_PLAYER_LEVEL;
+                const currentXp = Math.max(0, progression.currentXp || 0);
+                const xpForNext = isMax ? 0 : Math.max(1, progression.xpForNextLevel || 1);
+                const remaining = isMax ? 0 : Math.max(0, xpForNext - currentXp);
+                const percent = isMax ? 100 : Math.min(100, Math.round((currentXp / xpForNext) * 100));
+
+                return (
+                  <div
+                    data-testid="stats-progression-card"
+                    className="bg-[#05070E] border border-[#00F5FF]/40 rounded-xl p-3 sm:p-4 text-left shadow-[0_0_20px_rgba(0,245,255,0.08)]"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <div className="text-[10px] font-mono text-[#79869C] uppercase font-bold tracking-wider">
+                          YOUR LEVEL
+                        </div>
+                        <div className="text-base sm:text-lg font-black font-display text-[#F0F6FC]">
+                          Level {level} · <span className="text-[#00F5FF]">{getLevelTitle(level)}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] font-mono text-[#79869C] uppercase font-bold tracking-wider">
+                          HIGHEST LEVEL
+                        </div>
+                        <div className="text-base sm:text-lg font-black font-display text-[#FFD700]">
+                          {progression.highestLevelAchieved || level}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 my-2 py-2 border-y border-[#161B2E] text-xs font-mono">
+                      <div>
+                        <span className="text-[10px] text-[#79869C] block uppercase font-semibold">YOUR XP</span>
+                        <span className="font-bold text-[#F0F6FC]">
+                          {isMax ? 'MAX LEVEL' : `${currentXp.toLocaleString()} / ${xpForNext.toLocaleString()}`}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-[#79869C] block uppercase font-semibold">TOTAL XP EARNED</span>
+                        <span className="font-bold text-[#10FFA0]">
+                          {(progression.totalLifetimeXp || 0).toLocaleString()} XP
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 mt-2">
+                      <div className="flex justify-between text-[10px] font-mono">
+                        <span className="text-[#79869C]">Next Level Progress</span>
+                        <span className="text-[#00F5FF] font-bold">{isMax ? '100%' : `${percent}%`}</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-[#161B2E] overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            isMax
+                              ? 'bg-gradient-to-r from-[#FFB800] via-[#FFD700] to-[#FF8A00]'
+                              : 'bg-gradient-to-r from-[#00F5FF] via-[#7928CA] to-[#10FFA0]'
+                          }`}
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                      <div className="text-[10px] font-mono text-[#79869C] text-right pt-0.5">
+                        {isMax ? (
+                          <span className="text-[#FFD700] font-semibold">
+                            MAX LEVEL REACHED! You've become an Apex Legend!
+                          </span>
+                        ) : (
+                          <span>
+                            Next Level: <strong className="text-[#38E1FF]">{remaining.toLocaleString()} XP</strong> remaining
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-2.5">
                 <div className="bg-[#05070E] border border-[#161B2E] rounded-xl p-2.5 sm:p-3 flex flex-col items-center text-center">
                   <span className="text-[10px] text-[#79869C] font-bold uppercase tracking-wider">Runs Executed</span>

@@ -1,13 +1,15 @@
 import React from 'react';
 import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3, Compass, Star } from 'lucide-react';
-import type { GameMode, MazeProgress, ModeBestScores } from '../game/types.ts';
+import type { GameMode, MazeProgress, ModeBestScores, PlayerProgressionState } from '../game/types.ts';
 import { BrandLogo } from './branding/BrandLogo.tsx';
+import { PlayerLevelCard } from './progression/PlayerLevelCard.tsx';
 
 interface TitleScreenProps {
   selectedMode: GameMode;
   onSelectMode: (mode: GameMode) => void;
   bestScores: ModeBestScores;
   mazeProgress?: MazeProgress;
+  progression?: PlayerProgressionState;
   onStartGame: () => void;
   onOpenStageSelect?: () => void;
   onOpenDailyChallenges?: () => void;
@@ -68,6 +70,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onSelectMode,
   bestScores,
   mazeProgress,
+  progression,
   onStartGame,
   onOpenStageSelect,
   onOpenDailyChallenges,
@@ -133,6 +136,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <p className="mt-1 text-[11px] sm:text-xs font-bold tracking-[0.32em] text-[#79869C] uppercase select-none">
           ONE MORE RUN
         </p>
+
+        {/* Pilot Progression Level Card */}
+        {progression && (
+          <div className="w-full max-w-xs xs:max-w-sm sm:max-w-md lg:max-w-2xl mt-3 sm:mt-4 shrink-0">
+            <PlayerLevelCard progression={progression} />
+          </div>
+        )}
 
         {/* Mode Selector Cards (Responsive 2x2 on Mobile/Tablet, 4 Cols on Desktop) */}
         <div className="@container w-full max-w-xs xs:max-w-sm sm:max-w-md lg:max-w-2xl mt-3 xs:mt-4 sm:mt-6">

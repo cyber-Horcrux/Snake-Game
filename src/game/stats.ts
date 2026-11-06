@@ -212,7 +212,7 @@ export function recordRunCompletion(
     longestSnake: Math.max(currentStats.longestSnake, finalState.maxLength),
     wallsWrapped: currentStats.wallsWrapped + (finalState.wallsWrapped || 0),
     shieldsUsed: currentStats.shieldsUsed + (finalState.shieldsUsed || 0),
-    maxCombo: Math.max(currentStats.maxCombo, finalState.combo || 1),
+    maxCombo: Math.max(currentStats.maxCombo, finalState.maxCombo ?? 1, finalState.combo ?? 1),
   };
 
   saveStats(updatedStats, storage);

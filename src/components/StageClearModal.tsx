@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { ArrowRight, Compass, Home, Trophy, CheckCircle2, Zap } from 'lucide-react';
-import type { GameEngineState } from '../game/types.ts';
+import type { GameEngineState, PlayerProgressionState, XpEarnResult } from '../game/types.ts';
+import { getLevelTitle } from '../game/levels.ts';
 import { getMazeStage, STAGE_INGRESS_CAPACITIES } from '../game/mazes.ts';
 import { BrandLogo } from './branding/BrandLogo.tsx';
+import { LevelUpCelebration } from './progression/LevelUpCelebration.tsx';
+import { XpBreakdownList } from './progression/XpBreakdownList.tsx';
 
 interface StageClearModalProps {
   state: GameEngineState;
   onContinue: () => void;
   onCampaignSelect: () => void;
   onMainMenu: () => void;
+  xpEarnResult?: XpEarnResult | null;
+  progression?: PlayerProgressionState;
 }
 
 export const StageClearModal: React.FC<StageClearModalProps> = ({
@@ -16,8 +21,11 @@ export const StageClearModal: React.FC<StageClearModalProps> = ({
   onContinue,
   onCampaignSelect,
   onMainMenu,
+  xpEarnResult,
+  progression,
 }) => {
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [isCelebrationDismissed, setIsCelebrationDismissed] = useState(false);
   const currentStageConfig = getMazeStage(state.stage);
   const nextStageNum = Math.min(6, state.stage + 1);
   const nextStageConfig = getMazeStage(nextStageNum);
@@ -104,6 +112,118 @@ export const StageClearModal: React.FC<StageClearModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Stage XP Reward & Level Progression */}
+        {xpEarnResult ? (
+          <div className="w-full mb-3 sm:mb-4 space-y-2 shrink-0">
+            {xpEarnResult.levelsGained > 0 && !isCelebrationDismissed && (
+              <LevelUpCelebration
+                levelBefore={xpEarnResult.levelBefore}
+                levelAfter={xpEarnResult.levelAfter}
+                levelsGained={xpEarnResult.levelsGained}
+                onDismiss={() => setIsCelebrationDismissed(true)}
+              />
+            )}
+
+            <div
+              data-testid="stage-clear-xp-card"
+              className="w-full bg-[#05070E] border border-[#10FFA0]/40 rounded-xl p-2.5 sm:p-3 text-left shadow-[0_0_15px_rgba(16,255,160,0.1)]"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] sm:text-xs font-bold font-display uppercase tracking-wider text-[#79869C]">
+                  STAGE {state.stage} REWARD XP
+                </span>
+                <span className="text-xs sm:text-sm font-black font-mono-num text-[#10FFA0]">
+                  +{xpEarnResult.xpEarned} XP
+                </span>
+              </div>
+
+              {/* Itemized breakdown with Stage Clear completion bonus */}
+              <div className="mt-2 space-y-2">
+                <XpBreakdownList
+                  breakdown={xpEarnResult.breakdown}
+                  mode="maze"
+                />
+
+                <div className="pt-1.5 border-t border-[#161B2E] space-y-1">
+                  <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono">
+                  <span className="text-[#F0F6FC] font-bold">
+                    Level {xpEarnResult.state.level} · {getLevelTitle(xpEarnResult.state.level)}
+                  </span>
+                  <span className="text-[#00F5FF] font-bold">
+                    {xpEarnResult.state.level >= 50
+                      ? 'MAX LEVEL'
+                      : `${xpEarnResult.state.currentXp.toLocaleString()} / ${xpEarnResult.state.xpForNextLevel.toLocaleString()} XP`}
+                  </span>
+                </div>
+
+                <div className="w-full h-1.5 rounded-full bg-[#161B2E] overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[#10FFA0] via-[#00F5FF] to-[#9865FF] transition-all duration-500"
+                    style={{
+                      width: `${
+                        xpEarnResult.state.level >= 50
+                          ? 100
+                          : Math.min(
+                              100,
+                              Math.round(
+                                (xpEarnResult.state.currentXp /
+                                  Math.max(1, xpEarnResult.state.xpForNextLevel)) *
+                                  100
+                              )
+                            )
+                      }%`,
+                    }}
+                  />
+                </div>
+
+                <div className="text-[9px] sm:text-[10px] font-mono text-[#79869C] text-right">
+                  {xpEarnResult.state.level >= 50
+                    ? 'Maximum rank achieved!'
+                    : `${Math.max(
+                        0,
+                        xpEarnResult.state.xpForNextLevel - xpEarnResult.state.currentXp
+                      ).toLocaleString()} XP to Level ${xpEarnResult.state.level + 1}`}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : progression ? (
+          <div className="w-full mb-3 sm:mb-4 shrink-0">
+            <div
+              data-testid="stage-clear-xp-card"
+              className="w-full bg-[#05070E] border border-[#161B2E] rounded-xl p-2.5 sm:p-3 text-left"
+            >
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono mb-1">
+                <span className="text-[#F0F6FC] font-bold">
+                  Level {progression.level} · {getLevelTitle(progression.level)}
+                </span>
+                <span className="text-[#10FFA0] font-bold">
+                  {progression.level >= 50
+                    ? 'MAX LEVEL'
+                    : `${progression.currentXp.toLocaleString()} / ${progression.xpForNextLevel.toLocaleString()} XP`}
+                </span>
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-[#161B2E] overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#10FFA0] to-[#00F5FF]"
+                  style={{
+                    width: `${
+                      progression.level >= 50
+                        ? 100
+                        : Math.min(
+                            100,
+                            Math.round(
+                              (progression.currentXp / Math.max(1, progression.xpForNextLevel)) * 100
+                            )
+                          )
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-2 sm:gap-2.5 w-full shrink-0">
