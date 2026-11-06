@@ -108,6 +108,7 @@ export interface GameEngineState {
   stage: number;
   stageFoodEaten: number;
   maxCombo: number;
+  stageMaxCombo?: number;
 }
 
 export interface AudioSettings {
@@ -233,6 +234,60 @@ export interface RunXpInput {
   maxCombo?: number;
   shieldsUsed?: number;
   wallsWrapped?: number;
+  isStageClear?: boolean;
+  isCampaignComplete?: boolean;
+}
+
+export interface DailyRewardRecord {
+  rewardId: string;
+  utcDate: string;
+  challengeId: string;
+  xpAmount: number;
+  starsAmount: number;
+  claimedAt: number;
+}
+
+export interface DailyRewardLedger {
+  records: DailyRewardRecord[];
+}
+
+export interface DailyRewardClaimResult {
+  success: boolean;
+  rewardId: string;
+  xpEarned: number;
+  alreadyClaimed: boolean;
+  error?: string;
+  record?: DailyRewardRecord;
+  progressionState: PlayerProgressionState;
+}
+
+export interface DailyRewardReconciliationResult {
+  reconciledCount: number;
+  reconciledRewardIds: string[];
+  reconciledStarsCount?: number;
+  reconciledStarsRewardIds?: string[];
+  progressionState: PlayerProgressionState;
+}
+
+export interface MazeStageSnapshot {
+  stage: number;
+  startFood: number;
+  startBonusFood: number;
+  startScore: number;
+  startGameTimeMs: number;
+  startShields: number;
+  startWallsWrapped: number;
+  stageMaxCombo: number;
+}
+
+export interface MazeStagePerformanceInput {
+  stage: number;
+  foodEaten: number;
+  bonusEaten?: number;
+  score: number;
+  survivalSeconds: number;
+  stageMaxCombo?: number;
+  shieldsUsed?: number;
   isStageClear?: boolean;
   isCampaignComplete?: boolean;
 }

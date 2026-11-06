@@ -284,6 +284,7 @@ export function createInitialState(
     stage: 1,
     stageFoodEaten: 0,
     maxCombo: 1,
+    stageMaxCombo: 1,
   };
 
   // Spawn initial normal food ensuring no overlap with snake, obstacles, or warpGate
@@ -344,6 +345,7 @@ export function stepGame(
 
   const events: GameAudioEvent[] = [];
   let shieldAbsorbed = false;
+  const newGameTimeMs = (currentState.gameTimeMs || 0) + currentState.tickIntervalMs;
 
   // 1. Resolve Direction
   let nextDirection = currentState.direction;
@@ -369,6 +371,7 @@ export function stepGame(
   let newStageFoodEaten = currentState.stageFoodEaten || 0;
   let newStage = currentState.stage || 1;
   let newMaxCombo = currentState.maxCombo || 1;
+  let newStageMaxCombo = currentState.stageMaxCombo || 1;
   let obstacleScoreBonus = 0;
   let isHazardHitWithoutShield = false;
 
@@ -442,8 +445,10 @@ export function stepGame(
         shieldsUsed: newShieldsUsed,
         lastTickTime: nowMs,
         tickIntervalMs: newTickInterval,
+        gameTimeMs: newGameTimeMs,
         obstacles: currentObstacles,
         maxCombo: newMaxCombo,
+        stageMaxCombo: newStageMaxCombo,
       },
       events,
       shieldAbsorbed: true,
@@ -478,6 +483,10 @@ export function stepGame(
             ...currentState,
             isAlive: false,
             deathReason: 'wall',
+            gameTimeMs: newGameTimeMs,
+            shieldsUsed: newShieldsUsed,
+            maxCombo: newMaxCombo,
+            stageMaxCombo: newStageMaxCombo,
           },
           events: ['game_over'],
         };
@@ -497,6 +506,10 @@ export function stepGame(
               ...currentState,
               isAlive: false,
               deathReason: 'wall',
+              gameTimeMs: newGameTimeMs,
+              shieldsUsed: newShieldsUsed,
+              maxCombo: newMaxCombo,
+              stageMaxCombo: newStageMaxCombo,
             },
             events: ['game_over'],
           };
@@ -514,6 +527,10 @@ export function stepGame(
             ...currentState,
             isAlive: false,
             deathReason: 'wall',
+            gameTimeMs: newGameTimeMs,
+            shieldsUsed: newShieldsUsed,
+            maxCombo: newMaxCombo,
+            stageMaxCombo: newStageMaxCombo,
           },
           events: ['game_over'],
         };
@@ -531,6 +548,10 @@ export function stepGame(
           ...currentState,
           isAlive: false,
           deathReason: 'wall',
+          gameTimeMs: newGameTimeMs,
+          shieldsUsed: newShieldsUsed,
+          maxCombo: newMaxCombo,
+          stageMaxCombo: newStageMaxCombo,
         },
         events: ['game_over'],
       };
@@ -563,6 +584,10 @@ export function stepGame(
             ...currentState,
             isAlive: false,
             deathReason: 'wall',
+            gameTimeMs: newGameTimeMs,
+            shieldsUsed: newShieldsUsed,
+            maxCombo: newMaxCombo,
+            stageMaxCombo: newStageMaxCombo,
           },
           events: ['game_over'],
         };
@@ -594,6 +619,10 @@ export function stepGame(
             ...currentState,
             isAlive: false,
             deathReason: 'wall',
+            gameTimeMs: newGameTimeMs,
+            shieldsUsed: newShieldsUsed,
+            maxCombo: newMaxCombo,
+            stageMaxCombo: newStageMaxCombo,
           },
           events: ['game_over'],
         };
@@ -623,6 +652,10 @@ export function stepGame(
           ...currentState,
           isAlive: false,
           deathReason: 'self',
+          gameTimeMs: newGameTimeMs,
+          shieldsUsed: newShieldsUsed,
+          maxCombo: newMaxCombo,
+          stageMaxCombo: newStageMaxCombo,
         },
         events: ['game_over'],
       };
@@ -662,6 +695,10 @@ export function stepGame(
         isAlive: false,
         stageFoodEaten: newStageFoodEaten,
         maxCombo: newMaxCombo,
+        stageMaxCombo: newStageMaxCombo,
+        gameTimeMs: newGameTimeMs,
+        shieldsUsed: newShieldsUsed,
+        wallsWrapped: newWallsWrapped,
       },
       events,
     };
@@ -729,8 +766,9 @@ export function stepGame(
     }
   }
 
-  // maxCombo tracking: records highest combo reached during this run
+  // maxCombo and stageMaxCombo tracking: records highest combo reached during this run / stage
   newMaxCombo = Math.max(newMaxCombo, currentCombo);
+  newStageMaxCombo = Math.max(newStageMaxCombo, currentCombo);
 
   // Level Calculation
   const newLevel = Math.floor(newFoodEaten / FOOD_PROGRESSION_PER_LEVEL) + 1;
@@ -802,6 +840,8 @@ export function stepGame(
         stage: newStage,
         stageFoodEaten: newStageFoodEaten,
         maxCombo: newMaxCombo,
+        stageMaxCombo: newStageMaxCombo,
+        gameTimeMs: newGameTimeMs,
       },
       events: ['new_record'],
     };
@@ -916,11 +956,13 @@ export function stepGame(
     powerUpsCollected: newPowerUpsCollected,
     lastTickTime: nowMs,
     tickIntervalMs: newTickInterval,
+    gameTimeMs: newGameTimeMs,
     obstacles: currentObstacles,
     warpGate: updatedWarpGate,
     stage: newStage,
     stageFoodEaten: newStageFoodEaten,
     maxCombo: newMaxCombo,
+    stageMaxCombo: newStageMaxCombo,
   };
 
   return {

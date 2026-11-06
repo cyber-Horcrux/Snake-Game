@@ -121,6 +121,7 @@ export const STORAGE_KEYS = {
   DAILY_CHALLENGES: 'neon_snake_daily_challenges_v1',
   MAZE_PROGRESS: 'neon_snake_maze_progress_v1',
   PLAYER_PROGRESSION: 'neon_snake_player_progression_v1',
+  DAILY_REWARD_LEDGER: 'neon_snake_daily_reward_ledger_v1',
 };
 
 export const MAX_PLAYER_LEVEL = 50;

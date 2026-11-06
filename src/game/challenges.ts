@@ -61,6 +61,7 @@ export interface DailyChallengeUserState {
   lastKnownTimestamp: number;
   completedDatesHistory: string[];
   processedEventIds?: string[];
+  appliedRewardIds?: string[];
 }
 
 export interface RunEvaluationOptions {
@@ -411,6 +412,7 @@ export function createInitialDailyState(
     lastKnownTimestamp: now,
     completedDatesHistory: [],
     processedEventIds: [],
+    appliedRewardIds: [],
   };
 }
 
@@ -460,6 +462,10 @@ export function loadDailyChallengeState(
       ? parsed.processedEventIds.filter((id: unknown) => typeof id === 'string' && (id as string).length > 0)
       : [];
 
+    const appliedRewardIds = Array.isArray(parsed.appliedRewardIds)
+      ? parsed.appliedRewardIds.filter((id: unknown) => typeof id === 'string' && (id as string).length > 0)
+      : [];
+
     const lastKnownTimestamp = sanitizeNum(parsed.lastKnownTimestamp, currentTimestamp);
 
     // Clock rollback detection: if system clock rolled back significantly behind recorded timestamp
@@ -499,6 +505,7 @@ export function loadDailyChallengeState(
         lastKnownTimestamp: effectiveNow,
         completedDatesHistory,
         processedEventIds: [],
+        appliedRewardIds,
       };
       saveDailyChallengeState(rolloverState, storage);
       return rolloverState;
@@ -571,6 +578,7 @@ export function loadDailyChallengeState(
       lastKnownTimestamp: effectiveNow,
       completedDatesHistory,
       processedEventIds,
+      appliedRewardIds,
     };
 
     return validState;
@@ -831,6 +839,10 @@ export function recordDailyChallengeRun(
     lastKnownTimestamp: Math.max(currentTimestamp, userState.lastKnownTimestamp),
     completedDatesHistory,
     processedEventIds: updatedProcessedEventIds,
+    appliedRewardIds: [
+      ...(userState.appliedRewardIds || []),
+      ...newlyCompletedChallenges.map(cid => `challenge-reward-${userState.activeDate}-${cid}`),
+    ],
   };
 
   saveDailyChallengeState(finalUserState, storage);

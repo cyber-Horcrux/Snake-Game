@@ -500,6 +500,7 @@ export function createInitialMazeState(
     stage: stageConfig.stage,
     stageFoodEaten: 0,
     maxCombo: 1,
+    stageMaxCombo: 1,
   };
 
   // Place initial neon core food
@@ -584,6 +585,7 @@ export function advanceMazeStage(
     maxLength: newMaxLength,
     tickIntervalMs,
     food: [],
+    stageMaxCombo: 1,
   };
 
   // Spawn fresh initial core on next stage

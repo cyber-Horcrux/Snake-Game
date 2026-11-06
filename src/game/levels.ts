@@ -7,6 +7,13 @@
  */
 
 import type {
+  DailyRewardClaimResult,
+  DailyRewardLedger,
+  DailyRewardReconciliationResult,
+  DailyRewardRecord,
+  GameEngineState,
+  GameMode,
+  MazeStageSnapshot,
   PlayerProgressionState,
   RunXpInput,
   XpBreakdown,
@@ -20,6 +27,12 @@ import {
   XP_REWARDS,
 } from './constants.ts';
 import type { StorageLike } from './persistence.ts';
+import {
+  getUtcDateString,
+  loadDailyChallengeState,
+  saveDailyChallengeState,
+  REWARD_STARS,
+} from './challenges.ts';
 
 // Precomputed cumulative XP thresholds for Levels 1 through 10
 export const CUMULATIVE_THRESHOLDS_1_TO_10: readonly number[] = [
@@ -485,6 +498,129 @@ export function awardRunXp(
 }
 
 /**
+ * Generates a stable, unique event ID for a standard run (Classic, Zen, Rush).
+ */
+export function createRunEventId(
+  mode: GameMode,
+  startTime: number,
+  seed?: string
+): string {
+  const sanitizedMode = mode || 'classic';
+  const sanitizedTime = sanitizeNonNegativeInt(startTime, 0);
+  if (seed && typeof seed === 'string' && seed.trim().length > 0) {
+    return `run-${sanitizedMode}-${sanitizedTime}-${seed.trim()}`;
+  }
+  return `run-${sanitizedMode}-${sanitizedTime}`;
+}
+
+/**
+ * Generates a stable, unique event ID for a Maze stage completion or failure.
+ */
+export function createMazeStageEventId(
+  campaignId: string,
+  stage: number,
+  outcome: 'clear' | 'victory' | 'gameover'
+): string {
+  const cleanCampaignId =
+    typeof campaignId === 'string' && campaignId.trim().length > 0
+      ? campaignId.trim()
+      : `maze-campaign-${Date.now()}`;
+  const cleanStage = Math.max(1, Math.min(6, Math.floor(stage)));
+
+  if (outcome === 'victory') {
+    return `${cleanCampaignId}-victory`;
+  }
+  return `${cleanCampaignId}-stage-${cleanStage}-${outcome}`;
+}
+
+/**
+ * Creates an immutable snapshot of gameplay metrics at the start of a Maze stage.
+ */
+export function createMazeStageSnapshot(state: GameEngineState): MazeStageSnapshot {
+  return {
+    stage: state.stage || 1,
+    startFood: state.foodEaten || 0,
+    startBonusFood: state.bonusEaten || 0,
+    startScore: state.score || 0,
+    startGameTimeMs: state.gameTimeMs || 0,
+    startShields: state.shieldsUsed || 0,
+    startWallsWrapped: state.wallsWrapped || 0,
+    stageMaxCombo: state.stageMaxCombo || 1,
+  };
+}
+
+/**
+ * Calculates isolated stage-specific deltas between the current Maze state and the stage start snapshot.
+ */
+export function calculateMazeStageDelta(
+  currentState: GameEngineState,
+  snapshot: MazeStageSnapshot,
+  isStageClear: boolean = false,
+  isCampaignComplete: boolean = false
+): RunXpInput {
+  const deltaFood = Math.max(0, (currentState.foodEaten || 0) - (snapshot.startFood || 0));
+  const deltaBonus = Math.max(0, (currentState.bonusEaten || 0) - (snapshot.startBonusFood || 0));
+  const deltaScore = Math.max(0, (currentState.score || 0) - (snapshot.startScore || 0));
+  const deltaMs = Math.max(0, (currentState.gameTimeMs || 0) - (snapshot.startGameTimeMs || 0));
+  const survivalSeconds = Math.floor(deltaMs / 1000);
+  const deltaShields = Math.max(0, (currentState.shieldsUsed || 0) - (snapshot.startShields || 0));
+  const deltaWalls = Math.max(0, (currentState.wallsWrapped || 0) - (snapshot.startWallsWrapped || 0));
+  const stageMaxCombo = currentState.stageMaxCombo || 1;
+
+  return {
+    mode: 'maze',
+    foodEaten: deltaFood,
+    bonusEaten: deltaBonus,
+    score: deltaScore,
+    survivalSeconds,
+    maxCombo: stageMaxCombo,
+    shieldsUsed: deltaShields,
+    wallsWrapped: deltaWalls,
+    isStageClear,
+    isCampaignComplete,
+  };
+}
+
+/**
+ * Records XP earned from a completed standard run (Classic, Zen, Rush) based on simulation time.
+ */
+export function recordGameplayRunXp(
+  finalState: GameEngineState,
+  runStartTime: number,
+  storage: StorageLike | null = getBrowserStorage(),
+  eventId?: string
+): XpEarnResult {
+  const survivalSeconds = Math.floor((finalState.gameTimeMs || 0) / 1000);
+  const resolvedEventId = eventId || createRunEventId(finalState.mode, runStartTime);
+
+  const input: RunXpInput = {
+    mode: finalState.mode,
+    foodEaten: finalState.foodEaten || 0,
+    bonusEaten: finalState.bonusEaten || 0,
+    score: finalState.score || 0,
+    survivalSeconds,
+    maxCombo: finalState.maxCombo || 1,
+    shieldsUsed: finalState.shieldsUsed || 0,
+    wallsWrapped: finalState.wallsWrapped || 0,
+    isStageClear: Boolean(finalState.isStageClear),
+    isCampaignComplete: Boolean(finalState.isCampaignComplete),
+  };
+
+  return awardRunXp(input, resolvedEventId, storage);
+}
+
+/**
+ * Records isolated XP earned from a Maze stage clear, victory, or game over.
+ */
+export function recordMazeStageXp(
+  stageDelta: RunXpInput,
+  eventId: string,
+  storage: StorageLike | null = getBrowserStorage()
+): XpEarnResult {
+  return awardRunXp(stageDelta, eventId, storage);
+}
+
+/**
  * Awards direct XP (such as from Daily Challenges) with permanent deduplication
  * via `appliedRewardIds`. Daily challenge IDs are not subject to rolling buffer eviction.
  */
@@ -582,5 +718,339 @@ export function awardCustomXp(
       ...EMPTY_XP_BREAKDOWN,
       totalXp: sanitizedXp,
     },
+  };
+}
+
+// ==========================================
+// Daily Challenge XP Reward Ledger & Reconciliation
+// ==========================================
+
+/**
+ * Generates a deterministic daily challenge reward ID based on UTC date and challenge ID.
+ * Format: challenge-reward-${utcDate}-${challengeId}
+ */
+export function generateDailyRewardId(utcDate: string, challengeId: string): string {
+  const sanitizedDate = typeof utcDate === 'string' ? utcDate.trim() : '';
+  const sanitizedId = typeof challengeId === 'string' ? challengeId.trim() : '';
+  return `challenge-reward-${sanitizedDate}-${sanitizedId}`;
+}
+
+/**
+ * Loads the Daily Reward Ledger from storage.
+ * Gracefully handles missing, corrupted, or malformed data by returning empty records array.
+ */
+export function loadDailyRewardLedger(
+  storage: StorageLike | null = getBrowserStorage()
+): DailyRewardLedger {
+  if (!storage) {
+    return { records: [] };
+  }
+
+  try {
+    const raw = storage.getItem(STORAGE_KEYS.DAILY_REWARD_LEDGER);
+    if (!raw) {
+      return { records: [] };
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.records)) {
+      return { records: [] };
+    }
+
+    const seenIds = new Set<string>();
+    const validRecords: DailyRewardRecord[] = [];
+
+    for (const r of parsed.records) {
+      if (
+        r &&
+        typeof r.rewardId === 'string' &&
+        r.rewardId.trim().length > 0 &&
+        typeof r.utcDate === 'string' &&
+        typeof r.challengeId === 'string' &&
+        typeof r.xpAmount === 'number' &&
+        Number.isFinite(r.xpAmount) &&
+        typeof r.starsAmount === 'number' &&
+        Number.isFinite(r.starsAmount) &&
+        typeof r.claimedAt === 'number' &&
+        Number.isFinite(r.claimedAt)
+      ) {
+        const trimmedRewardId = r.rewardId.trim();
+        if (!seenIds.has(trimmedRewardId)) {
+          seenIds.add(trimmedRewardId);
+          validRecords.push({
+            rewardId: trimmedRewardId,
+            utcDate: r.utcDate.trim(),
+            challengeId: r.challengeId.trim(),
+            xpAmount: sanitizeNonNegativeInt(r.xpAmount, XP_REWARDS.DAILY_CHALLENGE_COMPLETION),
+            starsAmount: sanitizeNonNegativeInt(r.starsAmount, 25),
+            claimedAt: r.claimedAt,
+          });
+        }
+      }
+    }
+
+    return { records: validRecords };
+  } catch {
+    return { records: [] };
+  }
+}
+
+/**
+ * Persists the Daily Reward Ledger to storage.
+ */
+export function saveDailyRewardLedger(
+  ledger: DailyRewardLedger,
+  storage: StorageLike | null = getBrowserStorage()
+): boolean {
+  if (!storage) {
+    return false;
+  }
+
+  try {
+    const sanitizedRecords = Array.isArray(ledger?.records)
+      ? ledger.records.filter(r => r && typeof r.rewardId === 'string' && r.rewardId.trim().length > 0)
+      : [];
+    storage.setItem(STORAGE_KEYS.DAILY_REWARD_LEDGER, JSON.stringify({ records: sanitizedRecords }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Clears the Daily Reward Ledger in storage.
+ */
+export function resetDailyRewardLedger(
+  storage: StorageLike | null = getBrowserStorage()
+): boolean {
+  if (!storage) {
+    return false;
+  }
+  try {
+    storage.removeItem(STORAGE_KEYS.DAILY_REWARD_LEDGER);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Claims a completed daily challenge reward, enforcing exactly-once 50 XP and 25 Trophy Stars.
+ * Protocol:
+ * 1. Checks if already recorded in the ledger or progression appliedRewardIds.
+ * 2. Checks that challenge is completed (progress >= target || completed === true).
+ * 3. Records entry in Daily Reward Ledger.
+ * 4. Applies 50 XP to PlayerProgressionState.appliedRewardIds.
+ * 5. Applies 25 Trophy Stars and marks rewardClaimed: true in DailyChallengeUserState.
+ */
+export function recordDailyRewardClaim(
+  challengeId: string,
+  utcDate?: string,
+  storage: StorageLike | null = getBrowserStorage(),
+  timestamp?: number
+): DailyRewardClaimResult {
+  const effectiveTimestamp = timestamp ?? Date.now();
+  const effectiveUtcDate = typeof utcDate === 'string' && utcDate.trim().length > 0
+    ? utcDate.trim()
+    : getUtcDateString(effectiveTimestamp);
+
+  const sanitizedChallengeId = typeof challengeId === 'string' ? challengeId.trim() : '';
+  const currentProgression = loadPlayerProgression(storage);
+
+  if (!sanitizedChallengeId) {
+    return {
+      success: false,
+      rewardId: '',
+      xpEarned: 0,
+      alreadyClaimed: false,
+      error: 'Invalid challenge ID',
+      progressionState: currentProgression,
+    };
+  }
+
+  const rewardId = generateDailyRewardId(effectiveUtcDate, sanitizedChallengeId);
+
+  // 1. Check if already recorded in the ledger or progression state
+  const ledger = loadDailyRewardLedger(storage);
+  const alreadyInLedger = ledger.records.some(r => r.rewardId === rewardId);
+  const alreadyInProgression = currentProgression.appliedRewardIds.includes(rewardId);
+
+  if (alreadyInLedger || alreadyInProgression) {
+    return {
+      success: false,
+      rewardId,
+      xpEarned: 0,
+      alreadyClaimed: true,
+      error: 'Reward already claimed',
+      progressionState: currentProgression,
+    };
+  }
+
+  // 2. Incomplete challenges (progress < target) cannot receive rewards
+  const dailyState = loadDailyChallengeState(storage, effectiveTimestamp);
+  const activeChallenge = dailyState.challenges.find(c => c.id === sanitizedChallengeId);
+
+  if (activeChallenge) {
+    const isCompleted = activeChallenge.completed || activeChallenge.progress >= activeChallenge.target;
+    if (!isCompleted) {
+      return {
+        success: false,
+        rewardId,
+        xpEarned: 0,
+        alreadyClaimed: false,
+        error: 'Challenge is not completed',
+        progressionState: currentProgression,
+      };
+    }
+  }
+
+  // 3. Write deterministic record to Daily Reward Ledger
+  const newRecord: DailyRewardRecord = {
+    rewardId,
+    utcDate: effectiveUtcDate,
+    challengeId: sanitizedChallengeId,
+    xpAmount: XP_REWARDS.DAILY_CHALLENGE_COMPLETION,
+    starsAmount: activeChallenge?.rewardStars ?? REWARD_STARS.PER_CHALLENGE,
+    claimedAt: effectiveTimestamp,
+  };
+  ledger.records.push(newRecord);
+  saveDailyRewardLedger(ledger, storage);
+
+  // 4. Apply 50 XP to PlayerProgressionState (recording rewardId in appliedRewardIds)
+  const earnResult = awardCustomXp(
+    XP_REWARDS.DAILY_CHALLENGE_COMPLETION,
+    rewardId,
+    storage,
+    true
+  );
+
+  // 5. Update Trophy Stars and rewardClaimed: true in daily challenge state if not yet claimed
+  const appliedStarsIds = new Set(dailyState.appliedRewardIds || []);
+  if (!appliedStarsIds.has(rewardId)) {
+    appliedStarsIds.add(rewardId);
+    dailyState.appliedRewardIds = Array.from(appliedStarsIds);
+    if (activeChallenge) {
+      if (!activeChallenge.rewardClaimed) {
+        activeChallenge.rewardClaimed = true;
+        activeChallenge.completed = true;
+        dailyState.lifetimeStars += activeChallenge.rewardStars;
+      }
+    } else {
+      dailyState.lifetimeStars += newRecord.starsAmount;
+    }
+    saveDailyChallengeState(dailyState, storage);
+  }
+
+  return {
+    success: true,
+    rewardId,
+    xpEarned: earnResult.xpEarned,
+    alreadyClaimed: false,
+    record: newRecord,
+    progressionState: earnResult.state,
+  };
+}
+
+/**
+ * Reconciles any unapplied Daily Challenge rewards from the Daily Reward Ledger
+ * into both PlayerProgressionState (XP) and DailyChallengeUserState (Trophy Stars).
+ * 
+ * Ensures transactional recovery across app crashes or interruptions between writes:
+ * - Recovers unapplied 50 XP rewards without duplicating existing XP.
+ * - Recovers unapplied 25 Trophy Stars without duplicating existing Stars.
+ * - Completely idempotent: running repeatedly produces 0 duplicate rewards.
+ */
+export function reconcileDailyRewards(
+  storage: StorageLike | null = getBrowserStorage()
+): DailyRewardReconciliationResult {
+  const progression = loadPlayerProgression(storage);
+  const ledger = loadDailyRewardLedger(storage);
+  const dailyState = loadDailyChallengeState(storage);
+
+  if (ledger.records.length === 0) {
+    return {
+      reconciledCount: 0,
+      reconciledRewardIds: [],
+      reconciledStarsCount: 0,
+      reconciledStarsRewardIds: [],
+      progressionState: progression,
+    };
+  }
+
+  // 1. Reconcile XP in PlayerProgressionState
+  const appliedXpSet = new Set(progression.appliedRewardIds);
+  const missingXpRecords: DailyRewardRecord[] = [];
+
+  for (const record of ledger.records) {
+    if (!appliedXpSet.has(record.rewardId)) {
+      appliedXpSet.add(record.rewardId);
+      missingXpRecords.push(record);
+    }
+  }
+
+  let totalXpToAdd = 0;
+  const reconciledXpRewardIds: string[] = [];
+
+  for (const record of missingXpRecords) {
+    totalXpToAdd += sanitizeNonNegativeInt(record.xpAmount, XP_REWARDS.DAILY_CHALLENGE_COMPLETION);
+    reconciledXpRewardIds.push(record.rewardId);
+  }
+
+  let updatedProgression = progression;
+  if (missingXpRecords.length > 0) {
+    const newTotalLifetimeXp = progression.totalLifetimeXp + totalXpToAdd;
+    const derived = calculateLevelFromLifetimeXp(newTotalLifetimeXp);
+
+    updatedProgression = {
+      level: derived.level,
+      currentXp: derived.currentXp,
+      xpForNextLevel: derived.xpForNextLevel,
+      totalLifetimeXp: newTotalLifetimeXp,
+      highestLevelAchieved: Math.max(progression.highestLevelAchieved, derived.level),
+      processedRunEventIds: progression.processedRunEventIds,
+      appliedRewardIds: Array.from(appliedXpSet),
+    };
+    savePlayerProgression(updatedProgression, storage);
+  }
+
+  // 2. Reconcile Trophy Stars in DailyChallengeUserState
+  const appliedStarsSet = new Set(dailyState.appliedRewardIds || []);
+  const missingStarsRecords: DailyRewardRecord[] = [];
+
+  for (const record of ledger.records) {
+    if (!appliedStarsSet.has(record.rewardId)) {
+      appliedStarsSet.add(record.rewardId);
+      missingStarsRecords.push(record);
+    }
+  }
+
+  let totalStarsToAdd = 0;
+  const reconciledStarsRewardIds: string[] = [];
+
+  if (missingStarsRecords.length > 0) {
+    for (const record of missingStarsRecords) {
+      totalStarsToAdd += sanitizeNonNegativeInt(record.starsAmount, REWARD_STARS.PER_CHALLENGE);
+      reconciledStarsRewardIds.push(record.rewardId);
+
+      // If active challenges on that date include this challenge, mark it claimed
+      if (dailyState.activeDate === record.utcDate) {
+        const challenge = dailyState.challenges.find(c => c.id === record.challengeId);
+        if (challenge) {
+          challenge.completed = true;
+          challenge.rewardClaimed = true;
+        }
+      }
+    }
+
+    dailyState.lifetimeStars += totalStarsToAdd;
+    dailyState.appliedRewardIds = Array.from(appliedStarsSet);
+    saveDailyChallengeState(dailyState, storage);
+  }
+
+  return {
+    reconciledCount: reconciledXpRewardIds.length,
+    reconciledRewardIds: reconciledXpRewardIds,
+    reconciledStarsCount: reconciledStarsRewardIds.length,
+    reconciledStarsRewardIds,
+    progressionState: updatedProgression,
   };
 }
