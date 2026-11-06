@@ -23,7 +23,9 @@ import {
   equipSkin,
   loadPlayerSkins,
   loadSettings,
+  reconcileAndMigratePlayerSkins,
   resetPlayerSkins,
+  saveMazeProgress,
   savePlayerSkins,
   saveSettings,
   unlockSkin,
@@ -32,6 +34,7 @@ import {
   loadPlayerProgression,
   savePlayerProgression,
   createDefaultPlayerProgression,
+  getCumulativeXpForLevel,
 } from './levels.ts';
 import { loadStats, saveStats, DEFAULT_STATS } from './stats.ts';
 import {
@@ -642,4 +645,219 @@ test('Sync 44: resetPlayerSkins returns false if both settings reset and skins r
 
   const success = resetPlayerSkins(storage);
   assert.equal(success, false);
+});
+
+// -----------------------------------------------------------------------------
+// 6. Startup Reconciliation & Legacy Migration Integration Tests (Step 3)
+// -----------------------------------------------------------------------------
+
+test('Integration 45: reconcileAndMigratePlayerSkins unlocks skins according to authoritative player level', () => {
+  const storage = new MemoryStorage();
+  // Set up progression at Level 15 with authoritative cumulative XP
+  savePlayerProgression({
+    ...createDefaultPlayerProgression(),
+    level: 15,
+    totalLifetimeXp: getCumulativeXpForLevel(15),
+  }, storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  // At Level 15, starter skins + Level 3 (synth_sunset) + Level 7 (hyper_violet) + Level 15 (crimson_blaze)
+  assert.ok(result.skinsState.unlockedSkinIds.includes('cyber_cyan'));
+  assert.ok(result.skinsState.unlockedSkinIds.includes('matrix_green'));
+  assert.ok(result.skinsState.unlockedSkinIds.includes('synth_sunset'));
+  assert.ok(result.skinsState.unlockedSkinIds.includes('hyper_violet'));
+  assert.ok(result.skinsState.unlockedSkinIds.includes('crimson_blaze'));
+  assert.ok(!result.skinsState.unlockedSkinIds.includes('gold_prestige')); // Level 25
+  assert.ok(!result.skinsState.unlockedSkinIds.includes('apex_void')); // Campaign or Level 40
+});
+
+test('Integration 46: reconcileAndMigratePlayerSkins unlocks arctic_frost when zen wallsWrapped >= 50', () => {
+  const storage = new MemoryStorage();
+  saveStats({
+    ...DEFAULT_STATS,
+    wallsWrapped: 50,
+  }, storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.ok(result.skinsState.unlockedSkinIds.includes('arctic_frost'));
+  assert.ok(result.newlyUnlocked.includes('arctic_frost'));
+});
+
+test('Integration 47: reconcileAndMigratePlayerSkins unlocks apex_void when totalCampaignsWon >= 1', () => {
+  const storage = new MemoryStorage();
+  saveMazeProgress({
+    highestStageUnlocked: 6,
+    totalCampaignsWon: 1,
+    totalMazesCleared: 6,
+    bestCampaignScore: 1000,
+  }, storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.ok(result.skinsState.unlockedSkinIds.includes('apex_void'));
+  assert.ok(result.newlyUnlocked.includes('apex_void'));
+});
+
+test('Integration 48: Startup never allows locked settings.skin to become active skin, falling back to cyber_cyan', () => {
+  const storage = new MemoryStorage();
+  // Malicious/tampered settings where locked skin is set as skin
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'gold_prestige', // Level 25 skin
+  }, storage);
+  // Player is only Level 1
+  savePlayerProgression(createDefaultPlayerProgression(), storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(result.skinsState.equippedSkinId, 'cyber_cyan');
+  assert.ok(!result.skinsState.unlockedSkinIds.includes('gold_prestige'));
+  // Stale settings mirror is repaired
+  assert.equal(result.mirrorRepaired, true);
+  const reloadedSettings = loadSettings(storage);
+  assert.equal(reloadedSettings.skin, 'cyber_cyan');
+});
+
+test('Integration 49: Startup repairs stale settings.skin mirror to match authoritative equippedSkinId', () => {
+  const storage = new MemoryStorage();
+  // Valid skins ledger has Matrix Emerald equipped
+  savePlayerSkins({
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  }, storage);
+  // Settings mirror is out of sync (says cyber_cyan)
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'cyber_cyan',
+  }, storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(result.skinsState.equippedSkinId, 'matrix_green');
+  assert.equal(result.mirrorRepaired, true);
+  const settings = loadSettings(storage);
+  assert.equal(settings.skin, 'matrix_green');
+});
+
+test('Integration 50: Legacy migration preserves legitimately earned settings.skin', () => {
+  const storage = new MemoryStorage();
+  // No skins ledger in storage
+  assert.equal(storage.getItem(STORAGE_KEYS.SKINS), null);
+  // Settings has synth_sunset (requires Level 3)
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'synth_sunset',
+  }, storage);
+  // Authoritative progression proves player is Level 5
+  savePlayerProgression({
+    ...createDefaultPlayerProgression(),
+    level: 5,
+    totalLifetimeXp: getCumulativeXpForLevel(5),
+  }, storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(result.wasMigrated, true);
+  assert.ok(result.skinsState.unlockedSkinIds.includes('synth_sunset'));
+  assert.equal(result.skinsState.equippedSkinId, 'synth_sunset');
+  const settings = loadSettings(storage);
+  assert.equal(settings.skin, 'synth_sunset');
+});
+
+test('Integration 51: Legacy migration rejects unearned locked settings.skin and resets mirror', () => {
+  const storage = new MemoryStorage();
+  // No skins ledger in storage
+  assert.equal(storage.getItem(STORAGE_KEYS.SKINS), null);
+  // Settings has apex_void (requires Campaign Victory or Level 40)
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'apex_void',
+  }, storage);
+  // Authoritative progression shows player is only Level 2, no campaign wins
+  savePlayerProgression({
+    ...createDefaultPlayerProgression(),
+    level: 2,
+    totalLifetimeXp: getCumulativeXpForLevel(2),
+  }, storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(result.wasMigrated, true);
+  assert.ok(!result.skinsState.unlockedSkinIds.includes('apex_void'));
+  assert.equal(result.skinsState.equippedSkinId, 'cyber_cyan');
+  assert.equal(result.mirrorRepaired, true);
+  const settings = loadSettings(storage);
+  assert.equal(settings.skin, 'cyber_cyan');
+});
+
+test('Integration 52: Existing legitimate skin ownership survives repeated migration cycles (idempotency)', () => {
+  const storage = new MemoryStorage();
+  savePlayerProgression({
+    ...createDefaultPlayerProgression(),
+    level: 20,
+    totalLifetimeXp: getCumulativeXpForLevel(20),
+  }, storage);
+
+  const run1 = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(run1.wasMigrated, true);
+  assert.ok(run1.newlyUnlocked.includes('arctic_frost'));
+
+  // Second pass: idempotent, 0 newly unlocked
+  const run2 = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(run2.wasMigrated, false);
+  assert.equal(run2.newlyUnlocked.length, 0);
+  assert.deepEqual(run2.skinsState, run1.skinsState);
+});
+
+test('Integration 53: Equipping skin updates authoritative equippedSkinId and preserves persistence on reload', () => {
+  const storage = new MemoryStorage();
+  // Unlock Matrix Emerald
+  const equipResult = equipSkin('matrix_green', storage);
+  assert.equal(equipResult.success, true);
+  assert.equal(equipResult.state.equippedSkinId, 'matrix_green');
+
+  // Reload from storage
+  const reloaded = loadPlayerSkins(storage);
+  assert.equal(reloaded.equippedSkinId, 'matrix_green');
+  const settings = loadSettings(storage);
+  assert.equal(settings.skin, 'matrix_green');
+});
+
+test('Integration 54: Failed persistence does not falsely update equipped state', () => {
+  const storage = new MemoryStorage();
+  storage.failNextWrite = true;
+
+  const result = equipSkin('matrix_green', storage);
+  assert.equal(result.success, false);
+  assert.equal(result.state.equippedSkinId, 'cyber_cyan');
+  assert.ok(result.error);
+});
+
+test('Integration 55: Corrupt or malformed skins storage safely falls back to default Cyber Cyan', () => {
+  const storage = new MemoryStorage();
+  storage.setItem(STORAGE_KEYS.SKINS, '{ invalid json garbage');
+
+  const reloaded = loadPlayerSkins(storage);
+  assert.equal(reloaded.equippedSkinId, 'cyber_cyan');
+  assert.equal(reloaded.unlockedSkinIds.length, 2);
+  assert.ok(reloaded.unlockedSkinIds.includes('cyber_cyan'));
+  assert.ok(reloaded.unlockedSkinIds.includes('matrix_green'));
+});
+
+test('Integration 56: All four game modes receive consistent authoritative equipped skin from resolution helper', () => {
+  const skinsState: PlayerSkinsState = {
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  };
+
+  const resolveActiveSkin = (state: PlayerSkinsState): SnakeSkinId => {
+    return (state && isSkinUnlocked(state.equippedSkinId, state))
+      ? state.equippedSkinId
+      : 'cyber_cyan';
+  };
+
+  // Valid unlocked skin
+  assert.equal(resolveActiveSkin(skinsState), 'matrix_green');
+
+  // Corrupted / locked equipped skin safely falls back to cyber_cyan
+  const corruptedState: PlayerSkinsState = {
+    equippedSkinId: 'gold_prestige', // locked
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  };
+  assert.equal(resolveActiveSkin(corruptedState), 'cyber_cyan');
 });

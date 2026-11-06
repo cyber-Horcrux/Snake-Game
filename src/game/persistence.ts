@@ -8,10 +8,14 @@ import {
   ALL_SKIN_IDS,
   DEFAULT_PLAYER_SKINS_STATE,
   STARTER_SKIN_IDS,
+  type SkinUnlockContext,
   isSkinUnlocked,
   isValidSkinId,
+  reconcilePlayerSkins,
   sanitizePlayerSkinsState,
 } from './skins.ts';
+import { loadPlayerProgression } from './levels.ts';
+import { loadStats } from './stats.ts';
 
 export const DEFAULT_BEST_SCORES: ModeBestScores = {
   classic: 0,
@@ -455,6 +459,117 @@ export function resetPlayerSkins(storage: StorageLike | null = getBrowserStorage
     return true;
   } catch {
     return false;
+  }
+}
+
+export interface SkinReconciliationResult {
+  skinsState: PlayerSkinsState;
+  newlyUnlocked: SnakeSkinId[];
+  mirrorRepaired: boolean;
+  wasMigrated: boolean;
+}
+
+/**
+ * Reconciles player skin ownership and validates equipped skin at startup.
+ * - Authoritative telemetry sources:
+ *   - Player Level: from PlayerProgressionState
+ *   - Zen Walls Wrapped: from LifetimeStats
+ *   - Maze Campaigns Won: from MazeProgress (totalCampaignsWon)
+ * - Safe Legacy Migration:
+ *   - If no skins ledger exists, evaluates settings.skin against authoritative unlock criteria.
+ *   - Preserves old settings.skin ONLY if legitimately earned.
+ *   - Locked or invalid selections safely fall back to 'cyber_cyan'.
+ * - Equipped Skin Validation:
+ *   - Ensures equippedSkinId is unlocked in the reconciled ownership set.
+ *   - Falls back to 'cyber_cyan' if locked.
+ * - Mirror Repair:
+ *   - Synchronizes GameSettings.skin to match the authoritative equippedSkinId.
+ * - Idempotent and safe against missing/throwing storage.
+ */
+export function reconcileAndMigratePlayerSkins(
+  storage: StorageLike | null = getBrowserStorage(),
+  contextOverride?: Partial<SkinUnlockContext>
+): SkinReconciliationResult {
+  if (!storage) {
+    return {
+      skinsState: { ...DEFAULT_PLAYER_SKINS_STATE },
+      newlyUnlocked: [],
+      mirrorRepaired: false,
+      wasMigrated: false,
+    };
+  }
+
+  try {
+    const rawSkins = storage.getItem(STORAGE_KEYS.SKINS);
+    const hadSkinsLedger = rawSkins !== null;
+    const wasMigrated = !hadSkinsLedger;
+
+    // Load current skin state (sanitized)
+    const currentSkins = loadPlayerSkins(storage);
+
+    // Load authoritative progression, stats, and campaign data
+    const progression = loadPlayerProgression(storage);
+    const stats = loadStats(storage);
+    const maze = loadMazeProgress(storage);
+    const settings = loadSettings(storage);
+
+    const context: SkinUnlockContext = {
+      level: contextOverride?.level ?? (progression?.level ?? 1),
+      zenWallsWrapped: contextOverride?.zenWallsWrapped ?? (stats?.wallsWrapped ?? 0),
+      campaignVictories: contextOverride?.campaignVictories ?? (maze?.totalCampaignsWon ?? 0),
+    };
+
+    // 1. Reconcile unlocks against authoritative telemetry
+    const { state: reconciled, newlyUnlocked } = reconcilePlayerSkins(currentSkins, context);
+
+    // 2. Validate equipped skin
+    let equippedSkinId = reconciled.equippedSkinId;
+
+    if (!hadSkinsLedger) {
+      // Legacy user migrating for the first time
+      const legacyCandidate = settings?.skin;
+      if (isValidSkinId(legacyCandidate) && reconciled.unlockedSkinIds.includes(legacyCandidate)) {
+        // Legitimate earned skin choice from legacy settings
+        equippedSkinId = legacyCandidate;
+      } else {
+        // Fallback to Cyber Cyan (never trust an unearned legacy skin)
+        equippedSkinId = 'cyber_cyan';
+      }
+    } else {
+      // Ensure existing equipped skin is unlocked in the reconciled set
+      if (!reconciled.unlockedSkinIds.includes(equippedSkinId)) {
+        equippedSkinId = 'cyber_cyan';
+      }
+    }
+
+    const finalState: PlayerSkinsState = {
+      equippedSkinId,
+      unlockedSkinIds: reconciled.unlockedSkinIds,
+    };
+
+    // 3. Persist authoritative skins state
+    savePlayerSkins(finalState, storage);
+
+    // 4. Synchronize settings mirror if stale
+    let mirrorRepaired = false;
+    if (settings.skin !== equippedSkinId) {
+      saveSettings({ ...settings, skin: equippedSkinId }, storage);
+      mirrorRepaired = true;
+    }
+
+    return {
+      skinsState: finalState,
+      newlyUnlocked,
+      mirrorRepaired,
+      wasMigrated,
+    };
+  } catch {
+    return {
+      skinsState: { ...DEFAULT_PLAYER_SKINS_STATE },
+      newlyUnlocked: [],
+      mirrorRepaired: false,
+      wasMigrated: false,
+    };
   }
 }
 

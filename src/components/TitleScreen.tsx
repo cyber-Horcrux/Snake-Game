@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3, Compass, Star } from 'lucide-react';
+import { Play, HelpCircle, Settings, Trophy, Volume2, VolumeX, Zap, Infinity, BarChart3, Compass, Star, Palette } from 'lucide-react';
 import type { GameMode, MazeProgress, ModeBestScores, PlayerProgressionState } from '../game/types.ts';
 import { BrandLogo } from './branding/BrandLogo.tsx';
 import { PlayerLevelCard } from './progression/PlayerLevelCard.tsx';
@@ -13,6 +13,7 @@ interface TitleScreenProps {
   onStartGame: () => void;
   onOpenStageSelect?: () => void;
   onOpenDailyChallenges?: () => void;
+  onOpenSkinCollection?: () => void;
   onOpenHowToPlay: () => void;
   onOpenSettings: () => void;
   onOpenStats: () => void;
@@ -77,6 +78,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenHowToPlay,
   onOpenSettings,
   onOpenStats,
+  onOpenSkinCollection,
   sfxEnabled,
   onToggleMute,
   trophyStars = 0,
@@ -229,6 +231,17 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <BarChart3 className="w-3.5 h-3.5 text-[#FFB800]" />
             <span>DOSSIER</span>
           </button>
+
+          {onOpenSkinCollection && (
+            <button
+              type="button"
+              onClick={onOpenSkinCollection}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold text-[#00F5FF] bg-[#0B0E1A]/90 border border-[#00F5FF]/50 hover:border-[#00F5FF] hover:text-[#FFF] transition-all cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(0,245,255,0.2)]"
+            >
+              <Palette className="w-3.5 h-3.5 text-[#00F5FF]" />
+              <span>SNAKE SKINS</span>
+            </button>
+          )}
 
           <button
             type="button"

@@ -9,6 +9,8 @@ import type {
   MazeStageSnapshot,
   ModeBestScores,
   PlayerProgressionState,
+  PlayerSkinsState,
+  SnakeSkinId,
   XpEarnResult,
 } from './game/types.ts';
 import {
@@ -29,15 +31,19 @@ import {
   shouldShowDirectionalControls,
 } from './game/controls.ts';
 import {
+  equipSkin,
   loadBestScores,
   loadMazeProgress,
+  loadPlayerSkins,
   loadSettings,
+  reconcileAndMigratePlayerSkins,
   recordStageClear,
   recordCampaignCompletion,
   resetBestScores,
   saveSettings,
   updateBestScore,
 } from './game/persistence.ts';
+import { isSkinUnlocked } from './game/skins.ts';
 import { TitleScreen } from './components/TitleScreen.tsx';
 import { HeaderHUD } from './components/HeaderHUD.tsx';
 import { PauseModal } from './components/PauseModal.tsx';
@@ -50,6 +56,7 @@ import { StageClearModal } from './components/StageClearModal.tsx';
 import { CampaignVictoryModal } from './components/CampaignVictoryModal.tsx';
 import { TouchDPad } from './components/TouchDPad.tsx';
 import { DailyChallengesModal } from './components/DailyChallengesModal.tsx';
+import { SkinCollectionModal } from './components/progression/SkinCollectionModal.tsx';
 import {
   loadDailyChallengeState,
   recordDailyChallengeRun,
@@ -94,6 +101,11 @@ export default function App() {
   const [showStats, setShowStats] = useState(false);
   const [showStageSelect, setShowStageSelect] = useState(false);
   const [showDailyChallenges, setShowDailyChallenges] = useState(false);
+  const [showSkinCollection, setShowSkinCollection] = useState(false);
+
+  // Authoritative Player Skins State
+  const [playerSkins, setPlayerSkins] = useState<PlayerSkinsState>(() => loadPlayerSkins());
+  const playerSkinsRef = useRef<PlayerSkinsState>(playerSkins);
 
   // Run start timestamp and unique instance identifier for collision-safe run event IDs
   const runStartTimeRef = useRef<number>(Date.now());
@@ -141,19 +153,44 @@ export default function App() {
   // Synchronize refs
   screenRef.current = screen;
   settingsRef.current = settings;
+  playerSkinsRef.current = playerSkins;
   selectedModeRef.current = selectedMode;
-  modalsOpenRef.current = showHowToPlay || showSettings || showStats || showStageSelect || showDailyChallenges;
+  modalsOpenRef.current =
+    showHowToPlay ||
+    showSettings ||
+    showStats ||
+    showStageSelect ||
+    showDailyChallenges ||
+    showSkinCollection;
 
   // Swipe Tracker & Touch State
   const swipeTrackerRef = useRef<SwipeTracker>(new SwipeTracker(24));
   const isTouchActiveRef = useRef(false);
 
-  // Reconcile Daily Challenge rewards upon app startup
+  // Reconcile Daily Challenge rewards and Player Skins upon app startup
   useEffect(() => {
-    const recon = reconcileDailyRewards();
-    if (recon.reconciledCount > 0) {
-      setProgressionState(recon.progressionState);
+    const reconRewards = reconcileDailyRewards();
+    if (reconRewards.reconciledCount > 0) {
+      setProgressionState(reconRewards.progressionState);
     }
+
+    const reconSkins = reconcileAndMigratePlayerSkins();
+    setPlayerSkins(reconSkins.skinsState);
+    if (reconSkins.mirrorRepaired) {
+      setSettings(loadSettings());
+    }
+  }, []);
+
+  // Equip skin handler with honest error reporting
+  const handleEquipSkin = useCallback((skinId: SnakeSkinId) => {
+    const result = equipSkin(skinId);
+    if (result.success) {
+      setPlayerSkins(result.state);
+      setSettings(loadSettings());
+      soundEngine.play('click');
+      return { success: true };
+    }
+    return { success: false, error: result.error || 'Failed to equip skin.' };
   }, []);
 
   // Sync soundEngine settings
@@ -257,6 +294,10 @@ export default function App() {
       soundEngine.play('achievement');
     }
 
+    // Reconcile skins in case this run achieved an unlock requirement (level, Zen wraps, etc.)
+    const reconSkins = reconcileAndMigratePlayerSkins();
+    setPlayerSkins(reconSkins.skinsState);
+
     setScreen('gameover');
   }, []);
 
@@ -320,6 +361,10 @@ export default function App() {
       if (challengeEval.starsAwarded > 0) {
         soundEngine.play('achievement');
       }
+
+      // Reconcile skins for stage clear progression
+      const reconSkins = reconcileAndMigratePlayerSkins();
+      setPlayerSkins(reconSkins.skinsState);
     }
     setScreen('stage_clear');
   }, []);
@@ -388,6 +433,10 @@ export default function App() {
       }
 
       setDailyState(challengeEval.state);
+
+      // Reconcile skins for campaign victory unlock (Apex Void)
+      const reconSkins = reconcileAndMigratePlayerSkins();
+      setPlayerSkins(reconSkins.skinsState);
     }
     setScreen('campaign_victory');
   }, []);
@@ -938,13 +987,21 @@ export default function App() {
         ? Math.min(1, accumulatorRef.current / gameStateRef.current.tickIntervalMs)
         : 1;
 
+      // Authoritative equipped skin resolution: must be unlocked, safe fallback to cyber_cyan
+      const activeSkinId = (playerSkinsRef.current && isSkinUnlocked(playerSkinsRef.current.equippedSkinId, playerSkinsRef.current))
+        ? playerSkinsRef.current.equippedSkinId
+        : 'cyber_cyan';
+
       rendererRef.current.render(
         ctx,
         canvas.width,
         canvas.height,
         gameStateRef.current,
         alpha,
-        settingsRef.current
+        {
+          visualEffects: settingsRef.current.visualEffects,
+          skin: activeSkinId,
+        }
       );
 
       animationFrameRef.current = requestAnimationFrame(loop);
@@ -1101,6 +1158,7 @@ export default function App() {
           onStartGame={() => (selectedMode === 'maze' ? setShowStageSelect(true) : startGame(selectedMode))}
           onOpenStageSelect={() => setShowStageSelect(true)}
           onOpenDailyChallenges={() => setShowDailyChallenges(true)}
+          onOpenSkinCollection={() => setShowSkinCollection(true)}
           onOpenHowToPlay={() => setShowHowToPlay(true)}
           onOpenSettings={() => setShowSettings(true)}
           onOpenStats={() => setShowStats(true)}
@@ -1182,6 +1240,16 @@ export default function App() {
         />
       )}
 
+      {showSkinCollection && (
+        <SkinCollectionModal
+          playerSkins={playerSkins}
+          progression={progressionState}
+          mazeProgress={mazeProgress}
+          onEquipSkin={handleEquipSkin}
+          onClose={() => setShowSkinCollection(false)}
+          visualEffects={settings.visualEffects}
+        />
+      )}
 
       {showHowToPlay && (
         <HowToPlayModal onClose={() => setShowHowToPlay(false)} />
@@ -1190,8 +1258,13 @@ export default function App() {
       {showSettings && (
         <SettingsModal
           settings={settings}
+          equippedSkinId={playerSkins.equippedSkinId}
           onUpdateSettings={handleUpdateSettings}
           onResetScores={handleResetScores}
+          onOpenSkinCollection={() => {
+            setShowSettings(false);
+            setShowSkinCollection(true);
+          }}
           onClose={() => setShowSettings(false)}
         />
       )}

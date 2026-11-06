@@ -5,15 +5,19 @@ import { SKINS } from '../game/constants.ts';
 
 interface SettingsModalProps {
   settings: GameSettings;
+  equippedSkinId?: SnakeSkinId;
   onUpdateSettings: (newSettings: GameSettings) => void;
   onResetScores: () => void;
+  onOpenSkinCollection?: () => void;
   onClose: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
+  equippedSkinId,
   onUpdateSettings,
   onResetScores,
+  onOpenSkinCollection,
   onClose,
 }) => {
   const [confirmReset, setConfirmReset] = useState(false);
@@ -52,13 +56,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ...settings,
       controlMode: mode,
       dpadPreference: mode === 'swipe' ? 'never' : mode === 'buttons' ? 'always' : 'auto',
-    });
-  };
-
-  const handleSkinChange = (skinId: SnakeSkinId) => {
-    onUpdateSettings({
-      ...settings,
-      skin: skinId,
     });
   };
 
@@ -179,50 +176,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* 3. Snake Chassis Neon Skin */}
           <div className="bg-[#05070E] p-3.5 sm:p-4 rounded-xl border border-[#161B2E]">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] flex items-center gap-2 mb-3">
-              <Palette className="w-4 h-4 text-[#00F5FF]" />
-              Snake Chassis Neon Skin
-            </span>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] flex items-center gap-2">
+                <Palette className="w-4 h-4 text-[#00F5FF]" />
+                Snake Chassis Neon Skin
+              </span>
+              <span className="text-[10px] font-mono text-[#00F5FF] uppercase tracking-widest px-2 py-0.5 rounded bg-[#00F5FF]/10 border border-[#00F5FF]/30 font-bold">
+                ACTIVE
+              </span>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {(Object.keys(SKINS) as SnakeSkinId[]).map(skinKey => {
-                const skin = SKINS[skinKey];
-                const isSelected = (settings.skin || 'cyber_cyan') === skinKey;
-                return (
-                  <button
-                    key={skin.id}
-                    type="button"
-                    onClick={() => handleSkinChange(skin.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-3 cursor-pointer ${
-                      isSelected
-                        ? 'border-[#00F5FF] bg-[#00F5FF]/15 text-[#F0F6FC] shadow-[0_0_12px_rgba(0,245,255,0.25)]'
-                        : 'border-[#161B2E] text-[#79869C] hover:border-slate-700 hover:text-[#F0F6FC]'
-                    }`}
-                  >
-                    {/* Swatch Preview */}
+            {/* Active Skin Info Card */}
+            {(() => {
+              const activeId = equippedSkinId || settings.skin || 'cyber_cyan';
+              const currentSkin = SKINS[activeId] || SKINS.cyber_cyan;
+              return (
+                <div className="p-3 rounded-xl border border-[#00F5FF]/40 bg-[#00F5FF]/5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="flex items-center gap-1 shrink-0">
                       <div
                         className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
-                        style={{ backgroundColor: skin.headColor }}
+                        style={{ backgroundColor: currentSkin.headColor }}
                       />
                       <div
                         className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: skin.bodyColors[1] }}
+                        style={{ backgroundColor: currentSkin.bodyColors[1] }}
                       />
                       <div
                         className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: skin.bodyColors[2] }}
+                        style={{ backgroundColor: currentSkin.bodyColors[2] }}
                       />
                     </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold font-display truncate">{skin.name}</div>
-                      <div className="text-[10px] text-[#79869C] truncate">{skin.tagline}</div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold font-display text-[#F0F6FC] truncate">
+                        {currentSkin.name}
+                      </div>
+                      <div className="text-[10px] text-[#79869C] truncate">
+                        {currentSkin.tagline}
+                      </div>
                     </div>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {onOpenSkinCollection && (
+              <button
+                type="button"
+                onClick={onOpenSkinCollection}
+                className="mt-3 w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#00F5FF]/15 to-[#7928CA]/20 border border-[#00F5FF]/50 hover:border-[#00F5FF] text-[#00F5FF] hover:text-[#F0F6FC] font-display font-bold text-xs tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_12px_rgba(0,245,255,0.15)] active:scale-95"
+              >
+                <Palette className="w-4 h-4" />
+                <span>SNAKE SKINS</span>
+              </button>
+            )}
           </div>
 
           {/* 4. Movement Controls */}
