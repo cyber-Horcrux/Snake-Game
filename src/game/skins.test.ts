@@ -861,3 +861,198 @@ test('Integration 56: All four game modes receive consistent authoritative equip
   };
   assert.equal(resolveActiveSkin(corruptedState), 'cyber_cyan');
 });
+
+// -----------------------------------------------------------------------------
+// 10. Step 3.1: Reconciliation Persistence Integrity & Recovery Tests
+// -----------------------------------------------------------------------------
+
+test('Integration 57: Skin-ledger write failure during reconciliation reports false and prevents false migration', () => {
+  const storage = new MemoryStorage();
+  // No skins ledger (migration candidate)
+  storage.failKeyWrite = STORAGE_KEYS.SKINS;
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(result.success, false);
+  assert.equal(result.skinsSaved, false);
+  assert.equal(result.wasMigrated, false);
+  assert.equal(result.mirrorRepaired, false);
+  assert.equal(result.skinsState.equippedSkinId, 'cyber_cyan');
+  assert.ok(result.error?.includes('Failed to write player skins ledger'));
+  assert.equal(result.rollbackAttempted, true);
+  assert.equal(result.rollbackSucceeded, true);
+});
+
+test('Integration 58: Settings-mirror write failure during reconciliation reports partial persistence honestly', () => {
+  const storage = new MemoryStorage();
+  // User has existing ledger with synth_sunset equipped and unlocked
+  savePlayerSkins({
+    equippedSkinId: 'synth_sunset',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green', 'synth_sunset'],
+  }, storage);
+  // Settings is desynchronized (points to cyber_cyan), so mirror needs repair to synth_sunset
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'cyber_cyan',
+  }, storage);
+  // Simulate settings write failure
+  storage.failKeyWrite = STORAGE_KEYS.SETTINGS;
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  // Skin ledger wrote successfully
+  assert.equal(result.skinsSaved, true);
+  // But mirror repair failed
+  assert.equal(result.mirrorRepaired, false);
+  // Overall success is false because persistence is incomplete
+  assert.equal(result.success, false);
+  // wasMigrated is false (ledger already existed, and mirror write failed)
+  assert.equal(result.wasMigrated, false);
+  // Authoritative skin state is still correctly returned
+  assert.equal(result.skinsState.equippedSkinId, 'synth_sunset');
+  assert.ok(result.error?.includes('Failed to synchronize skin with game settings mirror'));
+});
+
+test('Integration 59: Failure of both primary write and rollback/recovery write reports critical error honestly', () => {
+  const storage = new MemoryStorage();
+  // Pre-seed an existing valid ledger
+  savePlayerSkins({
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  }, storage);
+
+  // Now all writes will fail (primary write fails, rollback write fails)
+  storage.shouldFailWrite = () => true;
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(result.success, false);
+  assert.equal(result.skinsSaved, false);
+  assert.equal(result.rollbackAttempted, true);
+  assert.equal(result.rollbackSucceeded, false);
+  assert.ok(result.error?.includes('Critical: Recovery rollback to previous state also failed'));
+});
+
+test('Integration 60: Accurate mirrorRepaired reporting across matching, repaired, and failed states', () => {
+  // Case A: Settings already matches equipped skin -> mirrorRepaired: false
+  const storageA = new MemoryStorage();
+  savePlayerSkins({
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  }, storageA);
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'matrix_green',
+  }, storageA);
+
+  const resA = reconcileAndMigratePlayerSkins(storageA);
+  assert.equal(resA.mirrorRepaired, false);
+  assert.equal(resA.success, true);
+
+  // Case B: Settings differed and write succeeded -> mirrorRepaired: true
+  const storageB = new MemoryStorage();
+  savePlayerSkins({
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  }, storageB);
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'cyber_cyan',
+  }, storageB);
+
+  const resB = reconcileAndMigratePlayerSkins(storageB);
+  assert.equal(resB.mirrorRepaired, true);
+  assert.equal(resB.success, true);
+  assert.equal(loadSettings(storageB).skin, 'matrix_green');
+
+  // Case C: Settings differed but write failed -> mirrorRepaired: false, success: false
+  const storageC = new MemoryStorage();
+  savePlayerSkins({
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  }, storageC);
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'cyber_cyan',
+  }, storageC);
+  storageC.failKeyWrite = STORAGE_KEYS.SETTINGS;
+
+  const resC = reconcileAndMigratePlayerSkins(storageC);
+  assert.equal(resC.mirrorRepaired, false);
+  assert.equal(resC.success, false);
+  assert.equal(resC.skinsSaved, true);
+});
+
+test('Integration 61: Successful recovery on a subsequent reconciliation attempt after transient failure', () => {
+  const storage = new MemoryStorage();
+  savePlayerSkins({
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  }, storage);
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'cyber_cyan', // out of sync
+  }, storage);
+
+  // Run 1: transient failure on settings write
+  storage.failKeyWrite = STORAGE_KEYS.SETTINGS;
+  const run1 = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(run1.mirrorRepaired, false);
+  assert.equal(run1.success, false);
+
+  // Run 2: storage issue resolved, rerun reconciliation
+  storage.failKeyWrite = null;
+  const run2 = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(run2.mirrorRepaired, true);
+  assert.equal(run2.success, true);
+  assert.equal(run2.skinsSaved, true);
+  assert.equal(loadSettings(storage).skin, 'matrix_green');
+});
+
+test('Integration 62: Legitimate legacy migration succeeds when both writes succeed', () => {
+  const storage = new MemoryStorage();
+  assert.equal(storage.getItem(STORAGE_KEYS.SKINS), null);
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'matrix_green',
+  }, storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(result.wasMigrated, true);
+  assert.equal(result.skinsSaved, true);
+  assert.equal(result.success, true);
+  assert.equal(result.skinsState.equippedSkinId, 'matrix_green');
+  assert.equal(loadPlayerSkins(storage).equippedSkinId, 'matrix_green');
+  assert.equal(loadSettings(storage).skin, 'matrix_green');
+});
+
+test('Integration 63: Existing unlocked skin ownership preserved when progression unlocks additional skins', () => {
+  const storage = new MemoryStorage();
+  savePlayerSkins({
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  }, storage);
+
+  // Player advances to Level 15 (unlocks synth_sunset)
+  savePlayerProgression({
+    ...createDefaultPlayerProgression(),
+    level: 15,
+    totalLifetimeXp: getCumulativeXpForLevel(15),
+  }, storage);
+
+  const result = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(result.success, true);
+  assert.ok(result.skinsState.unlockedSkinIds.includes('cyber_cyan'));
+  assert.ok(result.skinsState.unlockedSkinIds.includes('matrix_green'));
+  assert.ok(result.skinsState.unlockedSkinIds.includes('synth_sunset'));
+  assert.equal(result.skinsState.equippedSkinId, 'matrix_green');
+  assert.ok(result.newlyUnlocked.includes('synth_sunset'));
+});
+
+test('Integration 64: Startup safe fallback when storage is null or completely unavailable', () => {
+  const result = reconcileAndMigratePlayerSkins(null);
+  assert.equal(result.success, false);
+  assert.equal(result.skinsSaved, false);
+  assert.equal(result.skinsState.equippedSkinId, 'cyber_cyan');
+  assert.equal(result.skinsState.unlockedSkinIds.length, 2);
+  assert.ok(result.skinsState.unlockedSkinIds.includes('cyber_cyan'));
+  assert.ok(result.skinsState.unlockedSkinIds.includes('matrix_green'));
+  assert.equal(result.error, 'Storage unavailable');
+});

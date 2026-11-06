@@ -467,6 +467,11 @@ export interface SkinReconciliationResult {
   newlyUnlocked: SnakeSkinId[];
   mirrorRepaired: boolean;
   wasMigrated: boolean;
+  success: boolean;
+  skinsSaved: boolean;
+  error?: string;
+  rollbackAttempted?: boolean;
+  rollbackSucceeded?: boolean;
 }
 
 /**
@@ -484,6 +489,11 @@ export interface SkinReconciliationResult {
  *   - Falls back to 'cyber_cyan' if locked.
  * - Mirror Repair:
  *   - Synchronizes GameSettings.skin to match the authoritative equippedSkinId.
+ * - Persistence Integrity:
+ *   - Checks boolean results of savePlayerSkins() and saveSettings().
+ *   - Never reports mirrorRepaired: true unless settings write actually succeeds.
+ *   - Never silently reports successful migration when required persistence writes fail.
+ *   - Handles partial writes and rollback/recovery explicitly without claiming multi-key atomicity.
  * - Idempotent and safe against missing/throwing storage.
  */
 export function reconcileAndMigratePlayerSkins(
@@ -496,13 +506,16 @@ export function reconcileAndMigratePlayerSkins(
       newlyUnlocked: [],
       mirrorRepaired: false,
       wasMigrated: false,
+      success: false,
+      skinsSaved: false,
+      error: 'Storage unavailable',
     };
   }
 
   try {
     const rawSkins = storage.getItem(STORAGE_KEYS.SKINS);
     const hadSkinsLedger = rawSkins !== null;
-    const wasMigrated = !hadSkinsLedger;
+    const isMigrationCandidate = !hadSkinsLedger;
 
     // Load current skin state (sanitized)
     const currentSkins = loadPlayerSkins(storage);
@@ -548,27 +561,104 @@ export function reconcileAndMigratePlayerSkins(
     };
 
     // 3. Persist authoritative skins state
-    savePlayerSkins(finalState, storage);
+    let skinsSaved = false;
+    try {
+      skinsSaved = savePlayerSkins(finalState, storage);
+    } catch {
+      skinsSaved = false;
+    }
+
+    if (!skinsSaved) {
+      // Primary skin-ledger write failed!
+      let rollbackAttempted = false;
+      let rollbackSucceeded = false;
+      let errorMsg = 'Failed to write player skins ledger to storage.';
+
+      if (hadSkinsLedger) {
+        // Attempt recovery write to restore previous uncorrupted ledger
+        rollbackAttempted = true;
+        try {
+          rollbackSucceeded = savePlayerSkins(currentSkins, storage);
+        } catch {
+          rollbackSucceeded = false;
+        }
+        if (!rollbackSucceeded) {
+          errorMsg = 'Failed to write player skins ledger. Critical: Recovery rollback to previous state also failed.';
+        }
+      } else {
+        // Migration candidate: remove any partial/corrupt key
+        rollbackAttempted = true;
+        try {
+          storage.removeItem(STORAGE_KEYS.SKINS);
+          rollbackSucceeded = true;
+        } catch {
+          rollbackSucceeded = false;
+          errorMsg = 'Failed to write player skins ledger. Critical: Cleanup of failed migration ledger also failed.';
+        }
+      }
+
+      // Safe fallback state: if ledger previously existed, return currentSkins;
+      // otherwise, strictly fall back to Cyber Cyan so unpersisted selections are never treated as authoritative
+      const safeFallback: PlayerSkinsState = hadSkinsLedger
+        ? currentSkins
+        : { ...DEFAULT_PLAYER_SKINS_STATE };
+
+      return {
+        skinsState: safeFallback,
+        newlyUnlocked: [],
+        mirrorRepaired: false,
+        wasMigrated: false,
+        success: false,
+        skinsSaved: false,
+        error: errorMsg,
+        rollbackAttempted,
+        rollbackSucceeded,
+      };
+    }
 
     // 4. Synchronize settings mirror if stale
     let mirrorRepaired = false;
+    let mirrorError: string | undefined;
+
     if (settings.skin !== equippedSkinId) {
-      saveSettings({ ...settings, skin: equippedSkinId }, storage);
-      mirrorRepaired = true;
+      let settingsSaved = false;
+      try {
+        settingsSaved = saveSettings({ ...settings, skin: equippedSkinId }, storage);
+      } catch {
+        settingsSaved = false;
+      }
+
+      if (settingsSaved) {
+        mirrorRepaired = true;
+      } else {
+        mirrorRepaired = false;
+        mirrorError = 'Failed to synchronize skin with game settings mirror.';
+      }
     }
+
+    // Migration was successful if this was a first-time migration and the skin ledger was saved
+    // If settings mirror repair was required but failed, report partial persistence honestly
+    const overallSuccess = mirrorError === undefined;
+    const wasMigrated = isMigrationCandidate && skinsSaved && overallSuccess;
 
     return {
       skinsState: finalState,
       newlyUnlocked,
       mirrorRepaired,
       wasMigrated,
+      success: overallSuccess,
+      skinsSaved: true,
+      error: mirrorError,
     };
-  } catch {
+  } catch (err) {
     return {
       skinsState: { ...DEFAULT_PLAYER_SKINS_STATE },
       newlyUnlocked: [],
       mirrorRepaired: false,
       wasMigrated: false,
+      success: false,
+      skinsSaved: false,
+      error: err instanceof Error ? err.message : 'Unexpected reconciliation error',
     };
   }
 }
