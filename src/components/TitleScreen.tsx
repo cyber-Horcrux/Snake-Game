@@ -210,13 +210,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {/* Secondary 2-Column x 3-Row Action Grid */}
           <div
             className="grid grid-cols-2 gap-2 xs:gap-2.5 sm:gap-3 w-full"
-            role="menu"
+            role="group"
             aria-label="Secondary Actions"
           >
             {/* Card 1: Daily Challenges */}
             <button
               type="button"
-              role="menuitem"
               onClick={onOpenDailyChallenges}
               aria-label={`Daily Challenges${trophyStars > 0 ? `, ${trophyStars} Trophy Stars earned` : ''}`}
               className="relative flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#FFD700]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(255,215,0,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
@@ -245,7 +244,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             {/* Card 2: Campaign Stages */}
             <button
               type="button"
-              role="menuitem"
               onClick={onOpenStageSelect}
               aria-label="Maze Campaign Stages"
               className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#9865FF]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#9865FF] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(152,101,255,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
@@ -268,7 +266,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             {/* Card 3: Snake Skins */}
             <button
               type="button"
-              role="menuitem"
               onClick={onOpenSkinCollection}
               aria-label="Snake Skins Chassis Suite"
               className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#00F5FF]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#00F5FF] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(0,245,255,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
@@ -291,7 +288,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             {/* Card 4: Pilot Dossier */}
             <button
               type="button"
-              role="menuitem"
               onClick={onOpenStats}
               aria-label="Pilot Dossier and Statistics"
               className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#FFB800]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#FFB800] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(255,184,0,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
@@ -314,7 +310,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             {/* Card 5: How to Play */}
             <button
               type="button"
-              role="menuitem"
               onClick={onOpenHowToPlay}
               aria-label="How to Play Field Manual"
               className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#00F5FF]/60 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#00F5FF] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(0,245,255,0.18)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"
@@ -337,7 +332,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             {/* Card 6: Settings */}
             <button
               type="button"
-              role="menuitem"
               onClick={onOpenSettings}
               aria-label="Game Settings"
               className="flex items-center justify-between p-2 xs:p-2.5 sm:p-3 rounded-xl bg-[#0B0E1A]/90 hover:bg-[#121626] border border-[#161B2E] hover:border-[#7928CA]/70 text-[#F0F6FC] transition-all duration-150 motion-reduce:transition-none cursor-pointer active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#7928CA] focus-visible:outline-none shadow-sm hover:shadow-[0_0_14px_rgba(121,40,202,0.2)] min-h-[44px] xs:min-h-[46px] sm:min-h-[50px] w-full group overflow-hidden"

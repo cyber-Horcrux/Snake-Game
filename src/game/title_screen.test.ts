@@ -16,25 +16,34 @@ test('Menu Grid 1: TitleScreen defines a balanced 2-column by 3-row grid contain
     titleContent.includes('grid grid-cols-2'),
     'TitleScreen must render a grid with exactly 2 columns (grid-cols-2)'
   );
-  // Grid container must declare semantic role="menu" and aria-label
+  // Grid container must declare semantic role="group" and retain aria-label="Secondary Actions"
   assert.ok(
-    titleContent.includes('role="menu"'),
-    'Main menu grid must specify semantic role="menu" for assistive technology'
+    titleContent.includes('role="group"'),
+    'Main menu grid must specify semantic role="group" for assistive technology'
   );
+  const groupMatches = titleContent.match(/role="group"/g) || [];
+  assert.equal(groupMatches.length, 1, 'Exactly one secondary-action group must declare role="group"');
+
   assert.ok(
     titleContent.includes('aria-label="Secondary Actions"'),
-    'Main menu grid must provide descriptive aria-label'
+    'Main menu grid must retain aria-label="Secondary Actions"'
+  );
+
+  // No role="menu" should remain in the secondary action grid or file
+  assert.ok(
+    !titleContent.includes('role="menu"'),
+    'Secondary action grid must not declare role="menu"'
   );
 });
 
 test('Menu Grid 2: Exactly 6 distinct secondary action cards are present in the 2x3 grid', () => {
   // Verify all 6 action cards exist inside the secondary grid
-  const hasDailyChallenges = titleContent.includes('onOpenDailyChallenges') && titleContent.includes('DAILY CHALLENGES');
-  const hasCampaign = titleContent.includes('onOpenStageSelect') && titleContent.includes('CAMPAIGN');
-  const hasSnakeSkins = titleContent.includes('onOpenSkinCollection') && titleContent.includes('SNAKE SKINS');
-  const hasDossier = titleContent.includes('onOpenStats') && titleContent.includes('DOSSIER');
-  const hasHowToPlay = titleContent.includes('onOpenHowToPlay') && titleContent.includes('HOW TO PLAY');
-  const hasSettings = titleContent.includes('onOpenSettings') && titleContent.includes('SETTINGS');
+  const hasDailyChallenges = titleContent.includes('DAILY CHALLENGES');
+  const hasCampaign = titleContent.includes('CAMPAIGN');
+  const hasSnakeSkins = titleContent.includes('SNAKE SKINS');
+  const hasDossier = titleContent.includes('DOSSIER');
+  const hasHowToPlay = titleContent.includes('HOW TO PLAY');
+  const hasSettings = titleContent.includes('SETTINGS');
 
   assert.ok(hasDailyChallenges, 'Menu must contain Daily Challenges card');
   assert.ok(hasCampaign, 'Menu must contain Campaign Stages card');
@@ -43,9 +52,39 @@ test('Menu Grid 2: Exactly 6 distinct secondary action cards are present in the 
   assert.ok(hasHowToPlay, 'Menu must contain How to Play card');
   assert.ok(hasSettings, 'Menu must contain Settings card');
 
-  // Verify role="menuitem" is declared on all menu items
+  // Verify all six callbacks remain correctly connected
+  assert.ok(
+    titleContent.includes('onClick={onOpenDailyChallenges}'),
+    'Daily Challenges button must connect onOpenDailyChallenges callback'
+  );
+  assert.ok(
+    titleContent.includes('onClick={onOpenStageSelect}'),
+    'Campaign Stages button must connect onOpenStageSelect callback'
+  );
+  assert.ok(
+    titleContent.includes('onClick={onOpenSkinCollection}'),
+    'Snake Skins button must connect onOpenSkinCollection callback'
+  );
+  assert.ok(
+    titleContent.includes('onClick={onOpenStats}'),
+    'Pilot Dossier button must connect onOpenStats callback'
+  );
+  assert.ok(
+    titleContent.includes('onClick={onOpenHowToPlay}'),
+    'How to Play button must connect onOpenHowToPlay callback'
+  );
+  assert.ok(
+    titleContent.includes('onClick={onOpenSettings}'),
+    'Settings button must connect onOpenSettings callback'
+  );
+
+  // Verify no role="menuitem" remains in the secondary action grid or file
   const menuItemMatches = titleContent.match(/role="menuitem"/g) || [];
-  assert.equal(menuItemMatches.length, 6, 'Exactly 6 menu items must declare role="menuitem"');
+  assert.equal(menuItemMatches.length, 0, 'No action buttons must declare role="menuitem"');
+  assert.ok(
+    !titleContent.includes('role="menuitem"'),
+    'No role="menuitem" should remain in TitleScreen'
+  );
 });
 
 test('Menu Grid 3: Primary Play CTA is prominent, anchors the top of the menu block, and preserves data-start', () => {
