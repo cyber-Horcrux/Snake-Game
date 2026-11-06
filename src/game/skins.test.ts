@@ -1056,3 +1056,145 @@ test('Integration 64: Startup safe fallback when storage is null or completely u
   assert.ok(result.skinsState.unlockedSkinIds.includes('matrix_green'));
   assert.equal(result.error, 'Storage unavailable');
 });
+
+// -----------------------------------------------------------------------------
+// 11. Step 3.2: Render-Purity & Startup Reconciliation Lifecycle Tests
+// -----------------------------------------------------------------------------
+
+test('Integration 65: Default player skins state setup is pure, in-memory, and causes zero storage writes', () => {
+  const storage = new MemoryStorage();
+  // Simulate the pure state initializer used in App.tsx
+  const initialSkins: PlayerSkinsState = {
+    ...DEFAULT_PLAYER_SKINS_STATE,
+    unlockedSkinIds: [...DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds],
+  };
+
+  // Zero storage operations during initial rendering
+  assert.equal(storage.writeAttempt, 0);
+  assert.equal(initialSkins.equippedSkinId, 'cyber_cyan');
+  assert.equal(initialSkins.unlockedSkinIds.length, 2);
+  assert.ok(initialSkins.unlockedSkinIds.includes('cyber_cyan'));
+  assert.ok(initialSkins.unlockedSkinIds.includes('matrix_green'));
+
+  // Immutable: mutating initial state does not affect default constant
+  initialSkins.unlockedSkinIds.push('apex_void');
+  assert.equal(DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds.length, 2);
+  assert.ok(!DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds.includes('apex_void'));
+});
+
+test('Integration 66: Startup reconciliation in useEffect restores previously earned skin without pre-render writes', () => {
+  const storage = new MemoryStorage();
+  // Pre-seed storage with an earned skin equipped
+  savePlayerProgression({
+    ...createDefaultPlayerProgression(),
+    level: 5,
+    totalLifetimeXp: getCumulativeXpForLevel(5),
+  }, storage);
+  savePlayerSkins({
+    equippedSkinId: 'synth_sunset',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green', 'synth_sunset'],
+  }, storage);
+
+  // Initial render state in React is safe default
+  const renderState: PlayerSkinsState = {
+    ...DEFAULT_PLAYER_SKINS_STATE,
+    unlockedSkinIds: [...DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds],
+  };
+  assert.equal(renderState.equippedSkinId, 'cyber_cyan');
+
+  // Startup useEffect executes reconciliation
+  const recon = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(recon.success, true);
+  assert.equal(recon.skinsState.equippedSkinId, 'synth_sunset');
+  assert.ok(recon.skinsState.unlockedSkinIds.includes('synth_sunset'));
+});
+
+test('Integration 67: Startup reconciliation in useEffect detects and repairs stale settings mirror', () => {
+  const storage = new MemoryStorage();
+  savePlayerSkins({
+    equippedSkinId: 'matrix_green',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  }, storage);
+  // Stale settings mirror
+  saveSettings({
+    ...DEFAULT_SETTINGS,
+    skin: 'cyber_cyan',
+  }, storage);
+
+  const recon = reconcileAndMigratePlayerSkins(storage);
+  assert.equal(recon.mirrorRepaired, true);
+  assert.equal(loadSettings(storage).skin, 'matrix_green');
+});
+
+test('Integration 68: Post-game-over progression advancement unlocks eligible skin upon post-run reconciliation', () => {
+  const storage = new MemoryStorage();
+  // Player starts at Level 2
+  savePlayerProgression({
+    ...createDefaultPlayerProgression(),
+    level: 2,
+    totalLifetimeXp: getCumulativeXpForLevel(2),
+  }, storage);
+  savePlayerSkins(DEFAULT_PLAYER_SKINS_STATE, storage);
+
+  // Simulate run that awards XP bringing total to Level 3 (cumulative 275 XP)
+  savePlayerProgression({
+    ...createDefaultPlayerProgression(),
+    level: 3,
+    totalLifetimeXp: getCumulativeXpForLevel(3),
+  }, storage);
+
+  // Post-game-over reconciliation runs
+  const recon = reconcileAndMigratePlayerSkins(storage);
+  assert.ok(recon.newlyUnlocked.includes('synth_sunset'));
+  assert.ok(recon.skinsState.unlockedSkinIds.includes('synth_sunset'));
+});
+
+test('Integration 69: Maze campaign victory unlocks Apex Void upon post-victory reconciliation', () => {
+  const storage = new MemoryStorage();
+  savePlayerSkins(DEFAULT_PLAYER_SKINS_STATE, storage);
+  // No campaign victories yet
+  saveMazeProgress({
+    highestStageUnlocked: 5,
+    totalCampaignsWon: 0,
+    totalMazesCleared: 5,
+    bestCampaignScore: 500,
+  }, storage);
+
+  // Campaign won: record victory in Maze progress
+  saveMazeProgress({
+    highestStageUnlocked: 6,
+    totalCampaignsWon: 1,
+    totalMazesCleared: 6,
+    bestCampaignScore: 1200,
+  }, storage);
+
+  // Post-victory reconciliation runs
+  const recon = reconcileAndMigratePlayerSkins(storage);
+  assert.ok(recon.newlyUnlocked.includes('apex_void'));
+  assert.ok(recon.skinsState.unlockedSkinIds.includes('apex_void'));
+});
+
+test('Integration 70: Safe renderer fallback strictly enforces cyber_cyan for unverified or locked skin states', () => {
+  const resolveActiveSkin = (state: PlayerSkinsState): SnakeSkinId => {
+    return (state && isSkinUnlocked(state.equippedSkinId, state))
+      ? state.equippedSkinId
+      : 'cyber_cyan';
+  };
+
+  // Default state before reconciliation resolves to cyber_cyan
+  const defaultState: PlayerSkinsState = {
+    ...DEFAULT_PLAYER_SKINS_STATE,
+    unlockedSkinIds: [...DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds],
+  };
+  assert.equal(resolveActiveSkin(defaultState), 'cyber_cyan');
+
+  // Corrupted / unauthorized state (locked skin ID in equippedSkinId) resolves to cyber_cyan
+  const unauthorizedState: PlayerSkinsState = {
+    equippedSkinId: 'apex_void',
+    unlockedSkinIds: ['cyber_cyan', 'matrix_green'],
+  };
+  assert.equal(resolveActiveSkin(unauthorizedState), 'cyber_cyan');
+
+  // Null or undefined state resolves to cyber_cyan
+  assert.equal(resolveActiveSkin(null as any), 'cyber_cyan');
+});

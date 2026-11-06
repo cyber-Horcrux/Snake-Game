@@ -34,7 +34,6 @@ import {
   equipSkin,
   loadBestScores,
   loadMazeProgress,
-  loadPlayerSkins,
   loadSettings,
   reconcileAndMigratePlayerSkins,
   recordStageClear,
@@ -43,7 +42,10 @@ import {
   saveSettings,
   updateBestScore,
 } from './game/persistence.ts';
-import { isSkinUnlocked } from './game/skins.ts';
+import {
+  DEFAULT_PLAYER_SKINS_STATE,
+  isSkinUnlocked,
+} from './game/skins.ts';
 import { TitleScreen } from './components/TitleScreen.tsx';
 import { HeaderHUD } from './components/HeaderHUD.tsx';
 import { PauseModal } from './components/PauseModal.tsx';
@@ -87,26 +89,20 @@ export default function App() {
   const [screen, setScreen] = useState<AppScreen>('title');
   const [selectedMode, setSelectedMode] = useState<GameMode>('classic');
   const selectedModeRef = useRef<GameMode>('classic');
-  // Authoritative Initial State with Synchronous Startup Reconciliation
   const [bestScores, setBestScores] = useState<ModeBestScores>(() => loadBestScores());
   const [mazeProgress, setMazeProgress] = useState<MazeProgress>(() => loadMazeProgress());
+  const [settings, setSettings] = useState<GameSettings>(() => loadSettings());
   const [lifetimeStats, setLifetimeStats] = useState(() => loadStats());
   const [achievements, setAchievements] = useState(() => loadAchievements());
   const [dailyState, setDailyState] = useState<DailyChallengeUserState>(() => loadDailyChallengeState());
-  const [progressionState, setProgressionState] = useState<PlayerProgressionState>(() => {
-    const reconRewards = reconcileDailyRewards();
-    return reconRewards.progressionState;
-  });
+  const [progressionState, setProgressionState] = useState<PlayerProgressionState>(() => loadPlayerProgression());
 
-  // Authoritative Player Skins State: synchronously reconciled and validated at startup
-  const [playerSkins, setPlayerSkins] = useState<PlayerSkinsState>(() => {
-    const reconSkins = reconcileAndMigratePlayerSkins();
-    return reconSkins.skinsState;
-  });
+  // Safe default player skins state: pure in-memory initialization, zero storage writes during rendering
+  const [playerSkins, setPlayerSkins] = useState<PlayerSkinsState>(() => ({
+    ...DEFAULT_PLAYER_SKINS_STATE,
+    unlockedSkinIds: [...DEFAULT_PLAYER_SKINS_STATE.unlockedSkinIds],
+  }));
   const playerSkinsRef = useRef<PlayerSkinsState>(playerSkins);
-
-  // Game Settings: loaded after reconciliation to pick up any mirror repairs immediately
-  const [settings, setSettings] = useState<GameSettings>(() => loadSettings());
 
   const [lastXpResult, setLastXpResult] = useState<XpEarnResult | null>(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
