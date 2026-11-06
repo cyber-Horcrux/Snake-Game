@@ -190,3 +190,50 @@ export type GameAudioEvent =
   | 'combo'
   | 'achievement';
 
+export interface XpBreakdown {
+  foodXp: number;
+  bonusFoodXp: number;
+  scoreXp: number;
+  survivalXp: number;
+  comboXp: number;
+  shieldXp: number;
+  zenWrapXp: number;
+  rushBonusXp: number;
+  stageClearBonusXp: number;
+  campaignVictoryBonusXp: number;
+  totalXp: number;
+}
+
+export interface PlayerProgressionState {
+  level: number;
+  currentXp: number;
+  xpForNextLevel: number;
+  totalLifetimeXp: number;
+  highestLevelAchieved: number;
+  processedRunEventIds: string[];
+  appliedRewardIds: string[];
+}
+
+export interface XpEarnResult {
+  xpEarned: number;
+  levelBefore: number;
+  levelAfter: number;
+  levelsGained: number;
+  isMaxLevel: boolean;
+  state: PlayerProgressionState;
+  breakdown: XpBreakdown;
+}
+
+export interface RunXpInput {
+  mode: GameMode;
+  foodEaten: number;
+  bonusEaten?: number;
+  score: number;
+  survivalSeconds: number;
+  maxCombo?: number;
+  shieldsUsed?: number;
+  wallsWrapped?: number;
+  isStageClear?: boolean;
+  isCampaignComplete?: boolean;
+}
+

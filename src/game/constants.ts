@@ -120,5 +120,48 @@ export const STORAGE_KEYS = {
   ACHIEVEMENTS: 'neon_snake_achievements_v1',
   DAILY_CHALLENGES: 'neon_snake_daily_challenges_v1',
   MAZE_PROGRESS: 'neon_snake_maze_progress_v1',
+  PLAYER_PROGRESSION: 'neon_snake_player_progression_v1',
+};
+
+export const MAX_PLAYER_LEVEL = 50;
+export const MAX_PROCESSED_RUN_EVENTS = 100;
+
+export const XP_REWARDS = {
+  NORMAL_FOOD: 10,
+  BONUS_FOOD: 25,
+  SCORE_DIVISOR: 20,
+  SURVIVAL_INTERVAL_SECONDS: 5,
+  SURVIVAL_CAP: 30,
+  COMBO_2X: 10,
+  COMBO_3X: 20,
+  COMBO_4X_PLUS: 30,
+  SHIELD_SAVE: 15,
+  SHIELD_CAP: 45,
+  ZEN_WRAP_DIVISOR: 2,
+  ZEN_WRAP_CAP: 15,
+  RUSH_MULTIPLIER: 1.25,
+  MAZE_STAGE_CLEAR: 100,
+  MAZE_CAMPAIGN_VICTORY: 500,
+  DAILY_CHALLENGE_COMPLETION: 50,
+  ANTI_EXPLOIT_MIN_SURVIVAL_SECONDS: 5,
+} as const;
+
+export const LEVEL_TITLES: Record<number, string> = {
+  1: 'Neon Scout',
+  2: 'Cyber Striker',
+  3: 'Grid Runner',
+  4: 'Vector Viper',
+  5: 'Apex Hunter',
+  6: 'Laser Fang',
+  7: 'Pulse Master',
+  8: 'Circuit Cobra',
+  9: 'Hyper Serpent',
+  10: 'Cyber Champion',
+  15: 'Neon Phantom',
+  20: 'Vortex Overlord',
+  25: 'Solar Sentinel',
+  30: 'Titan Viper',
+  40: 'Quantum Basilisk',
+  50: 'Apex Legend',
 };
 
