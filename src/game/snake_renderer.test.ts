@@ -715,18 +715,28 @@ test('Geometry: Exact 180-degree reversal maintains C1 tangent continuity for bo
       assert.ok(thickness > 3, 'Body thickness must remain positive through turnaround');
     }
 
-    // Verify tangent continuity: adjacent node tangents do not make abrupt flips
+    // Verify step continuity and tangent continuity: no position jumps or abrupt angle kinks
     for (let i = 1; i < nodes.length; i++) {
       const tPrev = nodes[i - 1];
       const tCurr = nodes[i];
+      const step = Math.hypot(tCurr.x - tPrev.x, tCurr.y - tPrev.y);
+      assert.ok(step < 12, `Step along 180 reversal (${step.toFixed(2)}) must not jump or disconnect`);
       const dot = tPrev.tangentX * tCurr.tangentX + tPrev.tangentY * tCurr.tangentY;
       assert.ok(dot > 0.70, `Adjacent tangents must be continuous across turnaround: dot=${dot}`);
+    }
+
+    // Outgoing trajectory alignment: tail end nodes must be on the y=100 line heading left (tx=-1, ty=0)
+    const tailNodes = nodes.slice(-5);
+    for (const tn of tailNodes) {
+      assert.ok(Math.abs(tn.y - 100) < 0.01, `Outgoing node Y (${tn.y}) must be collinear with outgoing line 100`);
+      assert.ok(Math.abs(tn.tangentX - (-1)) < 0.01, `Outgoing node tangentX (${tn.tangentX}) must be -1`);
+      assert.ok(Math.abs(tn.tangentY) < 0.01, `Outgoing node tangentY (${tn.tangentY}) must be 0`);
     }
   }
 });
 
-test('Geometry: Near-180-degree turnaround across multiple angles (175, 170, 160, 140 deg) maintains exact join continuity', () => {
-  const anglesDeg = [175, 170, 160, 140];
+test('Geometry: Near-180-degree turnaround across multiple angles (175, 170, 169, 168, 160, 140 deg) maintains exact join continuity', () => {
+  const anglesDeg = [175, 170, 169, 168, 160, 140];
   const pCurr = { x: 150, y: 100 };
   const inUx = 1;
   const inUy = 0;
@@ -756,6 +766,8 @@ test('Geometry: Near-180-degree turnaround across multiple angles (175, 170, 160
     for (let i = 1; i < nodes.length; i++) {
       const prev = nodes[i - 1];
       const curr = nodes[i];
+      const step = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+      assert.ok(step < 12, `Angle ${deg} deg step (${step.toFixed(2)}) must not jump or disconnect`);
       const dot = prev.tangentX * curr.tangentX + prev.tangentY * curr.tangentY;
       assert.ok(dot > 0.70, `Angle ${deg} deg adjacent dot=${dot.toFixed(3)} must exceed 0.70`);
     }
@@ -996,4 +1008,114 @@ test('Shared integration: drawSkinPreview delegates to shared snake renderer cle
   assert.ok(ctx.fillStylesUsed.has(theme.headColor), 'Skin preview uses apex_void head');
   assert.ok(ctx.fillStylesUsed.has(theme.eyeColor), 'Skin preview uses apex_void eyes');
   assert.equal(ctx.saveDepth, 0, 'Canvas stack balanced');
+});
+
+// =============================================================================
+// 11. CANVAS RELIABILITY & CALLER-OWNED STATE PRESERVATION
+// =============================================================================
+
+test('Canvas reliability: Preserves caller-owned globalAlpha and restores Canvas stack to 0', () => {
+  const ctx = new MockTrackingCanvasContext();
+  ctx.globalAlpha = 0.42;
+  ctx.fillStyle = '#123456';
+  ctx.strokeStyle = '#654321';
+
+  const spine: SpinePoint[] = [
+    { x: 100, y: 100 },
+    { x: 120, y: 100 },
+    { x: 140, y: 100 },
+    { x: 160, y: 100 },
+  ];
+
+  drawNaturalStylizedSnake(ctx as unknown as CanvasRenderingContext2D, spine, {
+    direction: 'RIGHT',
+    baseRadius: 14,
+    skin: 'solar_prestige' as any,
+    visualEffects: 'high',
+    hasShield: true,
+    allowGlow: true,
+  });
+
+  // Must restore stack to 0 and restore caller-owned globalAlpha
+  assert.equal(ctx.saveDepth, 0, 'Canvas save/restore stack must balance to 0');
+  assert.equal(ctx.globalAlpha, 0.42, 'Caller globalAlpha must be preserved exactly');
+});
+
+test('Canvas reliability: Exception-safe Canvas restoration when inner drawing fails', () => {
+  const ctx = new MockTrackingCanvasContext();
+  ctx.globalAlpha = 0.85;
+
+  // Simulate an error thrown during drawing
+  const originalFill = ctx.fill.bind(ctx);
+  let fillCount = 0;
+  ctx.fill = () => {
+    fillCount++;
+    if (fillCount === 2) {
+      throw new Error('Simulated GPU/Canvas context loss or error');
+    }
+    originalFill();
+  };
+
+  const spine: SpinePoint[] = [
+    { x: 100, y: 100 },
+    { x: 120, y: 100 },
+    { x: 140, y: 100 },
+  ];
+
+  assert.throws(
+    () => {
+      drawNaturalStylizedSnake(ctx as unknown as CanvasRenderingContext2D, spine, {
+        direction: 'RIGHT',
+        baseRadius: 12,
+        skin: 'cyber_cyan',
+      });
+    },
+    /Simulated GPU\/Canvas context loss or error/
+  );
+
+  // Even after exception, caller-owned globalAlpha and saveDepth must be restored
+  assert.equal(ctx.saveDepth, 0, 'Canvas save/restore stack must be 0 after exception');
+  assert.equal(ctx.globalAlpha, 0.85, 'Caller globalAlpha must be restored after exception');
+});
+
+test('Geometry: Complex multi-turn and hairpin serpentine paths maintain non-intersecting contours', () => {
+  // Complex path: Straight -> 90 turn -> Hairpin reversal -> 90 turn
+  const complexPath: SpinePoint[] = [
+    { x: 50, y: 50 },
+    { x: 150, y: 50 },
+    { x: 150, y: 150 },
+    { x: 150, y: 50 },
+    { x: 250, y: 50 },
+  ];
+
+  const nodes = generateSmoothSpine(complexPath, 12);
+  assert.ok(nodes.length > 15, 'Generates smooth nodes across complex serpentine path');
+
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
+    assert.ok(Number.isFinite(n.leftX) && Number.isFinite(n.rightX));
+
+    // Left is strictly on normal side, right is strictly on -normal side
+    const leftProj = (n.leftX - n.x) * n.normalX + (n.leftY - n.y) * n.normalY;
+    const rightProj = (n.rightX - n.x) * (-n.normalX) + (n.rightY - n.y) * (-n.normalY);
+    assert.ok(leftProj > 0, `Node ${i} left flank must be on positive normal side`);
+    assert.ok(rightProj > 0, `Node ${i} right flank must be on positive -normal side`);
+
+    const thickness = Math.hypot(n.leftX - n.rightX, n.leftY - n.rightY);
+    assert.ok(thickness >= n.radius * 0.40, `Node ${i} thickness (${thickness.toFixed(1)}) must not collapse`);
+  }
+
+  // Cross-boundary non-intersection check along the entire multi-turn body
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const l1 = { x: nodes[i].leftX, y: nodes[i].leftY };
+    const l2 = { x: nodes[i + 1].leftX, y: nodes[i + 1].leftY };
+    const r1 = { x: nodes[i].rightX, y: nodes[i].rightY };
+    const r2 = { x: nodes[i + 1].rightX, y: nodes[i + 1].rightY };
+
+    assert.ok(
+      !segmentsIntersect(l1, l2, r1, r2),
+      `Boundary segment ${i} must never intersect its opposing segment`
+    );
+  }
 });

@@ -605,36 +605,55 @@ export function generateSmoothSpine(
           addSample(px, py, dPx, dPy);
         }
 
-        // Smooth quintic Hermite transition from turnaround apex back onto the actual outgoing path line:
-        // Guarantees zero lateral displacement from the outgoing line, zero angular kink, and strict C1 continuity.
+        // Connect turnaround exit point (pExit) smoothly to the outgoing line (pTarget)
+        // using cubic Hermite interpolation. Guarantees zero positional discontinuity,
+        // exact tangent continuity (C1), and seamless alignment with the outgoing trajectory.
+        const pExitX = turnStartX + latUx * (2 * turnR);
+        const pExitY = turnStartY + latUy * (2 * turnR);
+        const tExitX = -inUx;
+        const tExitY = -inUy;
+
         const transDist = Math.min(outLen * 0.45, turnR * 2.0);
-        const transSteps = 6;
-        const latOutX = -outUy * sign;
-        const latOutY = outUx * sign;
-        const apexLatDisp = 2 * turnR;
+        const pTargetX = pCurr.x + outUx * (filletDist + transDist);
+        const pTargetY = pCurr.y + outUy * (filletDist + transDist);
+        const tTargetX = outUx;
+        const tTargetY = outUy;
+
+        const chord = Math.hypot(pTargetX - pExitX, pTargetY - pExitY);
+        const v0x = tExitX * chord;
+        const v0y = tExitY * chord;
+        const v1x = tTargetX * chord;
+        const v1y = tTargetY * chord;
+
+        const transSteps = Math.max(6, Math.min(14, Math.round(chord / (safeBaseR * 0.35))));
 
         for (let s = 1; s <= transSteps; s++) {
           const u = s / transSteps;
-          // Quintic smoothstep with zero 1st and 2nd derivatives at u=0 and u=1
-          const w = u * u * u * (u * (u * 6 - 15) + 10);
-          const currentLat = apexLatDisp * (1 - w);
+          const u2 = u * u;
+          const u3 = u2 * u;
 
-          const baseDist = filletDist + transDist * u;
-          const px = pCurr.x + outUx * baseDist + latOutX * currentLat;
-          const py = pCurr.y + outUy * baseDist + latOutY * currentLat;
+          // Cubic Hermite basis functions
+          const h00 = 2 * u3 - 3 * u2 + 1;
+          const h10 = u3 - 2 * u2 + u;
+          const h01 = -2 * u3 + 3 * u2;
+          const h11 = u3 - u2;
 
-          const dw_du = 30 * u * u * (1 - u) * (1 - u);
-          const dLat = -apexLatDisp * dw_du / Math.max(1, transDist);
-          const tx = outUx + latOutX * dLat;
-          const ty = outUy + latOutY * dLat;
+          const px = h00 * pExitX + h10 * v0x + h01 * pTargetX + h11 * v1x;
+          const py = h00 * pExitY + h10 * v0y + h01 * pTargetY + h11 * v1y;
 
-          addSample(px, py, tx, ty);
+          const dh00 = 6 * u2 - 6 * u;
+          const dh10 = 3 * u2 - 4 * u + 1;
+          const dh01 = -6 * u2 + 6 * u;
+          const dh11 = 3 * u2 - 2 * u;
+
+          const dpx = dh00 * pExitX + dh10 * v0x + dh01 * pTargetX + dh11 * v1x;
+          const dpy = dh00 * pExitY + dh10 * v0y + dh01 * pTargetY + dh11 * v1y;
+
+          addSample(px, py, dpx, dpy);
         }
 
         // Continue straight along the actual outgoing line with zero lateral offset and zero angular kink
-        const currentStartX = pCurr.x + outUx * (filletDist + transDist);
-        const currentStartY = pCurr.y + outUy * (filletDist + transDist);
-        currentStart = { x: currentStartX, y: currentStartY };
+        currentStart = { x: pTargetX, y: pTargetY };
         continue;
       }
 
@@ -1476,9 +1495,12 @@ export function drawNaturalStylizedSnake(
 ): void {
   if (!ctx || !points || points.length === 0) return;
 
-  const visualEffects = options.visualEffects ?? 'high';
-  const allowGlow = (options.allowGlow ?? true) && (visualEffects === 'high');
-  const skinTheme = getSkinVisuals(options.skin);
+  ctx.save();
+  const prevAlpha = ctx.globalAlpha;
+  try {
+    const visualEffects = options.visualEffects ?? 'high';
+    const allowGlow = (options.allowGlow ?? true) && (visualEffects === 'high');
+    const skinTheme = getSkinVisuals(options.skin);
 
   // Base radius determination
   let baseRadius = options.baseRadius;
@@ -1561,5 +1583,9 @@ export function drawNaturalStylizedSnake(
         ctx.restore();
       }
     }
+  }
+  } finally {
+    ctx.globalAlpha = prevAlpha;
+    ctx.restore();
   }
 }
