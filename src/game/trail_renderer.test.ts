@@ -297,66 +297,185 @@ test('NeonRenderer Trail 3: Preserves trail on death and cleans up on reset', ()
 });
 
 // =============================================================================
-// AUDIT REGRESSION TESTS: Findings 2 and 4
+// AUDIT REGRESSION TESTS: Finding 2 — Trail Chain Safety Corrections
 // =============================================================================
 
-test('Finding 2 Regression: Large canvas and large grid cells do NOT fragment continuous trail movement', () => {
+test('Finding 2 Safety 1: A valid caller-supplied threshold correctly splits genuinely distant points', () => {
   const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(260, 100, 1050, 0, false); // 160px step
 
-  // On a 1080p or 1440p screen, a 20-cell grid has cell sizes of 60px to 80px.
-  // Each step moves ~70px.
-  // Previously distSq > 3000 (threshold ~54.77px) fragmented these valid steps!
-  const cellSize = 70;
+  // Caller supplies threshold of 100px: distance 160px > 100px must split into 2 chains
+  const chains = manager.getChains(1100, 100);
+  assert.equal(chains.length, 2, 'Distant points exceeding caller threshold must split into separate chains');
+  assert.equal(chains[0].length, 1);
+  assert.equal(chains[1].length, 1);
+
+  // If caller threshold is 200px: distance 160px <= 200px remains connected
+  const connectedChains = manager.getChains(1100, 200);
+  assert.equal(connectedChains.length, 1, 'Points within caller threshold must remain connected');
+  assert.equal(connectedChains[0].length, 2);
+});
+
+test('Finding 2 Safety 2: Normal high-speed movement remains connected', () => {
+  const manager = new TrailHistoryManager(2000);
+  // High-frequency sub-tick interpolated movement (e.g. 15px step at 60fps = ~900px/s)
+  for (let i = 0; i < 15; i++) {
+    manager.addPoint(50 + i * 15, 100 + Math.sin(i * 0.5) * 8, 1000 + i * 16, 0, false);
+  }
+
+  const chains = manager.getChains(1250, 150);
+  assert.equal(chains.length, 1, 'Normal high-speed interpolated samples must remain a single unbroken chain');
+  assert.equal(chains[0].length, 15);
+});
+
+test('Finding 2 Safety 3: Large-cell boards remain connected under the actual production threshold', () => {
+  const manager = new TrailHistoryManager(2000);
+  const cellSize = 80;
+  // Step across large cells (e.g. 70-80px per step on a 4K or tablet display)
   for (let i = 0; i < 6; i++) {
     manager.addPoint(100 + i * cellSize, 200, 1000 + i * 50, 0, false);
   }
 
-  // Caller specifies coordinate-appropriate maxLinkDistance (e.g. 4 * cellSize = 280)
-  const maxAllowedDistance = cellSize * 4;
-  const chains = manager.getChains(1300, maxAllowedDistance);
+  // Actual production formula from renderer.ts: Math.max(cellW, cellH) * 3.5 = 280px
+  const productionThreshold = cellSize * 3.5;
+  const chains = manager.getChains(1300, productionThreshold);
 
-  assert.equal(chains.length, 1, 'Normal movement on large canvas must NOT be split into multiple chains');
-  assert.equal(chains[0].length, 6, 'All 6 sample points must be in a single continuous chain');
-
-  // Even without maxLinkDistance specified, safe coordinate fallback must not fragment 70px steps
-  const fallbackChains = manager.getChains(1300);
-  assert.equal(fallbackChains.length, 1, 'Fallback threshold must not fragment valid continuous steps');
+  assert.equal(chains.length, 1, 'Large-cell boards must remain in a single continuous chain under production threshold');
+  assert.equal(chains[0].length, 6);
 });
 
-test('Finding 2 Regression: Zen mode screen wraparounds are cleanly split into separate chains', () => {
+test('Finding 2 Safety 4: Explicit wrap/discontinuity flags always split chains correctly', () => {
   const manager = new TrailHistoryManager(2000);
+  // Points that are spatially close (only 10px apart) but explicitly flagged as discontinuous (e.g. wrapped boundary)
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(110, 100, 1050, 0, true); // marked discontinuous
 
-  // 1. Authoritative renderer-supplied discontinuity flag on Zen wrap
-  manager.addPoint(800, 300, 1000, 0, false);
-  manager.addPoint(850, 300, 1050, 0, false);
-  // Snake wraps right wall and re-enters from left wall (x=20)
-  manager.addPoint(20, 300, 1100, 0, true);
-  manager.addPoint(70, 300, 1150, 0, false);
-
-  const chains = manager.getChains(1200, 200);
-  assert.equal(chains.length, 2, 'Zen wraparound with authoritative flag must split into 2 chains');
-  assert.equal(chains[0].length, 2);
-  assert.equal(chains[1].length, 2);
-
-  // 2. Wrap without explicit flag across a wide board (distance fallback)
-  const manager2 = new TrailHistoryManager(2000);
-  manager2.addPoint(900, 300, 1000, 0, false);
-  manager2.addPoint(30, 300, 1050, 0, false); // Massive jump across 870px
-
-  const fallbackChains = manager2.getChains(1100, 200);
-  assert.equal(fallbackChains.length, 2, 'Massive spatial jump exceeding link distance must split chains');
+  // Even with a very large caller threshold of 500px, explicit discontinuity flag MUST split
+  const chains = manager.getChains(1100, 500);
+  assert.equal(chains.length, 2, 'Authoritative discontinuity flag must split chains regardless of distance');
+  assert.equal(chains[0].length, 1);
+  assert.equal(chains[1].length, 1);
 });
 
-test('Finding 2 Regression: High-speed interpolated movement remains unbroken', () => {
+test('Finding 2 Safety 5: Invalid coordinates cannot create misleading connections', () => {
   const manager = new TrailHistoryManager(2000);
-  // High-frequency sub-tick interpolated samples
-  for (let i = 0; i < 15; i++) {
-    manager.addPoint(50 + i * 15, 100 + Math.sin(i * 0.5) * 10, 1000 + i * 16, 0, false);
+  // 1. addPoint defensively rejects NaN, Infinity, -Infinity
+  manager.addPoint(NaN, 100, 1000, 0, false);
+  manager.addPoint(100, Infinity, 1050, 0, false);
+  manager.addPoint(-Infinity, 100, 1100, 0, false);
+  assert.equal(manager.getPointCount(), 0, 'addPoint must reject non-finite coordinates');
+
+  // 2. Even if non-finite coordinates exist in buffer, getChains must never include them or use them to connect points
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+
+  // Directly inject a non-finite point into buffer to test defensive getChains isolation
+  const internalBuffer = (manager as any).buffer;
+  manager.addPoint(140, 100, 1100, 0, false);
+  // Corrupt the newest element with NaN
+  internalBuffer[(manager as any).head].x = NaN;
+
+  // Add another valid point after the corrupted point
+  manager.addPoint(500, 500, 1150, 0, false);
+
+  const chains = manager.getChains(1200, 1000);
+  // Invalid point must not be in any chain
+  for (const chain of chains) {
+    for (const pt of chain) {
+      assert.ok(Number.isFinite(pt.x), 'No chain may contain non-finite x');
+      assert.ok(Number.isFinite(pt.y), 'No chain may contain non-finite y');
+    }
   }
 
-  const chains = manager.getChains(1250, 150);
-  assert.equal(chains.length, 1, 'High-speed interpolated samples must remain a single smooth chain');
-  assert.equal(chains[0].length, 15);
+  // The NaN point must have acted as a boundary, splitting (120, 100) and (500, 500)
+  assert.ok(chains.length >= 2, 'Invalid point must break continuity and prevent misleading connection');
+});
+
+test('Finding 2 Safety 6: Invalid points do not crash the renderer or contaminate subsequent valid chains', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+
+  // Inject corrupted points (Infinity, -Infinity)
+  const internalBuffer = (manager as any).buffer;
+  manager.addPoint(140, 100, 1100, 0, false);
+  internalBuffer[(manager as any).head].x = Infinity;
+
+  manager.addPoint(200, 200, 1150, 0, false);
+  manager.addPoint(220, 200, 1200, 0, false);
+
+  const chains = manager.getChains(1250, 200);
+  // Subsequent valid points (200, 200) and (220, 200) must form a clean valid chain
+  const validChain = chains.find(c => c.length === 2 && c.some(p => p.x === 220));
+  assert.ok(validChain, 'Subsequent valid points must form a valid chain without contamination');
+
+  // Verify drawSnakeTrail does not crash with these chains
+  const ctx = createMockContext();
+  assert.doesNotThrow(() => {
+    drawSnakeTrail(ctx as unknown as CanvasRenderingContext2D, chains, 'cyber_pulse');
+  }, 'Renderer must not crash when rendering chains extracted around invalid points');
+});
+
+test('Finding 2 Safety 7: Omitting the optional threshold follows the newly documented safe behavior', () => {
+  // A. Adaptive stride: normal movement with established stride stays connected
+  const manager = new TrailHistoryManager(2000);
+  for (let i = 0; i < 5; i++) {
+    manager.addPoint(100 + i * 20, 100, 1000 + i * 50, 0, false);
+  }
+  const continuousChains = manager.getChains(1300); // no threshold supplied
+  assert.equal(continuousChains.length, 1, 'Normal movement with empirical stride must remain unbroken without threshold');
+  assert.equal(continuousChains[0].length, 5);
+
+  // B. Adaptive stride: unexpected spatial outlier (teleport of 800px) in a 20px stride trajectory splits
+  manager.addPoint(920, 100, 1250, 0, false);
+  const splitChains = manager.getChains(1300); // no threshold supplied
+  assert.equal(splitChains.length, 2, 'Unexpected spatial leap exceeding adaptive stride must be split');
+
+  // C. Velocity safety limit: 2 points with extreme velocity (> 3.5 px/ms) are split
+  const managerVelocity = new TrailHistoryManager(2000);
+  managerVelocity.addPoint(100, 100, 1000, 0, false);
+  managerVelocity.addPoint(900, 900, 1050, 0, false); // 1131px in 50ms = 22.6 px/ms
+  const velocityChains = managerVelocity.getChains(1100);
+  assert.equal(velocityChains.length, 2, 'Two points with extreme velocity must be split as spatially unrelated');
+
+  // D. Instantaneous jump: 2 points with dt = 0 and spatial displacement are split
+  const managerInstant = new TrailHistoryManager(2000);
+  managerInstant.addPoint(100, 100, 1000, 0, false);
+  managerInstant.addPoint(400, 100, 1000, 0, false); // dt = 0, displacement = 300px
+  const instantChains = managerInstant.getChains(1050);
+  assert.equal(instantChains.length, 2, 'Instantaneous displacement with zero time delta must be split');
+
+  // E. Instance-level defaultMaxLinkDistance is respected when configured
+  const managerDefault = new TrailHistoryManager(2000, 150);
+  managerDefault.addPoint(100, 100, 1000, 0, false);
+  managerDefault.addPoint(300, 100, 1050, 0, false); // 200px step > 150px default
+  const defaultChains = managerDefault.getChains(1100);
+  assert.equal(defaultChains.length, 2, 'Configured defaultMaxLinkDistance must be used when threshold is omitted');
+});
+
+test('Finding 2 Safety 8: Existing trail behavior remains unchanged for valid normal inputs', () => {
+  const manager = new TrailHistoryManager(650);
+  const baseTime = 2000;
+  // Typical snake movement in normal gameplay (e.g. 25px per tick at 100ms ticks)
+  for (let i = 0; i < 5; i++) {
+    manager.addPoint(200 + i * 25, 300, baseTime + i * 100, 0, false);
+  }
+
+  // 1. With production threshold
+  const prodChains = manager.getChains(baseTime + 450, 100);
+  assert.equal(prodChains.length, 1, 'Valid normal input must produce 1 continuous chain with caller threshold');
+  assert.equal(prodChains[0].length, 5);
+
+  // 2. Without threshold
+  const noThreshChains = manager.getChains(baseTime + 450);
+  assert.equal(noThreshChains.length, 1, 'Valid normal input must produce 1 continuous chain without threshold');
+  assert.equal(noThreshChains[0].length, 5);
+
+  // 3. Render check
+  const ctx = createMockContext();
+  drawSnakeTrail(ctx as unknown as CanvasRenderingContext2D, prodChains, 'matrix_stream');
+  assert.ok(ctx.operations.length > 0, 'drawSnakeTrail must render valid operations for standard inputs');
 });
 
 test('Finding 4 Regression: drawTrailPreview clears canvas on transparent background to prevent frame accumulation', () => {

@@ -41,9 +41,13 @@ export class TrailHistoryManager {
   private count: number = 0;
   private head: number = 0; // index of newest element
   private maxAgeMs: number;
+  private defaultMaxLinkDistance?: number;
 
-  constructor(maxAgeMs: number = DEFAULT_TRAIL_LIFETIME_MS) {
+  constructor(maxAgeMs: number = DEFAULT_TRAIL_LIFETIME_MS, defaultMaxLinkDistance?: number) {
     this.maxAgeMs = maxAgeMs;
+    if (typeof defaultMaxLinkDistance === 'number' && Number.isFinite(defaultMaxLinkDistance) && defaultMaxLinkDistance > 0) {
+      this.defaultMaxLinkDistance = defaultMaxLinkDistance;
+    }
     this.buffer = Array.from({ length: MAX_TRAIL_POINTS }, () => ({
       x: 0,
       y: 0,
@@ -62,6 +66,18 @@ export class TrailHistoryManager {
     return this.count;
   }
 
+  public setDefaultMaxLinkDistance(distance?: number): void {
+    if (typeof distance === 'number' && Number.isFinite(distance) && distance > 0) {
+      this.defaultMaxLinkDistance = distance;
+    } else {
+      this.defaultMaxLinkDistance = undefined;
+    }
+  }
+
+  public getDefaultMaxLinkDistance(): number | undefined {
+    return this.defaultMaxLinkDistance;
+  }
+
   /**
    * Adds a new tail sample point.
    */
@@ -72,7 +88,10 @@ export class TrailHistoryManager {
     angle: number,
     discontinuity: boolean = false
   ): void {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(timeMs)) return;
+
+    const safeAngle = Number.isFinite(angle) ? angle : 0;
+    const safeDiscontinuity = Boolean(discontinuity);
 
     if (this.count > 0) {
       const newest = this.buffer[this.head];
@@ -88,8 +107,8 @@ export class TrailHistoryManager {
     pt.x = x;
     pt.y = y;
     pt.timeMs = timeMs;
-    pt.angle = angle;
-    pt.discontinuity = discontinuity;
+    pt.angle = safeAngle;
+    pt.discontinuity = safeDiscontinuity;
 
     if (this.count < MAX_TRAIL_POINTS) {
       this.count++;
@@ -97,18 +116,27 @@ export class TrailHistoryManager {
   }
 
   /**
-  /**
    * Prunes expired points and extracts active chains separated by discontinuities.
    * Returns chains in chronological order (newest point at index 0 of the first chain).
    * 
-   * Discontinuity handling:
-   * - Authoritative `discontinuity` flag (e.g. Zen mode wrap supplied by renderer) is primary.
-   * - An optional `maxLinkDistance` may be supplied by the caller (appropriate to current coordinate system/cell size).
-   * - If no `maxLinkDistance` is provided, a safe coordinate fallback is used so normal continuous movement
-   *   is never fragmented across large canvases.
+   * Discontinuity and Link Safety:
+   * 1. Authoritative `discontinuity` flags (e.g. Zen mode wrap or teleport marked upon insertion)
+   *    are the primary boundary signal and always split chains.
+   * 2. Non-finite coordinates (NaN, Infinity, -Infinity) are defensively rejected: invalid points
+   *    are never included in any chain and act as chain boundaries so corrupted data cannot
+   *    contaminate valid trail rendering.
+   * 3. Explicit distance threshold:
+   *    - When caller provides a valid positive finite `maxLinkDistance` (or an instance-level
+   *      `defaultMaxLinkDistance` is configured), points separated by greater distance are split.
+   * 4. Safe fallback strategy when no valid distance threshold is supplied:
+   *    - The manager adaptively determines the local movement stride from valid active points.
+   *      Outlier jumps exceeding 4.5x the median observed stride are split as spatial discontinuities.
+   *    - When insufficient history exists to establish an empirical stride (e.g. single sample pair),
+   *      velocity-safety analysis splits instantaneous jumps (dt <= 0 with displacement) or
+   *      extreme displacements exceeding plausible continuous motion (velocity > 3.5 px/ms).
    */
   public getChains(currentTimeMs: number, maxLinkDistance?: number): TrailPoint[][] {
-    if (this.count === 0) return [];
+    if (!Number.isFinite(currentTimeMs) || this.count === 0) return [];
 
     const activePoints: TrailPoint[] = [];
     const minTime = currentTimeMs - this.maxAgeMs;
@@ -116,7 +144,7 @@ export class TrailHistoryManager {
     for (let i = 0; i < this.count; i++) {
       const idx = (this.head - i + MAX_TRAIL_POINTS) % MAX_TRAIL_POINTS;
       const pt = this.buffer[idx];
-      if (pt.timeMs < minTime) {
+      if (!Number.isFinite(pt.timeMs) || pt.timeMs < minTime) {
         // Since points are ordered newest to oldest, remaining points are also expired
         this.count = i;
         break;
@@ -126,27 +154,90 @@ export class TrailHistoryManager {
 
     if (activePoints.length === 0) return [];
 
-    // Split into continuous chains on authoritative discontinuity flags or genuine spatial jumps
+    const hasExplicitThreshold = typeof maxLinkDistance === 'number' &&
+      Number.isFinite(maxLinkDistance) &&
+      maxLinkDistance > 0;
+
+    const hasDefaultThreshold = !hasExplicitThreshold &&
+      typeof this.defaultMaxLinkDistance === 'number' &&
+      Number.isFinite(this.defaultMaxLinkDistance) &&
+      this.defaultMaxLinkDistance > 0;
+
+    let explicitMaxDistSq: number | undefined = undefined;
+    if (hasExplicitThreshold) {
+      explicitMaxDistSq = maxLinkDistance! * maxLinkDistance!;
+    } else if (hasDefaultThreshold) {
+      explicitMaxDistSq = this.defaultMaxLinkDistance! * this.defaultMaxLinkDistance!;
+    }
+
+    let adaptiveMaxDistSq: number | undefined = undefined;
+    if (explicitMaxDistSq === undefined) {
+      const strides: number[] = [];
+      for (let i = 1; i < activePoints.length; i++) {
+        const p1 = activePoints[i - 1];
+        const p2 = activePoints[i];
+        if (
+          Number.isFinite(p1.x) && Number.isFinite(p1.y) &&
+          Number.isFinite(p2.x) && Number.isFinite(p2.y) &&
+          !p1.discontinuity && !p2.discontinuity
+        ) {
+          const s = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+          if (s > 0.1) {
+            strides.push(s);
+          }
+        }
+      }
+      if (strides.length >= 2) {
+        strides.sort((a, b) => a - b);
+        const medianStride = strides[Math.floor(strides.length / 2)];
+        const adaptiveMax = medianStride * 4.5;
+        adaptiveMaxDistSq = adaptiveMax * adaptiveMax;
+      }
+    }
+
     const chains: TrailPoint[][] = [];
-    let currentChain: TrailPoint[] = [activePoints[0]];
+    let currentChain: TrailPoint[] = [];
 
-    const maxDistSq = maxLinkDistance !== undefined && maxLinkDistance > 0
-      ? maxLinkDistance * maxLinkDistance
-      : undefined;
-
-    for (let i = 1; i < activePoints.length; i++) {
-      const prev = activePoints[i - 1];
+    for (let i = 0; i < activePoints.length; i++) {
       const curr = activePoints[i];
 
-      // Since activePoints is newest-to-oldest, if prev was flagged discontinuous upon insertion,
-      // it marks the boundary between the wrapped point and its older predecessor.
-      const distSq = (curr.x - prev.x) ** 2 + (curr.y - prev.y) ** 2;
-      const isDiscontinuous = prev.discontinuity || (maxDistSq !== undefined ? distSq > maxDistSq : distSq > 250000);
-
-      if (isDiscontinuous) {
+      // Defensive check: reject non-finite coordinates
+      if (!Number.isFinite(curr.x) || !Number.isFinite(curr.y)) {
         if (currentChain.length > 0) {
           chains.push(currentChain);
+          currentChain = [];
         }
+        continue;
+      }
+
+      if (currentChain.length === 0) {
+        currentChain.push(curr);
+        continue;
+      }
+
+      const prev = currentChain[currentChain.length - 1];
+
+      // 1. Authoritative discontinuity flag
+      const isExplicitBoundary = prev.discontinuity;
+
+      // 2. Spatial distance check
+      const dx = curr.x - prev.x;
+      const dy = curr.y - prev.y;
+      const distSq = dx * dx + dy * dy;
+
+      let isSpatialJump = false;
+      if (explicitMaxDistSq !== undefined) {
+        isSpatialJump = distSq > explicitMaxDistSq;
+      } else if (adaptiveMaxDistSq !== undefined) {
+        isSpatialJump = distSq > adaptiveMaxDistSq;
+      } else {
+        const dt = Math.abs(curr.timeMs - prev.timeMs);
+        const dist = Math.sqrt(distSq);
+        isSpatialJump = (dt <= 0 && dist > 0.5) || (dt > 0 && (dist / dt) > 3.5);
+      }
+
+      if (isExplicitBoundary || isSpatialJump) {
+        chains.push(currentChain);
         currentChain = [curr];
       } else {
         currentChain.push(curr);
