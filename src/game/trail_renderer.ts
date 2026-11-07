@@ -214,7 +214,7 @@ export class TrailHistoryManager {
         if (
           Number.isFinite(pPrev.x) && Number.isFinite(pPrev.y) &&
           Number.isFinite(pCurr.x) && Number.isFinite(pCurr.y) &&
-          !pPrev.discontinuity
+          !pCurr.discontinuity
         ) {
           const s = Math.hypot(pCurr.x - pPrev.x, pCurr.y - pPrev.y);
           const dt = pCurr.timeMs - pPrev.timeMs;

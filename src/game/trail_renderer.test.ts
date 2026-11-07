@@ -1057,5 +1057,87 @@ test('Adaptive Multi-Jump 10: Explicit discontinuity markers still split chains 
   assert.equal(chains[1].length, 2);
 });
 
+// =============================================================================
+// BOUNDARY CORRECTION: Discontinuity Marker Inconsistency & Baseline Scan
+// =============================================================================
+
+test('Boundary Correction 1: Boundary-crossing strides (pCurr.discontinuity = true) never contribute to adaptive baseline estimation', () => {
+  const manager = new TrailHistoryManager(3000);
+  // P0 to P1: A small 5px stride across a boundary, explicitly marked discontinuous.
+  // Physical speed: 5px / 50ms = 0.1 px/ms (passes velocity check).
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(105, 100, 1050, 0, true); // Boundary crossing
+
+  // Post-boundary movement: 55px strides at 50ms intervals (1.1 px/ms <= 3.5 px/ms).
+  // If the 5px boundary stride had entered validStrides, baseline would clamp to 10px,
+  // producing maxAllowed = 45px. Then 55px strides would be falsely rejected as spatial jumps!
+  // Because pCurr.discontinuity is excluded, validStrides sees 55px strides -> baseline = 55px -> maxAllowed = 247.5px.
+  manager.addPoint(160, 100, 1100, 0, false); // 55px normal stride
+  manager.addPoint(215, 100, 1150, 0, false); // 55px normal stride
+
+  const chains = manager.getChains(1200);
+  assert.equal(chains.length, 2, 'Must produce exactly 2 chains: pre-boundary and post-boundary');
+  // Post-boundary chain should contain P3, P2, P1 (all 3 connected)
+  assert.equal(chains[0].length, 3, 'Post-boundary normal movement must remain connected to arrival point');
+  assert.equal(chains[0][0].x, 215);
+  assert.equal(chains[0][1].x, 160);
+  assert.equal(chains[0][2].x, 105);
+  // Pre-boundary chain contains P0
+  assert.equal(chains[1].length, 1);
+  assert.equal(chains[1][0].x, 100);
+});
+
+test('Boundary Correction 2: Normal movement immediately after a boundary remains connected when valid', () => {
+  const manager = new TrailHistoryManager(3000);
+  // Snake reaches right edge of screen at x=790
+  manager.addPoint(790, 300, 1000, 0, false);
+  // Wraps to left edge at x=20 with discontinuity = true
+  manager.addPoint(20, 300, 1050, 0, true);
+  // Continues moving right normally with 25px strides (0.5 px/ms)
+  manager.addPoint(45, 300, 1100, 0, false);
+  manager.addPoint(70, 300, 1150, 0, false);
+  manager.addPoint(95, 300, 1200, 0, false);
+
+  const chains = manager.getChains(1250);
+  assert.equal(chains.length, 2, 'Wrap boundary must cleanly split into pre-wrap and post-wrap chains');
+  // Post-wrap chain contains all 4 points after and including wrap arrival
+  assert.equal(chains[0].length, 4, 'All post-wrap points must remain connected');
+  assert.equal(chains[0][0].x, 95);
+  assert.equal(chains[0][1].x, 70);
+  assert.equal(chains[0][2].x, 45);
+  assert.equal(chains[0][3].x, 20);
+  // Pre-wrap chain has the point before wrapping
+  assert.equal(chains[1].length, 1);
+  assert.equal(chains[1][0].x, 790);
+});
+
+test('Boundary Correction 3: Multiple boundary crossings with interleaved normal movement maintain isolated boundaries and connected segments', () => {
+  const manager = new TrailHistoryManager(4000);
+  // Segment 1 (pre-wrap 1)
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false); // 20px
+  // Boundary 1 (wrap to x=10)
+  manager.addPoint(10, 100, 1100, 0, true);
+  // Segment 2 (post-wrap 1)
+  manager.addPoint(30, 100, 1150, 0, false); // 20px
+  // Boundary 2 (wrap to x=500)
+  manager.addPoint(500, 100, 1200, 0, true);
+  // Segment 3 (post-wrap 2)
+  manager.addPoint(520, 100, 1250, 0, false); // 20px
+
+  const chains = manager.getChains(1300);
+  assert.equal(chains.length, 3, 'Two boundaries must create exactly 3 distinct chains');
+  assert.equal(chains[0].length, 2, 'Latest segment has 2 connected points');
+  assert.equal(chains[0][0].x, 520);
+  assert.equal(chains[0][1].x, 500);
+  assert.equal(chains[1].length, 2, 'Middle segment has 2 connected points');
+  assert.equal(chains[1][0].x, 30);
+  assert.equal(chains[1][1].x, 10);
+  assert.equal(chains[2].length, 2, 'Earliest segment has 2 connected points');
+  assert.equal(chains[2][0].x, 120);
+  assert.equal(chains[2][1].x, 100);
+});
+
+
 
 
