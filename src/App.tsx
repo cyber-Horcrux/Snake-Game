@@ -10,7 +10,9 @@ import type {
   ModeBestScores,
   PlayerProgressionState,
   PlayerSkinsState,
+  PlayerTrailsState,
   SnakeSkinId,
+  SnakeTrailId,
   XpEarnResult,
 } from './game/types.ts';
 import {
@@ -32,10 +34,13 @@ import {
 } from './game/controls.ts';
 import {
   equipSkin,
+  equipTrail,
   loadBestScores,
   loadMazeProgress,
+  loadPlayerTrails,
   loadSettings,
   reconcileAndMigratePlayerSkins,
+  reconcileAndMigratePlayerTrails,
   recordStageClear,
   recordCampaignCompletion,
   resetBestScores,
@@ -46,6 +51,10 @@ import {
   DEFAULT_PLAYER_SKINS_STATE,
   isSkinUnlocked,
 } from './game/skins.ts';
+import {
+  DEFAULT_PLAYER_TRAILS_STATE,
+  isTrailUnlocked,
+} from './game/trails.ts';
 import { TitleScreen } from './components/TitleScreen.tsx';
 import { HeaderHUD } from './components/HeaderHUD.tsx';
 import { PauseModal } from './components/PauseModal.tsx';
@@ -104,6 +113,14 @@ export default function App() {
   }));
   const playerSkinsRef = useRef<PlayerSkinsState>(playerSkins);
 
+  // Safe default player trails state: pure in-memory initialization, zero storage writes during rendering
+  const [playerTrails, setPlayerTrails] = useState<PlayerTrailsState>(() => ({
+    ...DEFAULT_PLAYER_TRAILS_STATE,
+    unlockedTrailIds: [...DEFAULT_PLAYER_TRAILS_STATE.unlockedTrailIds],
+  }));
+  const playerTrailsRef = useRef<PlayerTrailsState>(playerTrails);
+  const [customizationTab, setCustomizationTab] = useState<'skins' | 'trails'>('skins');
+
   const [lastXpResult, setLastXpResult] = useState<XpEarnResult | null>(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
@@ -160,6 +177,7 @@ export default function App() {
   screenRef.current = screen;
   settingsRef.current = settings;
   playerSkinsRef.current = playerSkins;
+  playerTrailsRef.current = playerTrails;
   selectedModeRef.current = selectedMode;
   modalsOpenRef.current =
     showHowToPlay ||
@@ -173,7 +191,7 @@ export default function App() {
   const swipeTrackerRef = useRef<SwipeTracker>(new SwipeTracker(24));
   const isTouchActiveRef = useRef(false);
 
-  // Reconcile Daily Challenge rewards and Player Skins upon app startup
+  // Reconcile Daily Challenge rewards, Player Skins, and Player Trails upon app startup
   useEffect(() => {
     const reconRewards = reconcileDailyRewards();
     if (reconRewards.reconciledCount > 0) {
@@ -183,6 +201,12 @@ export default function App() {
     const reconSkins = reconcileAndMigratePlayerSkins();
     setPlayerSkins(reconSkins.skinsState);
     if (reconSkins.mirrorRepaired) {
+      setSettings(loadSettings());
+    }
+
+    const reconTrails = reconcileAndMigratePlayerTrails();
+    setPlayerTrails(reconTrails.trailsState);
+    if (reconTrails.mirrorRepaired) {
       setSettings(loadSettings());
     }
   }, []);
@@ -197,6 +221,18 @@ export default function App() {
       return { success: true };
     }
     return { success: false, error: result.error || 'Failed to equip skin.' };
+  }, []);
+
+  // Equip trail handler with honest error reporting
+  const handleEquipTrail = useCallback((trailId: SnakeTrailId) => {
+    const result = equipTrail(trailId);
+    if (result.success) {
+      setPlayerTrails(result.state);
+      setSettings(loadSettings());
+      soundEngine.play('click');
+      return { success: true };
+    }
+    return { success: false, error: result.error || 'Failed to equip trail.' };
   }, []);
 
   // Sync soundEngine settings
@@ -300,9 +336,11 @@ export default function App() {
       soundEngine.play('achievement');
     }
 
-    // Reconcile skins in case this run achieved an unlock requirement (level, Zen wraps, etc.)
+    // Reconcile skins and trails in case this run achieved an unlock requirement (level, Zen wraps, etc.)
     const reconSkins = reconcileAndMigratePlayerSkins();
     setPlayerSkins(reconSkins.skinsState);
+    const reconTrails = reconcileAndMigratePlayerTrails();
+    setPlayerTrails(reconTrails.trailsState);
 
     setScreen('gameover');
   }, []);
@@ -368,9 +406,11 @@ export default function App() {
         soundEngine.play('achievement');
       }
 
-      // Reconcile skins for stage clear progression
+      // Reconcile skins and trails for stage clear progression
       const reconSkins = reconcileAndMigratePlayerSkins();
       setPlayerSkins(reconSkins.skinsState);
+      const reconTrails = reconcileAndMigratePlayerTrails();
+      setPlayerTrails(reconTrails.trailsState);
     }
     setScreen('stage_clear');
   }, []);
@@ -440,9 +480,11 @@ export default function App() {
 
       setDailyState(challengeEval.state);
 
-      // Reconcile skins for campaign victory unlock (Apex Void)
+      // Reconcile skins and trails for campaign victory unlock (Apex Void & Void Horizon)
       const reconSkins = reconcileAndMigratePlayerSkins();
       setPlayerSkins(reconSkins.skinsState);
+      const reconTrails = reconcileAndMigratePlayerTrails();
+      setPlayerTrails(reconTrails.trailsState);
     }
     setScreen('campaign_victory');
   }, []);
@@ -998,6 +1040,11 @@ export default function App() {
         ? playerSkinsRef.current.equippedSkinId
         : 'cyber_cyan';
 
+      // Authoritative equipped trail resolution: must be unlocked, safe fallback to cyber_pulse
+      const activeTrailId = (playerTrailsRef.current && isTrailUnlocked(playerTrailsRef.current.equippedTrailId, playerTrailsRef.current))
+        ? playerTrailsRef.current.equippedTrailId
+        : 'cyber_pulse';
+
       rendererRef.current.render(
         ctx,
         canvas.width,
@@ -1007,6 +1054,7 @@ export default function App() {
         {
           visualEffects: settingsRef.current.visualEffects,
           skin: activeSkinId,
+          trail: activeTrailId,
         }
       );
 
@@ -1164,7 +1212,10 @@ export default function App() {
           onStartGame={() => (selectedMode === 'maze' ? setShowStageSelect(true) : startGame(selectedMode))}
           onOpenStageSelect={() => setShowStageSelect(true)}
           onOpenDailyChallenges={() => setShowDailyChallenges(true)}
-          onOpenSkinCollection={() => setShowSkinCollection(true)}
+          onOpenSkinCollection={() => {
+            setCustomizationTab('skins');
+            setShowSkinCollection(true);
+          }}
           onOpenHowToPlay={() => setShowHowToPlay(true)}
           onOpenSettings={() => setShowSettings(true)}
           onOpenStats={() => setShowStats(true)}
@@ -1249,11 +1300,15 @@ export default function App() {
       {showSkinCollection && (
         <SkinCollectionModal
           playerSkins={playerSkins}
+          playerTrails={playerTrails}
           progression={progressionState}
           mazeProgress={mazeProgress}
+          lifetimeStats={lifetimeStats}
           onEquipSkin={handleEquipSkin}
+          onEquipTrail={handleEquipTrail}
           onClose={() => setShowSkinCollection(false)}
           visualEffects={settings.visualEffects}
+          initialTab={customizationTab}
         />
       )}
 
@@ -1265,10 +1320,12 @@ export default function App() {
         <SettingsModal
           settings={settings}
           equippedSkinId={playerSkins.equippedSkinId}
+          equippedTrailId={playerTrails.equippedTrailId}
           onUpdateSettings={handleUpdateSettings}
           onResetScores={handleResetScores}
-          onOpenSkinCollection={() => {
+          onOpenSkinCollection={(tab) => {
             setShowSettings(false);
+            setCustomizationTab(tab || 'skins');
             setShowSkinCollection(true);
           }}
           onClose={() => setShowSettings(false)}

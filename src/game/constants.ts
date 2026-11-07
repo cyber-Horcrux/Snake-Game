@@ -1,7 +1,4 @@
-/**
- * Tunable game constants for NEON SNAKE
- */
-import type { ControlMode, GameMode, SnakeSkin, SnakeSkinId } from './types.ts';
+import type { ControlMode, GameMode, SnakeSkin, SnakeSkinId, SnakeTrailId } from './types.ts';
 
 export const GRID_SIZE = {
   WIDTH: 24,
@@ -185,6 +182,7 @@ export const DEFAULT_SETTINGS = {
   visualEffects: 'high' as const,
   dpadPreference: 'auto' as const,
   skin: 'cyber_cyan' as SnakeSkinId,
+  trail: 'cyber_pulse' as SnakeTrailId,
   controlMode: 'swipe' as ControlMode,
 };
 
@@ -198,6 +196,7 @@ export const STORAGE_KEYS = {
   PLAYER_PROGRESSION: 'neon_snake_player_progression_v1',
   DAILY_REWARD_LEDGER: 'neon_snake_daily_reward_ledger_v1',
   SKINS: 'neon_snake_skins_v1',
+  TRAILS: 'neon_snake_trails_v1',
 };
 
 export const MAX_PLAYER_LEVEL = 50;

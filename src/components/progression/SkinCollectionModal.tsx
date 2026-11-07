@@ -1,35 +1,53 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Lock, Palette, Sparkles, AlertCircle, Shield } from 'lucide-react';
+import { X, Check, Lock, Palette, Sparkles, AlertCircle, Shield, Zap } from 'lucide-react';
 import type {
+  LifetimeStats,
   MazeProgress,
   PlayerProgressionState,
   PlayerSkinsState,
+  PlayerTrailsState,
   SnakeSkinId,
+  SnakeTrailId,
 } from '../../game/types.ts';
 import {
   getAllSkinDefinitions,
   getSkinUnlockDescription,
   isSkinUnlocked,
 } from '../../game/skins.ts';
+import {
+  getAllTrailDefinitions,
+  getTrailUnlockDescription,
+  isTrailUnlocked,
+} from '../../game/trails.ts';
 import { SkinPreviewCanvas } from './SkinPreviewCanvas.tsx';
+import { TrailPreviewCanvas } from './TrailPreviewCanvas.tsx';
 
 export interface SkinCollectionModalProps {
   playerSkins: PlayerSkinsState;
+  playerTrails?: PlayerTrailsState;
   progression?: PlayerProgressionState;
   mazeProgress?: MazeProgress;
+  lifetimeStats?: LifetimeStats;
   onEquipSkin: (skinId: SnakeSkinId) => { success: boolean; error?: string };
+  onEquipTrail?: (trailId: SnakeTrailId) => { success: boolean; error?: string };
   onClose: () => void;
   visualEffects?: 'high' | 'performance' | 'reduced';
+  initialTab?: 'skins' | 'trails';
 }
 
 export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
   playerSkins,
+  playerTrails = { equippedTrailId: 'cyber_pulse', unlockedTrailIds: ['none', 'cyber_pulse'] },
   progression,
   mazeProgress,
+  lifetimeStats,
   onEquipSkin,
+  onEquipTrail,
   onClose,
   visualEffects = 'high',
+  initialTab = 'skins',
 }) => {
+  const [activeTab, setActiveTab] = useState<'skins' | 'trails'>(initialTab);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -45,10 +63,16 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
   }, [onClose]);
 
   const allSkins = getAllSkinDefinitions();
-  const unlockedCount = allSkins.filter(skin => isSkinUnlocked(skin.id, playerSkins)).length;
-  const currentLevel = progression?.level ?? 1;
+  const unlockedSkinsCount = allSkins.filter(skin => isSkinUnlocked(skin.id, playerSkins)).length;
 
-  const handleEquip = (skinId: SnakeSkinId) => {
+  const allTrails = getAllTrailDefinitions();
+  const unlockedTrailsCount = allTrails.filter(trail => isTrailUnlocked(trail.id, playerTrails)).length;
+
+  const currentLevel = progression?.level ?? 1;
+  const currentZenWraps = lifetimeStats?.wallsWrapped ?? 0;
+  const currentStage = mazeProgress?.highestStageUnlocked ?? 1;
+
+  const handleEquipSkin = (skinId: SnakeSkinId) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     setErrorMessage(null);
@@ -60,6 +84,23 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
       }
     } catch {
       setErrorMessage('Storage write failed. Could not equip skin.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEquipTrailAction = (trailId: SnakeTrailId) => {
+    if (isSubmitting || !onEquipTrail) return;
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      const result = onEquipTrail(trailId);
+      if (!result.success) {
+        setErrorMessage(result.error || 'Failed to equip trail. Please try again.');
+      }
+    } catch {
+      setErrorMessage('Storage write failed. Could not equip trail.');
     } finally {
       setIsSubmitting(false);
     }
@@ -77,10 +118,18 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
     >
       <div className="w-full max-w-4xl max-h-[calc(100dvh-1.5rem)] bg-[#0B0E1A] border border-[#00F5FF]/30 rounded-2xl shadow-[0_0_35px_rgba(0,245,255,0.18)] flex flex-col relative my-auto overflow-hidden">
         {/* Modal Header */}
-        <div className="p-3.5 sm:p-5 flex items-center justify-between border-b border-[#161B2E] shrink-0 bg-[#0B0E1A]">
+        <div className="p-3 sm:p-4.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#161B2E] shrink-0 bg-[#0B0E1A]">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-[#00F5FF]/10 border border-[#00F5FF]/30 text-[#00F5FF] shrink-0">
-              <Palette className="w-5 h-5 sm:w-6 sm:h-6" />
+            <div className={`p-2 rounded-xl border shrink-0 transition-colors ${
+              activeTab === 'skins'
+                ? 'bg-[#00F5FF]/10 border-[#00F5FF]/30 text-[#00F5FF]'
+                : 'bg-[#9865FF]/10 border-[#9865FF]/30 text-[#9865FF]'
+            }`}>
+              {activeTab === 'skins' ? (
+                <Palette className="w-5 h-5 sm:w-6 sm:h-6" />
+              ) : (
+                <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2.5">
@@ -88,26 +137,64 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
                   id="skin-collection-title"
                   className="text-lg xs:text-xl sm:text-2xl font-black font-display tracking-wider text-[#F0F6FC] leading-none drop-shadow-[0_0_15px_rgba(0,245,255,0.3)]"
                 >
-                  SNAKE SKINS
+                  {activeTab === 'skins' ? 'SNAKE SKINS' : 'SNAKE TRAILS'}
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#00F5FF]/15 border border-[#00F5FF]/40 text-[#00F5FF]">
-                  {unlockedCount} / {allSkins.length} UNLOCKED
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                  activeTab === 'skins'
+                    ? 'bg-[#00F5FF]/15 border-[#00F5FF]/40 text-[#00F5FF]'
+                    : 'bg-[#9865FF]/15 border-[#9865FF]/40 text-[#9865FF]'
+                }`}>
+                  {activeTab === 'skins'
+                    ? `${unlockedSkinsCount} / ${allSkins.length} UNLOCKED`
+                    : `${unlockedTrailsCount} / ${allTrails.length} UNLOCKED`}
                 </span>
               </div>
               <p className="text-[10px] sm:text-xs text-[#79869C] font-mono tracking-wider mt-1 font-semibold">
-                NEON CHASSIS SUITE · COSMETIC OVERLAYS
+                {activeTab === 'skins'
+                  ? 'NEON CHASSIS SUITE · COSMETIC OVERLAYS'
+                  : 'ENERGY SLIPSTREAM · COSMETIC WAKES'}
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close Snake Skins Collection"
-            className="p-1.5 sm:p-2 rounded-xl bg-[#05070E] border border-[#161B2E] text-[#79869C] hover:text-[#F0F6FC] hover:border-[#00F5FF]/60 transition-all cursor-pointer active:scale-95"
-          >
-            <X className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
+          <div className="flex items-center justify-between sm:justify-end gap-2">
+            {/* Category Switcher Tabs */}
+            <div className="flex items-center p-1 bg-[#05070E] rounded-xl border border-[#161B2E]">
+              <button
+                type="button"
+                onClick={() => { setActiveTab('skins'); setErrorMessage(null); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-display text-[11px] font-bold tracking-wider transition-all cursor-pointer ${
+                  activeTab === 'skins'
+                    ? 'bg-[#00F5FF] text-[#05070E] shadow-[0_0_12px_rgba(0,245,255,0.3)]'
+                    : 'text-[#79869C] hover:text-[#F0F6FC]'
+                }`}
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span>SKINS</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveTab('trails'); setErrorMessage(null); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-display text-[11px] font-bold tracking-wider transition-all cursor-pointer ${
+                  activeTab === 'trails'
+                    ? 'bg-[#9865FF] text-[#05070E] shadow-[0_0_12px_rgba(152,101,255,0.3)]'
+                    : 'text-[#79869C] hover:text-[#F0F6FC]'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>TRAILS</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close Customization Suite"
+              className="p-1.5 sm:p-2 rounded-xl bg-[#05070E] border border-[#161B2E] text-[#79869C] hover:text-[#F0F6FC] hover:border-[#00F5FF]/60 transition-all cursor-pointer active:scale-95"
+            >
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Error Feedback Banner */}
@@ -120,107 +207,216 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
 
         {/* Scrollable Body Content */}
         <div className="overflow-y-auto p-3 xs:p-4 sm:p-6 flex-1">
-          <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-            {allSkins.map(skin => {
-              const unlocked = isSkinUnlocked(skin.id, playerSkins);
-              const isEquipped = playerSkins.equippedSkinId === skin.id;
-              const unlockDesc = getSkinUnlockDescription(skin.id);
+          {activeTab === 'skins' ? (
+            /* ==========================================
+               SKINS TAB VIEW
+               ========================================== */
+            <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+              {allSkins.map(skin => {
+                const unlocked = isSkinUnlocked(skin.id, playerSkins);
+                const isEquipped = playerSkins.equippedSkinId === skin.id;
+                const unlockDesc = getSkinUnlockDescription(skin.id);
 
-              return (
-                <div
-                  key={skin.id}
-                  className={`flex flex-col justify-between p-3 rounded-xl border transition-all relative ${
-                    isEquipped
-                      ? 'bg-[#00F5FF]/10 border-[#00F5FF] shadow-[0_0_18px_rgba(0,245,255,0.22)]'
-                      : unlocked
-                      ? 'bg-[#05070E] border-[#161B2E] hover:border-[#00F5FF]/40'
-                      : 'bg-[#05070E]/60 border-[#161B2E]/60 opacity-85'
-                  }`}
-                >
-                  {/* Equipped Status Badge Top Right */}
-                  {isEquipped && (
-                    <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-[#00F5FF] text-[#05070E] font-display font-black text-[9px] tracking-wider flex items-center gap-1 shadow-sm">
-                      <Check className="w-2.5 h-2.5 stroke-[3]" />
-                      EQUIPPED
-                    </div>
-                  )}
-
-                  {/* Skin Undulating Preview Canvas */}
-                  <div className="w-full flex items-center justify-center pt-1 pb-2">
-                    <SkinPreviewCanvas
-                      skinId={skin.id}
-                      width={180}
-                      height={90}
-                      animated={unlocked && visualEffects !== 'reduced'}
-                      reducedMotion={visualEffects === 'reduced'}
-                      background="glow"
-                      className="w-full max-w-[200px] aspect-[2/1] border border-[#161B2E] rounded-lg"
-                      ariaLabel={`${skin.name} preview`}
-                    />
-                  </div>
-
-                  {/* Skin Metadata */}
-                  <div className="my-2">
-                    <div className="flex items-center gap-1.5">
-                      <div
-                        className="w-3 h-3 rounded-full border border-white/20 shrink-0"
-                        style={{ backgroundColor: skin.headColor }}
-                      />
-                      <h3 className="font-display font-bold text-xs sm:text-sm text-[#F0F6FC] tracking-wide truncate">
-                        {skin.name}
-                      </h3>
-                    </div>
-                    <p className="text-[10px] text-[#79869C] mt-0.5 truncate leading-tight">
-                      {skin.tagline}
-                    </p>
-                  </div>
-
-                  {/* Action / Lock Requirements Area */}
-                  <div className="mt-2 pt-2 border-t border-[#161B2E]/80">
-                    {isEquipped ? (
-                      <div className="w-full py-2 rounded-lg bg-[#00F5FF]/15 border border-[#00F5FF]/60 text-[#00F5FF] font-display font-bold text-xs flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(0,245,255,0.15)] select-none">
-                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>ACTIVE</span>
-                      </div>
-                    ) : unlocked ? (
-                      <button
-                        type="button"
-                        onClick={() => handleEquip(skin.id)}
-                        disabled={isSubmitting}
-                        aria-label={`Equip ${skin.name}`}
-                        className="w-full py-2 rounded-lg bg-[#161B2E] hover:bg-[#00F5FF] text-[#F0F6FC] hover:text-[#05070E] border border-[#00F5FF]/40 hover:border-[#00F5FF] font-display font-bold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        <span>EQUIP</span>
-                      </button>
-                    ) : (
-                      <div className="w-full p-2 rounded-lg bg-[#0B0E1A] border border-[#161B2E] text-center">
-                        <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-[#FFB800] uppercase font-display tracking-wider">
-                          <Lock className="w-2.5 h-2.5" />
-                          <span>LOCKED</span>
-                        </div>
-                        <p className="text-[9px] text-[#79869C] mt-1 leading-snug font-medium">
-                          {unlockDesc}
-                        </p>
-                        {skin.unlock.type === 'level' && skin.unlock.requiredLevel && (
-                          <div className="mt-1 text-[9px] font-mono text-[#00F5FF] font-bold">
-                            LVL {currentLevel} / {skin.unlock.requiredLevel}
-                          </div>
-                        )}
+                return (
+                  <div
+                    key={skin.id}
+                    className={`flex flex-col justify-between p-3 rounded-xl border transition-all relative ${
+                      isEquipped
+                        ? 'bg-[#00F5FF]/10 border-[#00F5FF] shadow-[0_0_18px_rgba(0,245,255,0.22)]'
+                        : unlocked
+                        ? 'bg-[#05070E] border-[#161B2E] hover:border-[#00F5FF]/40'
+                        : 'bg-[#05070E]/60 border-[#161B2E]/60 opacity-85'
+                    }`}
+                  >
+                    {isEquipped && (
+                      <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-[#00F5FF] text-[#05070E] font-display font-black text-[9px] tracking-wider flex items-center gap-1 shadow-sm">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        EQUIPPED
                       </div>
                     )}
+
+                    <div className="w-full flex items-center justify-center pt-1 pb-2">
+                      <SkinPreviewCanvas
+                        skinId={skin.id}
+                        width={180}
+                        height={90}
+                        animated={unlocked && visualEffects !== 'reduced'}
+                        reducedMotion={visualEffects === 'reduced'}
+                        background="glow"
+                        className="w-full max-w-[200px] aspect-[2/1] border border-[#161B2E] rounded-lg"
+                        ariaLabel={`${skin.name} preview`}
+                      />
+                    </div>
+
+                    <div className="my-2">
+                      <div className="flex items-center gap-1.5">
+                        <div
+                          className="w-3 h-3 rounded-full border border-white/20 shrink-0"
+                          style={{ backgroundColor: skin.headColor }}
+                        />
+                        <h3 className="font-display font-bold text-xs sm:text-sm text-[#F0F6FC] tracking-wide truncate">
+                          {skin.name}
+                        </h3>
+                      </div>
+                      <p className="text-[10px] text-[#79869C] mt-0.5 truncate leading-tight">
+                        {skin.tagline}
+                      </p>
+                    </div>
+
+                    <div className="mt-2 pt-2 border-t border-[#161B2E]/80">
+                      {isEquipped ? (
+                        <div className="w-full py-2 rounded-lg bg-[#00F5FF]/15 border border-[#00F5FF]/60 text-[#00F5FF] font-display font-bold text-xs flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(0,245,255,0.15)] select-none">
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <span>ACTIVE</span>
+                        </div>
+                      ) : unlocked ? (
+                        <button
+                          type="button"
+                          onClick={() => handleEquipSkin(skin.id)}
+                          disabled={isSubmitting}
+                          aria-label={`Equip ${skin.name}`}
+                          className="w-full py-2 rounded-lg bg-[#161B2E] hover:bg-[#00F5FF] text-[#F0F6FC] hover:text-[#05070E] border border-[#00F5FF]/40 hover:border-[#00F5FF] font-display font-bold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>EQUIP</span>
+                        </button>
+                      ) : (
+                        <div className="w-full p-2 rounded-lg bg-[#0B0E1A] border border-[#161B2E] text-center">
+                          <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-[#FFB800] uppercase font-display tracking-wider">
+                            <Lock className="w-2.5 h-2.5" />
+                            <span>LOCKED</span>
+                          </div>
+                          <p className="text-[9px] text-[#79869C] mt-1 leading-snug font-medium">
+                            {unlockDesc}
+                          </p>
+                          {skin.unlock.type === 'level' && skin.unlock.requiredLevel && (
+                            <div className="mt-1 text-[9px] font-mono text-[#00F5FF] font-bold">
+                              LVL {currentLevel} / {skin.unlock.requiredLevel}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ==========================================
+               TRAILS TAB VIEW
+               ========================================== */
+            <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+              {allTrails.map(trail => {
+                const unlocked = isTrailUnlocked(trail.id, playerTrails);
+                const isEquipped = playerTrails.equippedTrailId === trail.id;
+                const unlockDesc = getTrailUnlockDescription(trail.id);
+
+                return (
+                  <div
+                    key={trail.id}
+                    className={`flex flex-col justify-between p-3 rounded-xl border transition-all relative ${
+                      isEquipped
+                        ? 'bg-[#9865FF]/10 border-[#9865FF] shadow-[0_0_18px_rgba(152,101,255,0.22)]'
+                        : unlocked
+                        ? 'bg-[#05070E] border-[#161B2E] hover:border-[#9865FF]/40'
+                        : 'bg-[#05070E]/60 border-[#161B2E]/60 opacity-85'
+                    }`}
+                  >
+                    {isEquipped && (
+                      <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-[#9865FF] text-[#05070E] font-display font-black text-[9px] tracking-wider flex items-center gap-1 shadow-sm">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        EQUIPPED
+                      </div>
+                    )}
+
+                    {/* Trail Live Preview Canvas */}
+                    <div className="w-full flex items-center justify-center pt-1 pb-2">
+                      <TrailPreviewCanvas
+                        trailId={trail.id}
+                        skinId={playerSkins.equippedSkinId}
+                        width={180}
+                        height={90}
+                        animated={unlocked && visualEffects !== 'reduced'}
+                        reducedMotion={visualEffects === 'reduced'}
+                        background="glow"
+                        className="w-full max-w-[200px] aspect-[2/1] border border-[#161B2E] rounded-lg"
+                        ariaLabel={`${trail.name} preview`}
+                      />
+                    </div>
+
+                    {/* Trail Metadata */}
+                    <div className="my-2">
+                      <div className="flex items-center gap-1.5">
+                        <div
+                          className="w-3 h-3 rounded-full border border-white/20 shrink-0"
+                          style={{ backgroundColor: trail.color }}
+                        />
+                        <h3 className="font-display font-bold text-xs sm:text-sm text-[#F0F6FC] tracking-wide truncate">
+                          {trail.name}
+                        </h3>
+                      </div>
+                      <p className="text-[10px] text-[#79869C] mt-0.5 truncate leading-tight">
+                        {trail.tagline}
+                      </p>
+                    </div>
+
+                    {/* Action / Lock Requirements Area */}
+                    <div className="mt-2 pt-2 border-t border-[#161B2E]/80">
+                      {isEquipped ? (
+                        <div className="w-full py-2 rounded-lg bg-[#9865FF]/15 border border-[#9865FF]/60 text-[#9865FF] font-display font-bold text-xs flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(152,101,255,0.15)] select-none">
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <span>ACTIVE</span>
+                        </div>
+                      ) : unlocked ? (
+                        <button
+                          type="button"
+                          onClick={() => handleEquipTrailAction(trail.id)}
+                          disabled={isSubmitting}
+                          aria-label={`Equip ${trail.name}`}
+                          className="w-full py-2 rounded-lg bg-[#161B2E] hover:bg-[#9865FF] text-[#F0F6FC] hover:text-[#05070E] border border-[#9865FF]/40 hover:border-[#9865FF] font-display font-bold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                        >
+                          <Zap className="w-3 h-3" />
+                          <span>EQUIP</span>
+                        </button>
+                      ) : (
+                        <div className="w-full p-2 rounded-lg bg-[#0B0E1A] border border-[#161B2E] text-center">
+                          <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-[#FFB800] uppercase font-display tracking-wider">
+                            <Lock className="w-2.5 h-2.5" />
+                            <span>LOCKED</span>
+                          </div>
+                          <p className="text-[9px] text-[#79869C] mt-1 leading-snug font-medium">
+                            {unlockDesc}
+                          </p>
+                          {trail.unlock.type === 'level' && trail.unlock.requiredLevel && (
+                            <div className="mt-1 text-[9px] font-mono text-[#9865FF] font-bold">
+                              LVL {currentLevel} / {trail.unlock.requiredLevel}
+                            </div>
+                          )}
+                          {trail.unlock.type === 'zen_wraps' && trail.unlock.requiredZenWraps && (
+                            <div className="mt-1 text-[9px] font-mono text-[#10FFA0] font-bold">
+                              WRAPS {currentZenWraps} / {trail.unlock.requiredZenWraps}
+                            </div>
+                          )}
+                          {trail.unlock.type === 'maze_stage' && trail.unlock.requiredMazeStage && (
+                            <div className="mt-1 text-[9px] font-mono text-[#9865FF] font-bold">
+                              STAGE {currentStage} / {trail.unlock.requiredMazeStage}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Modal Sticky Footer */}
         <div className="p-3 sm:p-4 bg-[#0B0E1A] border-t border-[#161B2E] shrink-0 flex flex-col xs:flex-row items-center justify-between gap-2.5">
           <div className="flex items-center gap-1.5 text-[11px] text-[#79869C]">
             <Shield className="w-3.5 h-3.5 text-[#00F5FF]" />
-            <span>Equipped skin applies to Classic, Zen, Rush, and Maze modes.</span>
+            <span>Equipped skin & trail apply to Classic, Zen, Rush, and Maze modes.</span>
           </div>
 
           <button

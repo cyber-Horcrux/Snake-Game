@@ -1,20 +1,23 @@
 import React, { useState } from 'react';
-import { X, Volume2, Eye, Smartphone, Trash2, Check, AlertTriangle, Palette } from 'lucide-react';
-import type { ControlMode, GameSettings, SnakeSkinId } from '../game/types.ts';
+import { X, Volume2, Eye, Smartphone, Trash2, Check, AlertTriangle, Palette, Sparkles } from 'lucide-react';
+import type { ControlMode, GameSettings, SnakeSkinId, SnakeTrailId } from '../game/types.ts';
 import { SKINS } from '../game/constants.ts';
+import { getTrailDefinition } from '../game/trails.ts';
 
 interface SettingsModalProps {
   settings: GameSettings;
   equippedSkinId?: SnakeSkinId;
+  equippedTrailId?: SnakeTrailId;
   onUpdateSettings: (newSettings: GameSettings) => void;
   onResetScores: () => void;
-  onOpenSkinCollection?: () => void;
+  onOpenSkinCollection?: (tab?: 'skins' | 'trails') => void;
   onClose: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   equippedSkinId,
+  equippedTrailId,
   onUpdateSettings,
   onResetScores,
   onOpenSkinCollection,
@@ -223,11 +226,65 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {onOpenSkinCollection && (
               <button
                 type="button"
-                onClick={onOpenSkinCollection}
+                onClick={() => onOpenSkinCollection('skins')}
                 className="mt-3 w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#00F5FF]/15 to-[#7928CA]/20 border border-[#00F5FF]/50 hover:border-[#00F5FF] text-[#00F5FF] hover:text-[#F0F6FC] font-display font-bold text-xs tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_12px_rgba(0,245,255,0.15)] active:scale-95"
               >
                 <Palette className="w-4 h-4" />
                 <span>SNAKE SKINS</span>
+              </button>
+            )}
+          </div>
+
+          {/* 3.5 Snake Energy Trail */}
+          <div className="bg-[#05070E] p-3.5 sm:p-4 rounded-xl border border-[#161B2E]">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#9865FF]" />
+                Snake Energy Trail
+              </span>
+              <span className="text-[10px] font-mono text-[#9865FF] uppercase tracking-widest px-2 py-0.5 rounded bg-[#9865FF]/10 border border-[#9865FF]/30 font-bold">
+                ACTIVE
+              </span>
+            </div>
+
+            {/* Active Trail Info Card */}
+            {(() => {
+              const activeTrailId = equippedTrailId || settings.trail || 'cyber_pulse';
+              const currentTrail = getTrailDefinition(activeTrailId);
+              return (
+                <div className="p-3 rounded-xl border border-[#9865FF]/40 bg-[#9865FF]/5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div
+                        className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                        style={{ backgroundColor: currentTrail.color }}
+                      />
+                      <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: currentTrail.secondaryColor }}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold font-display text-[#F0F6FC] truncate">
+                        {currentTrail.name}
+                      </div>
+                      <div className="text-[10px] text-[#79869C] truncate">
+                        {currentTrail.tagline}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {onOpenSkinCollection && (
+              <button
+                type="button"
+                onClick={() => onOpenSkinCollection('trails')}
+                className="mt-3 w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#9865FF]/15 to-[#FF007A]/20 border border-[#9865FF]/50 hover:border-[#9865FF] text-[#9865FF] hover:text-[#F0F6FC] font-display font-bold text-xs tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_12px_rgba(152,101,255,0.15)] active:scale-95"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>SNAKE TRAILS</span>
               </button>
             )}
           </div>

@@ -2,7 +2,7 @@
  * Storage and Persistence Module
  * Robust schema validation, error handling, and fallback defaults.
  */
-import type { ControlMode, GameMode, GameSettings, ModeBestScores, MazeProgress, PlayerSkinsState, SnakeSkinId } from './types.ts';
+import type { ControlMode, GameMode, GameSettings, ModeBestScores, MazeProgress, PlayerSkinsState, PlayerTrailsState, SnakeSkinId, SnakeTrailId, TrailUnlockContext } from './types.ts';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from './constants.ts';
 import {
   ALL_SKIN_IDS,
@@ -14,6 +14,15 @@ import {
   reconcilePlayerSkins,
   sanitizePlayerSkinsState,
 } from './skins.ts';
+import {
+  ALL_TRAIL_IDS,
+  DEFAULT_PLAYER_TRAILS_STATE,
+  STARTER_TRAIL_IDS,
+  isTrailUnlocked,
+  isValidTrailId,
+  reconcilePlayerTrails,
+  sanitizePlayerTrailsState,
+} from './trails.ts';
 import { loadPlayerProgression } from './levels.ts';
 import { loadStats } from './stats.ts';
 
@@ -138,6 +147,9 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
     const validSkins: SnakeSkinId[] = [...ALL_SKIN_IDS];
     const skin = validSkins.includes(parsed.skin) ? parsed.skin : DEFAULT_SETTINGS.skin;
 
+    const validTrails: SnakeTrailId[] = [...ALL_TRAIL_IDS];
+    const trail = validTrails.includes(parsed.trail) ? parsed.trail : DEFAULT_SETTINGS.trail;
+
     const validControlModes: ControlMode[] = ['swipe', 'buttons', 'both'];
     let controlMode: ControlMode;
     if (validControlModes.includes(parsed.controlMode)) {
@@ -158,6 +170,7 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
       visualEffects,
       dpadPreference,
       skin,
+      trail,
       controlMode,
     };
   } catch {
@@ -662,5 +675,355 @@ export function reconcileAndMigratePlayerSkins(
     };
   }
 }
+
+// ==========================================
+// PLAYER TRAILS PERSISTENCE
+// ==========================================
+
+export function loadPlayerTrails(storage: StorageLike | null = getBrowserStorage()): PlayerTrailsState {
+  if (!storage) {
+    return {
+      equippedTrailId: DEFAULT_PLAYER_TRAILS_STATE.equippedTrailId,
+      unlockedTrailIds: [...DEFAULT_PLAYER_TRAILS_STATE.unlockedTrailIds],
+    };
+  }
+
+  try {
+    const raw = storage.getItem(STORAGE_KEYS.TRAILS);
+    if (!raw) {
+      // If trail ledger is missing, recover starter trail preference if set in settings
+      const settings = loadSettings(storage);
+      const equippedCandidate = (settings && STARTER_TRAIL_IDS.includes(settings.trail as any))
+        ? (settings.trail as SnakeTrailId)
+        : DEFAULT_PLAYER_TRAILS_STATE.equippedTrailId;
+
+      return {
+        equippedTrailId: equippedCandidate,
+        unlockedTrailIds: [...DEFAULT_PLAYER_TRAILS_STATE.unlockedTrailIds],
+      };
+    }
+    const parsed = JSON.parse(raw);
+    return sanitizePlayerTrailsState(parsed);
+  } catch {
+    let equippedCandidate = DEFAULT_PLAYER_TRAILS_STATE.equippedTrailId;
+    try {
+      const settings = loadSettings(storage);
+      if (settings && STARTER_TRAIL_IDS.includes(settings.trail as any)) {
+        equippedCandidate = settings.trail as SnakeTrailId;
+      }
+    } catch {
+      // fallback
+    }
+    return {
+      equippedTrailId: equippedCandidate,
+      unlockedTrailIds: [...DEFAULT_PLAYER_TRAILS_STATE.unlockedTrailIds],
+    };
+  }
+}
+
+export function savePlayerTrails(
+  trailsState: PlayerTrailsState,
+  storage: StorageLike | null = getBrowserStorage()
+): boolean {
+  if (!storage) return false;
+
+  try {
+    const sanitized = sanitizePlayerTrailsState(trailsState);
+    storage.setItem(STORAGE_KEYS.TRAILS, JSON.stringify(sanitized));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function equipTrail(
+  trailId: SnakeTrailId,
+  storage: StorageLike | null = getBrowserStorage()
+): { success: boolean; state: PlayerTrailsState; error?: string } {
+  const current = loadPlayerTrails(storage);
+  if (!isTrailUnlocked(trailId, current)) {
+    return {
+      success: false,
+      state: current,
+      error: `Trail '${trailId}' is not unlocked.`,
+    };
+  }
+
+  const updated: PlayerTrailsState = {
+    equippedTrailId: trailId,
+    unlockedTrailIds: current.unlockedTrailIds,
+  };
+
+  const savedTrails = savePlayerTrails(updated, storage);
+  if (!savedTrails) {
+    return {
+      success: false,
+      state: current,
+      error: 'Failed to write trail persistence to storage.',
+    };
+  }
+
+  // Synchronize GameSettings.trail with two-storage rollback guarantee
+  const settings = loadSettings(storage);
+  if (settings.trail !== trailId) {
+    const savedSettings = saveSettings({ ...settings, trail: trailId }, storage);
+    if (!savedSettings) {
+      // Rollback trails storage to current to prevent desynchronization
+      const rollbackSuccess = savePlayerTrails(current, storage);
+      if (!rollbackSuccess) {
+        return {
+          success: false,
+          state: updated,
+          error: 'Failed to synchronize trail with game settings. Critical: Storage rollback also failed.',
+        };
+      }
+      return {
+        success: false,
+        state: current,
+        error: 'Failed to synchronize trail with game settings.',
+      };
+    }
+  }
+
+  return {
+    success: true,
+    state: updated,
+  };
+}
+
+export function unlockTrail(
+  trailId: SnakeTrailId,
+  storage: StorageLike | null = getBrowserStorage()
+): { success: boolean; state: PlayerTrailsState } {
+  if (!isValidTrailId(trailId)) {
+    const current = loadPlayerTrails(storage);
+    return { success: false, state: current };
+  }
+
+  const current = loadPlayerTrails(storage);
+  if (current.unlockedTrailIds.includes(trailId)) {
+    return { success: true, state: current };
+  }
+
+  const updated: PlayerTrailsState = {
+    equippedTrailId: current.equippedTrailId,
+    unlockedTrailIds: [...current.unlockedTrailIds, trailId],
+  };
+
+  const sanitized = sanitizePlayerTrailsState(updated);
+  savePlayerTrails(sanitized, storage);
+
+  return {
+    success: true,
+    state: sanitized,
+  };
+}
+
+export function resetPlayerTrails(storage: StorageLike | null = getBrowserStorage()): boolean {
+  if (!storage) return false;
+  try {
+    const currentTrails = loadPlayerTrails(storage);
+    const savedTrails = savePlayerTrails(DEFAULT_PLAYER_TRAILS_STATE, storage);
+    if (!savedTrails) {
+      return false;
+    }
+
+    const settings = loadSettings(storage);
+    if (settings.trail !== 'cyber_pulse') {
+      const savedSettings = saveSettings({ ...settings, trail: 'cyber_pulse' }, storage);
+      if (!savedSettings) {
+        // Rollback trails ledger to previous state so we don't leave partial reset
+        savePlayerTrails(currentTrails, storage);
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface TrailReconciliationResult {
+  trailsState: PlayerTrailsState;
+  newlyUnlocked: SnakeTrailId[];
+  mirrorRepaired: boolean;
+  wasMigrated: boolean;
+  success: boolean;
+  trailsSaved: boolean;
+  error?: string;
+  rollbackAttempted?: boolean;
+  rollbackSucceeded?: boolean;
+}
+
+/**
+ * Reconciles player trail ownership and validates equipped trail at startup.
+ */
+export function reconcileAndMigratePlayerTrails(
+  storage: StorageLike | null = getBrowserStorage(),
+  contextOverride?: Partial<TrailUnlockContext> & {
+    progression?: { level: number };
+    stats?: { wallsWrapped?: number; totalFoodEaten?: number; longestSnake?: number; zenScreenWraps?: number; foodEaten?: number };
+    mazeProgress?: { highestStageUnlocked?: number; highestCompletedStage?: number };
+    playerLevel?: number;
+    zenScreenWraps?: number;
+    mazeStagesCleared?: number;
+    lifetimeFoodEaten?: number;
+  }
+): TrailReconciliationResult {
+  if (!storage) {
+    return {
+      trailsState: { ...DEFAULT_PLAYER_TRAILS_STATE },
+      newlyUnlocked: [],
+      mirrorRepaired: false,
+      wasMigrated: false,
+      success: false,
+      trailsSaved: false,
+      error: 'Storage unavailable',
+    };
+  }
+
+  try {
+    const rawTrails = storage.getItem(STORAGE_KEYS.TRAILS);
+    const hadTrailsLedger = rawTrails !== null;
+    const isMigrationCandidate = !hadTrailsLedger;
+
+    const currentTrails = loadPlayerTrails(storage);
+    const progression = loadPlayerProgression(storage);
+    const stats = loadStats(storage);
+    const maze = loadMazeProgress(storage);
+    const settings = loadSettings(storage);
+
+    const level = contextOverride?.level ?? contextOverride?.playerLevel ?? contextOverride?.progression?.level ?? (progression?.level ?? 1);
+    const zenWallsWrapped = contextOverride?.zenWallsWrapped ?? contextOverride?.zenScreenWraps ?? contextOverride?.stats?.wallsWrapped ?? contextOverride?.stats?.zenScreenWraps ?? (stats?.wallsWrapped ?? 0);
+    const highestMazeStage = contextOverride?.highestMazeStage ?? contextOverride?.mazeStagesCleared ?? contextOverride?.mazeProgress?.highestStageUnlocked ?? contextOverride?.mazeProgress?.highestCompletedStage ?? (maze?.highestStageUnlocked ?? 1);
+    const maxFoodInRun = contextOverride?.maxFoodInRun ?? contextOverride?.lifetimeFoodEaten ?? contextOverride?.stats?.totalFoodEaten ?? contextOverride?.stats?.foodEaten ?? contextOverride?.stats?.longestSnake ?? (stats?.longestSnake ?? 0);
+
+    const context: TrailUnlockContext = {
+      level,
+      zenWallsWrapped,
+      highestMazeStage,
+      maxFoodInRun,
+    };
+
+    // 1. Reconcile unlocks against authoritative telemetry
+    const { state: reconciled, newlyUnlocked } = reconcilePlayerTrails(currentTrails, context);
+
+    // 2. Validate equipped trail
+    let equippedTrailId = reconciled.equippedTrailId;
+
+    if (!hadTrailsLedger) {
+      const legacyCandidate = settings?.trail;
+      if (isValidTrailId(legacyCandidate) && reconciled.unlockedTrailIds.includes(legacyCandidate)) {
+        equippedTrailId = legacyCandidate;
+      } else {
+        equippedTrailId = 'cyber_pulse';
+      }
+    } else {
+      if (!reconciled.unlockedTrailIds.includes(equippedTrailId)) {
+        equippedTrailId = 'cyber_pulse';
+      }
+    }
+
+    const finalState: PlayerTrailsState = {
+      equippedTrailId,
+      unlockedTrailIds: reconciled.unlockedTrailIds,
+    };
+
+    // 3. Persist authoritative trails state
+    let trailsSaved = false;
+    try {
+      trailsSaved = savePlayerTrails(finalState, storage);
+    } catch {
+      trailsSaved = false;
+    }
+
+    if (!trailsSaved) {
+      let rollbackAttempted = false;
+      let rollbackSucceeded = false;
+      let errorMsg = 'Failed to write player trails ledger to storage.';
+
+      if (hadTrailsLedger) {
+        rollbackAttempted = true;
+        try {
+          rollbackSucceeded = savePlayerTrails(currentTrails, storage);
+        } catch {
+          rollbackSucceeded = false;
+        }
+        if (!rollbackSucceeded) {
+          errorMsg = 'Failed to write player trails ledger. Critical: Recovery rollback to previous state also failed.';
+        }
+      } else {
+        rollbackAttempted = true;
+        try {
+          storage.removeItem(STORAGE_KEYS.TRAILS);
+          rollbackSucceeded = true;
+        } catch {
+          rollbackSucceeded = false;
+          errorMsg = 'Failed to write player trails ledger. Critical: Cleanup of failed migration ledger also failed.';
+        }
+      }
+
+      const safeFallback: PlayerTrailsState = hadTrailsLedger
+        ? currentTrails
+        : { ...DEFAULT_PLAYER_TRAILS_STATE };
+
+      return {
+        trailsState: safeFallback,
+        newlyUnlocked: [],
+        mirrorRepaired: false,
+        wasMigrated: false,
+        success: false,
+        trailsSaved: false,
+        error: errorMsg,
+        rollbackAttempted,
+        rollbackSucceeded,
+      };
+    }
+
+    // 4. Synchronize settings mirror if stale
+    let mirrorRepaired = false;
+    let mirrorError: string | undefined;
+
+    if (settings.trail !== equippedTrailId) {
+      let settingsSaved = false;
+      try {
+        settingsSaved = saveSettings({ ...settings, trail: equippedTrailId }, storage);
+      } catch {
+        settingsSaved = false;
+      }
+
+      if (settingsSaved) {
+        mirrorRepaired = true;
+      } else {
+        mirrorRepaired = false;
+        mirrorError = 'Failed to synchronize trail with game settings mirror.';
+      }
+    }
+
+    const overallSuccess = mirrorError === undefined;
+    const wasMigrated = isMigrationCandidate && trailsSaved && overallSuccess;
+
+    return {
+      trailsState: finalState,
+      newlyUnlocked,
+      mirrorRepaired,
+      wasMigrated,
+      success: overallSuccess,
+      trailsSaved: true,
+      error: mirrorError,
+    };
+  } catch (err) {
+    return {
+      trailsState: { ...DEFAULT_PLAYER_TRAILS_STATE },
+      newlyUnlocked: [],
+      mirrorRepaired: false,
+      wasMigrated: false,
+      success: false,
+      trailsSaved: false,
+      error: err instanceof Error ? err.message : 'Unexpected reconciliation error',
+    };
+  }
+}
+
 
 

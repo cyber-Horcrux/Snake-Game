@@ -3,9 +3,10 @@
  * Designed for 60fps performance with smooth visual interpolation,
  * zero-GC particle ring buffer, and headless software rendering compatibility.
  */
-import type { GameEngineState, GridCoord, FoodItem, SnakeSkinId, SnakeSkin, Obstacle, WarpGate } from './types.ts';
+import type { GameEngineState, GridCoord, FoodItem, SnakeSkinId, SnakeSkin, SnakeTrailId, Obstacle, WarpGate } from './types.ts';
 import { SKINS } from './constants.ts';
 import { drawNaturalStylizedSnake } from './snake_renderer.ts';
+import { TrailHistoryManager, drawSnakeTrail } from './trail_renderer.ts';
 
 export interface Particle {
   active: boolean;
@@ -92,6 +93,7 @@ export class ParticlePool {
 
 export class NeonRenderer {
   public particles = new ParticlePool();
+  public trailHistory = new TrailHistoryManager();
   private shakeTime = 0;
   private shakeMagnitude = 0;
   private lastObstacleMap = new Map<string, { x: number; y: number; type: string }>();
@@ -104,6 +106,7 @@ export class NeonRenderer {
 
   public reset(): void {
     this.particles.reset();
+    this.trailHistory.clear();
     this.shakeTime = 0;
     this.shakeMagnitude = 0;
     this.lastObstacleMap.clear();
@@ -152,7 +155,7 @@ export class NeonRenderer {
     height: number,
     state: GameEngineState,
     alpha: number,
-    settings: { visualEffects: 'high' | 'performance' | 'reduced'; skin?: SnakeSkinId },
+    settings: { visualEffects: 'high' | 'performance' | 'reduced'; skin?: SnakeSkinId; trail?: SnakeTrailId },
     frameTimeMs?: number
   ): void {
     ctx.save();
@@ -203,9 +206,9 @@ export class NeonRenderer {
       this.drawFoodItem(ctx, item, cellW, cellH, now, allowGlow);
     }
 
-    // 3. Snake Body & Head (Smoothly Interpolated using selected skin)
+    // 3. Snake Body & Head (Smoothly Interpolated using selected skin & cosmetic trail)
     const skinConfig = SKINS[settings.skin || 'cyber_cyan'] || SKINS.cyber_cyan;
-    this.drawSnake(ctx, state, alpha, cellW, cellH, allowGlow, settings.visualEffects, skinConfig, now);
+    this.drawSnake(ctx, state, alpha, cellW, cellH, allowGlow, settings.visualEffects, skinConfig, settings.trail, now);
 
     // 4. Particles
     this.drawParticles(ctx, allowGlow);
@@ -423,6 +426,7 @@ export class NeonRenderer {
     allowGlow: boolean,
     visualEffects: string,
     skin: SnakeSkin,
+    trail?: SnakeTrailId,
     now: number = Date.now()
   ): void {
     if (state.snake.length === 0) return;
@@ -453,7 +457,36 @@ export class NeonRenderer {
       });
     }
 
-    // 1. Draw Slow-Mo Trail if active
+    // Record tail point for cosmetic trail
+    if (interpolatedPoints.length > 0) {
+      const tailIdx = interpolatedPoints.length - 1;
+      const tailPt = interpolatedPoints[tailIdx];
+      let tailAngle = 0;
+      if (interpolatedPoints.length > 1) {
+        const prevTailPt = interpolatedPoints[tailIdx - 1];
+        tailAngle = Math.atan2(tailPt.y - prevTailPt.y, tailPt.x - prevTailPt.x);
+      }
+      const currTailGrid = state.snake[tailIdx];
+      const prevTailGrid = state.prevSnake[tailIdx] || currTailGrid;
+      const isWrap = Math.abs(currTailGrid.x - prevTailGrid.x) > 1 || Math.abs(currTailGrid.y - prevTailGrid.y) > 1;
+
+      if (state.isAlive) {
+        this.trailHistory.addPoint(tailPt.x, tailPt.y, now, tailAngle, isWrap);
+      }
+    }
+
+    // 1. Draw Cosmetic Snake Trail if equipped
+    if (trail && trail !== 'none') {
+      const trailChains = this.trailHistory.getChains(now);
+      drawSnakeTrail(ctx, trailChains, trail, {
+        visualEffects: (visualEffects as any) || 'high',
+        allowGlow,
+        baseRadius: (Math.min(cellW, cellH) / 2) * 0.78,
+        animationTimeMs: now,
+      });
+    }
+
+    // 2. Draw Slow-Mo Trail if active
     if (state.powerUps.slowMoUntil > now && visualEffects !== 'reduced') {
       ctx.save();
       ctx.strokeStyle = 'rgba(67, 245, 255, 0.2)';
@@ -470,7 +503,7 @@ export class NeonRenderer {
       ctx.restore();
     }
 
-    // 2. Draw Natural Stylized Snake using shared renderer
+    // 3. Draw Natural Stylized Snake using shared renderer
     drawNaturalStylizedSnake(ctx, interpolatedPoints, {
       direction: state.direction,
       skin,

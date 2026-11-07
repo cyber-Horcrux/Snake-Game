@@ -96,6 +96,61 @@ export interface PlayerSkinsState {
   unlockedSkinIds: SnakeSkinId[];
 }
 
+export type SnakeTrailId =
+  | 'none'
+  | 'cyber_pulse'
+  | 'matrix_stream'
+  | 'plasma_fire'
+  | 'hyper_streak'
+  | 'frost_vapor'
+  | 'solar_radiance'
+  | 'void_singularity';
+
+export type TrailStyle =
+  | 'none'
+  | 'pulse'
+  | 'matrix'
+  | 'plasma'
+  | 'streak'
+  | 'vapor'
+  | 'solar'
+  | 'singularity';
+
+export type TrailUnlockType = 'default' | 'level' | 'zen_wraps' | 'maze_stage' | 'food_single_run';
+
+export interface TrailUnlockCondition {
+  type: TrailUnlockType;
+  description: string;
+  requiredLevel?: number;
+  requiredZenWraps?: number;
+  requiredMazeStage?: number;
+  requiredFoodSingleRun?: number;
+}
+
+export interface TrailDefinition {
+  id: SnakeTrailId;
+  name: string;
+  tagline: string;
+  color: string;
+  secondaryColor: string;
+  glowColor: string;
+  style: TrailStyle;
+  unlock: TrailUnlockCondition;
+  altUnlock?: TrailUnlockCondition;
+}
+
+export interface PlayerTrailsState {
+  equippedTrailId: SnakeTrailId;
+  unlockedTrailIds: SnakeTrailId[];
+}
+
+export interface TrailUnlockContext {
+  level: number;
+  zenWallsWrapped: number;
+  highestMazeStage: number;
+  maxFoodInRun?: number;
+}
+
 export interface ActivePowerUps {
   slowMoUntil: number; // timestamp ms
   hasShield: boolean;
@@ -150,6 +205,7 @@ export interface GameSettings {
   visualEffects: 'high' | 'performance' | 'reduced';
   dpadPreference: 'auto' | 'always' | 'never';
   skin: SnakeSkinId;
+  trail: SnakeTrailId;
   controlMode: ControlMode;
 }
 
