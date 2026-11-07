@@ -2,7 +2,7 @@
  * Storage and Persistence Module
  * Robust schema validation, error handling, and fallback defaults.
  */
-import type { ControlMode, GameMode, GameSettings, ModeBestScores, MazeProgress, PlayerSkinsState, PlayerTrailsState, SnakeSkinId, SnakeTrailId, TrailUnlockContext } from './types.ts';
+import type { BoardThemeId, ControlMode, GameMode, GameSettings, ModeBestScores, MazeProgress, PlayerSkinsState, PlayerThemesState, PlayerTrailsState, SnakeSkinId, SnakeTrailId, ThemeUnlockContext, TrailUnlockContext } from './types.ts';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from './constants.ts';
 import {
   ALL_SKIN_IDS,
@@ -23,6 +23,15 @@ import {
   reconcilePlayerTrails,
   sanitizePlayerTrailsState,
 } from './trails.ts';
+import {
+  ALL_THEME_IDS,
+  DEFAULT_PLAYER_THEMES_STATE,
+  STARTER_THEME_IDS,
+  isThemeUnlocked,
+  isValidThemeId,
+  reconcilePlayerThemes,
+  sanitizePlayerThemesState,
+} from './themes.ts';
 import { loadPlayerProgression } from './levels.ts';
 import { loadStats } from './stats.ts';
 
@@ -150,6 +159,9 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
     const validTrails: SnakeTrailId[] = [...ALL_TRAIL_IDS];
     const trail = validTrails.includes(parsed.trail) ? parsed.trail : DEFAULT_SETTINGS.trail;
 
+    const validThemes: BoardThemeId[] = [...ALL_THEME_IDS];
+    const boardTheme = validThemes.includes(parsed.boardTheme) ? parsed.boardTheme : DEFAULT_SETTINGS.boardTheme;
+
     const validControlModes: ControlMode[] = ['swipe', 'buttons', 'both'];
     let controlMode: ControlMode;
     if (validControlModes.includes(parsed.controlMode)) {
@@ -171,6 +183,7 @@ export function loadSettings(storage: StorageLike | null = getBrowserStorage()):
       dpadPreference,
       skin,
       trail,
+      boardTheme,
       controlMode,
     };
   } catch {
@@ -1026,6 +1039,331 @@ export function reconcileAndMigratePlayerTrails(
     };
   }
 }
+
+// ==========================================
+// BOARD THEMES PERSISTENCE & RECONCILIATION
+// ==========================================
+
+export function loadPlayerThemes(storage: StorageLike | null = getBrowserStorage()): PlayerThemesState {
+  if (!storage) return { ...DEFAULT_PLAYER_THEMES_STATE };
+
+  try {
+    const raw = storage.getItem(STORAGE_KEYS.THEMES);
+    if (!raw) return { ...DEFAULT_PLAYER_THEMES_STATE };
+
+    const parsed = JSON.parse(raw);
+    return sanitizePlayerThemesState(parsed);
+  } catch {
+    return { ...DEFAULT_PLAYER_THEMES_STATE };
+  }
+}
+
+export function savePlayerThemes(
+  state: PlayerThemesState,
+  storage: StorageLike | null = getBrowserStorage()
+): boolean {
+  if (!storage) return false;
+
+  try {
+    const sanitized = sanitizePlayerThemesState(state);
+    storage.setItem(STORAGE_KEYS.THEMES, JSON.stringify(sanitized));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function equipTheme(
+  themeId: BoardThemeId,
+  storage: StorageLike | null = getBrowserStorage()
+): { success: boolean; state: PlayerThemesState; error?: string } {
+  if (!isValidThemeId(themeId)) {
+    return {
+      success: false,
+      state: loadPlayerThemes(storage),
+      error: `Invalid theme identifier: ${String(themeId)}`,
+    };
+  }
+
+  const current = loadPlayerThemes(storage);
+  if (!isThemeUnlocked(themeId, current)) {
+    return {
+      success: false,
+      state: current,
+      error: 'Cannot equip locked board theme. Unlock requirements have not been met.',
+    };
+  }
+
+  const updated: PlayerThemesState = {
+    equippedThemeId: themeId,
+    unlockedThemeIds: current.unlockedThemeIds,
+  };
+
+  const savedThemes = savePlayerThemes(updated, storage);
+  if (!savedThemes) {
+    return {
+      success: false,
+      state: current,
+      error: 'Storage failure: Unable to persist equipped board theme.',
+    };
+  }
+
+  // Synchronize settings mirror
+  const settings = loadSettings(storage);
+  if (settings.boardTheme !== themeId) {
+    const savedSettings = saveSettings({ ...settings, boardTheme: themeId }, storage);
+    if (!savedSettings) {
+      // Rollback themes state
+      savePlayerThemes(current, storage);
+      return {
+        success: false,
+        state: current,
+        error: 'Storage failure: Unable to update game settings theme mirror.',
+      };
+    }
+  }
+
+  return {
+    success: true,
+    state: updated,
+  };
+}
+
+export function unlockTheme(
+  themeId: BoardThemeId,
+  storage: StorageLike | null = getBrowserStorage()
+): { success: boolean; state: PlayerThemesState } {
+  if (!isValidThemeId(themeId)) {
+    const current = loadPlayerThemes(storage);
+    return { success: false, state: current };
+  }
+
+  const current = loadPlayerThemes(storage);
+  if (current.unlockedThemeIds.includes(themeId)) {
+    return { success: true, state: current };
+  }
+
+  const updated: PlayerThemesState = {
+    equippedThemeId: current.equippedThemeId,
+    unlockedThemeIds: [...current.unlockedThemeIds, themeId],
+  };
+
+  const sanitized = sanitizePlayerThemesState(updated);
+  savePlayerThemes(sanitized, storage);
+
+  return {
+    success: true,
+    state: sanitized,
+  };
+}
+
+export function resetPlayerThemes(storage: StorageLike | null = getBrowserStorage()): boolean {
+  if (!storage) return false;
+  try {
+    const currentThemes = loadPlayerThemes(storage);
+    const savedThemes = savePlayerThemes(DEFAULT_PLAYER_THEMES_STATE, storage);
+    if (!savedThemes) {
+      return false;
+    }
+
+    const settings = loadSettings(storage);
+    if (settings.boardTheme !== 'obsidian_grid') {
+      const savedSettings = saveSettings({ ...settings, boardTheme: 'obsidian_grid' }, storage);
+      if (!savedSettings) {
+        // Rollback themes ledger
+        savePlayerThemes(currentThemes, storage);
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface ThemeReconciliationResult {
+  themesState: PlayerThemesState;
+  newlyUnlocked: BoardThemeId[];
+  mirrorRepaired: boolean;
+  wasMigrated: boolean;
+  success: boolean;
+  themesSaved: boolean;
+  error?: string;
+  rollbackAttempted?: boolean;
+  rollbackSucceeded?: boolean;
+}
+
+/**
+ * Reconciles player board theme ownership and validates equipped theme at startup.
+ */
+export function reconcileAndMigratePlayerThemes(
+  storage: StorageLike | null = getBrowserStorage(),
+  contextOverride?: Partial<ThemeUnlockContext> & {
+    progression?: { level: number };
+    stats?: { wallsWrapped?: number; totalFoodEaten?: number; longestSnake?: number; zenScreenWraps?: number; maxFoodInRun?: number };
+    mazeProgress?: Partial<MazeProgress> & { highestStageUnlocked?: number; totalCampaignsWon?: number };
+    playerLevel?: number;
+    zenScreenWraps?: number;
+    mazeStagesCleared?: number;
+  }
+): ThemeReconciliationResult {
+  if (!storage) {
+    return {
+      themesState: { ...DEFAULT_PLAYER_THEMES_STATE },
+      newlyUnlocked: [],
+      mirrorRepaired: false,
+      wasMigrated: false,
+      success: false,
+      themesSaved: false,
+      error: 'Storage unavailable',
+    };
+  }
+
+  try {
+    const rawThemes = storage.getItem(STORAGE_KEYS.THEMES);
+    const hadThemesLedger = rawThemes !== null;
+    const isMigrationCandidate = !hadThemesLedger;
+
+    const currentThemes = loadPlayerThemes(storage);
+    const progression = loadPlayerProgression(storage);
+    const stats = loadStats(storage);
+    const maze = loadMazeProgress(storage);
+    const settings = loadSettings(storage);
+
+    const level = contextOverride?.level ?? contextOverride?.playerLevel ?? contextOverride?.progression?.level ?? (progression?.level ?? 1);
+    const zenWallsWrapped = contextOverride?.zenWallsWrapped ?? contextOverride?.zenScreenWraps ?? contextOverride?.stats?.wallsWrapped ?? contextOverride?.stats?.zenScreenWraps ?? (stats?.wallsWrapped ?? 0);
+    const highestMazeStage = contextOverride?.highestMazeStage ?? contextOverride?.mazeStagesCleared ?? contextOverride?.mazeProgress?.highestStageUnlocked ?? (maze?.highestStageUnlocked ?? 1);
+    const maxFoodInRun = contextOverride?.maxFoodInRun ?? contextOverride?.stats?.maxFoodInRun ?? (stats?.maxFoodInRun ?? 0);
+    const campaignWon = contextOverride?.campaignWon ?? ((maze?.totalCampaignsWon ?? 0) > 0);
+
+    const context: ThemeUnlockContext = {
+      level,
+      zenWallsWrapped,
+      highestMazeStage,
+      maxFoodInRun,
+      campaignWon,
+    };
+
+    // 1. Reconcile unlocks against telemetry
+    const { state: reconciled, newlyUnlocked } = reconcilePlayerThemes(currentThemes, context);
+
+    // 2. Validate equipped theme
+    let equippedThemeId = reconciled.equippedThemeId;
+
+    if (!hadThemesLedger) {
+      const legacyCandidate = settings?.boardTheme;
+      if (isValidThemeId(legacyCandidate) && reconciled.unlockedThemeIds.includes(legacyCandidate)) {
+        equippedThemeId = legacyCandidate;
+      } else {
+        equippedThemeId = 'obsidian_grid';
+      }
+    } else {
+      if (!reconciled.unlockedThemeIds.includes(equippedThemeId)) {
+        equippedThemeId = 'obsidian_grid';
+      }
+    }
+
+    const finalState: PlayerThemesState = {
+      equippedThemeId,
+      unlockedThemeIds: reconciled.unlockedThemeIds,
+    };
+
+    // 3. Persist authoritative themes state
+    let themesSaved = false;
+    try {
+      themesSaved = savePlayerThemes(finalState, storage);
+    } catch {
+      themesSaved = false;
+    }
+
+    if (!themesSaved) {
+      let rollbackAttempted = false;
+      let rollbackSucceeded = false;
+      let errorMsg = 'Failed to write player themes ledger to storage.';
+
+      if (hadThemesLedger) {
+        rollbackAttempted = true;
+        try {
+          rollbackSucceeded = savePlayerThemes(currentThemes, storage);
+        } catch {
+          rollbackSucceeded = false;
+        }
+        if (!rollbackSucceeded) {
+          errorMsg = 'Failed to write player themes ledger. Critical: Recovery rollback to previous state also failed.';
+        }
+      } else {
+        rollbackAttempted = true;
+        try {
+          storage.removeItem(STORAGE_KEYS.THEMES);
+          rollbackSucceeded = true;
+        } catch {
+          rollbackSucceeded = false;
+          errorMsg = 'Failed to write player themes ledger. Critical: Cleanup of failed migration ledger also failed.';
+        }
+      }
+
+      const safeFallback: PlayerThemesState = hadThemesLedger
+        ? currentThemes
+        : { ...DEFAULT_PLAYER_THEMES_STATE };
+
+      return {
+        themesState: safeFallback,
+        newlyUnlocked: [],
+        mirrorRepaired: false,
+        wasMigrated: false,
+        success: false,
+        themesSaved: false,
+        error: errorMsg,
+        rollbackAttempted,
+        rollbackSucceeded,
+      };
+    }
+
+    // 4. Synchronize settings mirror if stale
+    let mirrorRepaired = false;
+    let mirrorError: string | undefined;
+
+    if (settings.boardTheme !== equippedThemeId) {
+      let settingsSaved = false;
+      try {
+        settingsSaved = saveSettings({ ...settings, boardTheme: equippedThemeId }, storage);
+      } catch {
+        settingsSaved = false;
+      }
+
+      if (settingsSaved) {
+        mirrorRepaired = true;
+      } else {
+        mirrorRepaired = false;
+        mirrorError = 'Failed to synchronize board theme with game settings mirror.';
+      }
+    }
+
+    const overallSuccess = mirrorError === undefined;
+    const wasMigrated = isMigrationCandidate && themesSaved && overallSuccess;
+
+    return {
+      themesState: finalState,
+      newlyUnlocked,
+      mirrorRepaired,
+      wasMigrated,
+      success: overallSuccess,
+      themesSaved: true,
+      error: mirrorError,
+    };
+  } catch (err) {
+    return {
+      themesState: { ...DEFAULT_PLAYER_THEMES_STATE },
+      newlyUnlocked: [],
+      mirrorRepaired: false,
+      wasMigrated: false,
+      success: false,
+      themesSaved: false,
+      error: err instanceof Error ? err.message : 'Unexpected reconciliation error',
+    };
+  }
+}
+
 
 
 

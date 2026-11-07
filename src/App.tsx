@@ -10,9 +10,11 @@ import type {
   ModeBestScores,
   PlayerProgressionState,
   PlayerSkinsState,
+  PlayerThemesState,
   PlayerTrailsState,
   SnakeSkinId,
   SnakeTrailId,
+  BoardThemeId,
   XpEarnResult,
 } from './game/types.ts';
 import {
@@ -34,12 +36,14 @@ import {
 } from './game/controls.ts';
 import {
   equipSkin,
+  equipTheme,
   equipTrail,
   loadBestScores,
   loadMazeProgress,
   loadPlayerTrails,
   loadSettings,
   reconcileAndMigratePlayerSkins,
+  reconcileAndMigratePlayerThemes,
   reconcileAndMigratePlayerTrails,
   recordStageClear,
   recordCampaignCompletion,
@@ -47,7 +51,7 @@ import {
   saveSettings,
   updateBestScore,
 } from './game/persistence.ts';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles, LayoutGrid, X } from 'lucide-react';
 import {
   DEFAULT_PLAYER_SKINS_STATE,
   isSkinUnlocked,
@@ -57,6 +61,11 @@ import {
   getTrailDefinition,
   isTrailUnlocked,
 } from './game/trails.ts';
+import {
+  DEFAULT_PLAYER_THEMES_STATE,
+  getThemeDefinition,
+  isThemeUnlocked,
+} from './game/themes.ts';
 import { TitleScreen } from './components/TitleScreen.tsx';
 import { HeaderHUD } from './components/HeaderHUD.tsx';
 import { PauseModal } from './components/PauseModal.tsx';
@@ -121,9 +130,19 @@ export default function App() {
     unlockedTrailIds: [...DEFAULT_PLAYER_TRAILS_STATE.unlockedTrailIds],
   }));
   const playerTrailsRef = useRef<PlayerTrailsState>(playerTrails);
-  const [customizationTab, setCustomizationTab] = useState<'skins' | 'trails'>('skins');
+
+  // Safe default player themes state: pure in-memory initialization, zero storage writes during rendering
+  const [playerThemes, setPlayerThemes] = useState<PlayerThemesState>(() => ({
+    ...DEFAULT_PLAYER_THEMES_STATE,
+    unlockedThemeIds: [...DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds],
+  }));
+  const playerThemesRef = useRef<PlayerThemesState>(playerThemes);
+
+  const [customizationTab, setCustomizationTab] = useState<'skins' | 'trails' | 'themes'>('skins');
   const [unlockedTrailAlert, setUnlockedTrailAlert] = useState<{ id: SnakeTrailId; name: string } | null>(null);
   const notifiedTrailsRef = useRef<Set<SnakeTrailId>>(new Set(DEFAULT_PLAYER_TRAILS_STATE.unlockedTrailIds));
+  const [unlockedThemeAlert, setUnlockedThemeAlert] = useState<{ id: BoardThemeId; name: string } | null>(null);
+  const notifiedThemesRef = useRef<Set<BoardThemeId>>(new Set(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds));
 
   const [lastXpResult, setLastXpResult] = useState<XpEarnResult | null>(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
@@ -182,6 +201,7 @@ export default function App() {
   settingsRef.current = settings;
   playerSkinsRef.current = playerSkins;
   playerTrailsRef.current = playerTrails;
+  playerThemesRef.current = playerThemes;
   selectedModeRef.current = selectedMode;
   modalsOpenRef.current =
     showHowToPlay ||
@@ -195,7 +215,7 @@ export default function App() {
   const swipeTrackerRef = useRef<SwipeTracker>(new SwipeTracker(24));
   const isTouchActiveRef = useRef(false);
 
-  // Reconcile Daily Challenge rewards, Player Skins, and Player Trails upon app startup
+  // Reconcile Daily Challenge rewards, Player Skins, Player Trails, and Board Themes upon app startup
   useEffect(() => {
     const reconRewards = reconcileDailyRewards();
     if (reconRewards.reconciledCount > 0) {
@@ -217,6 +237,15 @@ export default function App() {
     for (const id of reconTrails.trailsState.unlockedTrailIds) {
       notifiedTrailsRef.current.add(id);
     }
+
+    const reconThemes = reconcileAndMigratePlayerThemes();
+    setPlayerThemes(reconThemes.themesState);
+    if (reconThemes.mirrorRepaired) {
+      setSettings(loadSettings());
+    }
+    for (const id of reconThemes.themesState.unlockedThemeIds) {
+      notifiedThemesRef.current.add(id);
+    }
   }, []);
 
   // Auto-dismiss unlocked trail notification after 7 seconds
@@ -227,6 +256,15 @@ export default function App() {
     }, 7000);
     return () => clearTimeout(timer);
   }, [unlockedTrailAlert]);
+
+  // Auto-dismiss unlocked theme notification after 7 seconds
+  useEffect(() => {
+    if (!unlockedThemeAlert) return;
+    const timer = setTimeout(() => {
+      setUnlockedThemeAlert(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [unlockedThemeAlert]);
 
   // Helper to trigger trail unlock notifications cleanly without duplicate alerts or repeated sounds
   const notifyNewlyUnlockedTrails = useCallback((newlyUnlockedIds: SnakeTrailId[], soundAlreadyPlayed: boolean = false) => {
@@ -241,6 +279,28 @@ export default function App() {
     const firstId = genuinelyNew[0];
     const def = getTrailDefinition(firstId);
     setUnlockedTrailAlert({
+      id: firstId,
+      name: genuinelyNew.length > 1 ? `${def.name} (+${genuinelyNew.length - 1} more)` : def.name,
+    });
+
+    if (!soundAlreadyPlayed) {
+      soundEngine.play('achievement');
+    }
+  }, []);
+
+  // Helper to trigger theme unlock notifications cleanly without duplicate alerts or repeated sounds
+  const notifyNewlyUnlockedThemes = useCallback((newlyUnlockedIds: BoardThemeId[], soundAlreadyPlayed: boolean = false) => {
+    if (!newlyUnlockedIds || newlyUnlockedIds.length === 0) return;
+    const genuinelyNew = newlyUnlockedIds.filter(id => !notifiedThemesRef.current.has(id));
+    if (genuinelyNew.length === 0) return;
+
+    for (const id of genuinelyNew) {
+      notifiedThemesRef.current.add(id);
+    }
+
+    const firstId = genuinelyNew[0];
+    const def = getThemeDefinition(firstId);
+    setUnlockedThemeAlert({
       id: firstId,
       name: genuinelyNew.length > 1 ? `${def.name} (+${genuinelyNew.length - 1} more)` : def.name,
     });
@@ -272,6 +332,18 @@ export default function App() {
       return { success: true };
     }
     return { success: false, error: result.error || 'Failed to equip trail.' };
+  }, []);
+
+  // Equip board theme handler with honest error reporting
+  const handleEquipTheme = useCallback((themeId: BoardThemeId) => {
+    const result = equipTheme(themeId);
+    if (result.success) {
+      setPlayerThemes(result.state);
+      setSettings(loadSettings());
+      soundEngine.play('click');
+      return { success: true };
+    }
+    return { success: false, error: result.error || 'Failed to equip board theme.' };
   }, []);
 
   // Sync soundEngine settings
@@ -376,12 +448,15 @@ export default function App() {
       soundEngine.play('achievement');
     }
 
-    // Reconcile skins and trails in case this run achieved an unlock requirement (level, Zen wraps, etc.)
+    // Reconcile skins, trails, and themes in case this run achieved an unlock requirement (level, Zen wraps, etc.)
     const reconSkins = reconcileAndMigratePlayerSkins();
     setPlayerSkins(reconSkins.skinsState);
     const reconTrails = reconcileAndMigratePlayerTrails();
     setPlayerTrails(reconTrails.trailsState);
     notifyNewlyUnlockedTrails(reconTrails.newlyUnlocked, soundAlreadyPlayed);
+    const reconThemes = reconcileAndMigratePlayerThemes();
+    setPlayerThemes(reconThemes.themesState);
+    notifyNewlyUnlockedThemes(reconThemes.newlyUnlocked, soundAlreadyPlayed || reconTrails.newlyUnlocked.length > 0);
 
     setScreen('gameover');
   }, []);
@@ -447,12 +522,15 @@ export default function App() {
         soundEngine.play('achievement');
       }
 
-      // Reconcile skins and trails for stage clear progression
+      // Reconcile skins, trails, and themes for stage clear progression
       const reconSkins = reconcileAndMigratePlayerSkins();
       setPlayerSkins(reconSkins.skinsState);
       const reconTrails = reconcileAndMigratePlayerTrails();
       setPlayerTrails(reconTrails.trailsState);
       notifyNewlyUnlockedTrails(reconTrails.newlyUnlocked, challengeEval.starsAwarded > 0);
+      const reconThemes = reconcileAndMigratePlayerThemes();
+      setPlayerThemes(reconThemes.themesState);
+      notifyNewlyUnlockedThemes(reconThemes.newlyUnlocked, challengeEval.starsAwarded > 0 || reconTrails.newlyUnlocked.length > 0);
     }
     setScreen('stage_clear');
   }, []);
@@ -522,12 +600,15 @@ export default function App() {
 
       setDailyState(challengeEval.state);
 
-      // Reconcile skins and trails for campaign victory unlock (Apex Void & Void Horizon)
+      // Reconcile skins, trails, and themes for campaign victory unlock (Apex Void, Void Horizon, Void Observatory)
       const reconSkins = reconcileAndMigratePlayerSkins();
       setPlayerSkins(reconSkins.skinsState);
       const reconTrails = reconcileAndMigratePlayerTrails();
       setPlayerTrails(reconTrails.trailsState);
       notifyNewlyUnlockedTrails(reconTrails.newlyUnlocked, true);
+      const reconThemes = reconcileAndMigratePlayerThemes();
+      setPlayerThemes(reconThemes.themesState);
+      notifyNewlyUnlockedThemes(reconThemes.newlyUnlocked, true);
     }
     setScreen('campaign_victory');
   }, []);
@@ -1089,6 +1170,11 @@ export default function App() {
         ? playerTrailsRef.current.equippedTrailId
         : 'cyber_pulse';
 
+      // Authoritative equipped board theme resolution: must be unlocked, safe fallback to obsidian_grid
+      const activeThemeId = (playerThemesRef.current && isThemeUnlocked(playerThemesRef.current.equippedThemeId, playerThemesRef.current))
+        ? playerThemesRef.current.equippedThemeId
+        : 'obsidian_grid';
+
       rendererRef.current.render(
         ctx,
         canvas.width,
@@ -1099,6 +1185,7 @@ export default function App() {
           visualEffects: settingsRef.current.visualEffects,
           skin: activeSkinId,
           trail: activeTrailId,
+          boardTheme: activeThemeId,
           isPlaying: screenRef.current === 'playing',
         }
       );
@@ -1346,11 +1433,13 @@ export default function App() {
         <SkinCollectionModal
           playerSkins={playerSkins}
           playerTrails={playerTrails}
+          playerThemes={playerThemes}
           progression={progressionState}
           mazeProgress={mazeProgress}
           lifetimeStats={lifetimeStats}
           onEquipSkin={handleEquipSkin}
           onEquipTrail={handleEquipTrail}
+          onEquipTheme={handleEquipTheme}
           onClose={() => setShowSkinCollection(false)}
           visualEffects={settings.visualEffects}
           initialTab={customizationTab}
@@ -1366,6 +1455,7 @@ export default function App() {
           settings={settings}
           equippedSkinId={playerSkins.equippedSkinId}
           equippedTrailId={playerTrails.equippedTrailId}
+          equippedThemeId={playerThemes.equippedThemeId}
           onUpdateSettings={handleUpdateSettings}
           onResetScores={handleResetScores}
           onOpenSkinCollection={(tab) => {
@@ -1386,8 +1476,6 @@ export default function App() {
           onClose={() => setShowStats(false)}
         />
       )}
-
-
 
       {/* Newly Unlocked Trail Notification Toast/Banner */}
       {unlockedTrailAlert && (
@@ -1425,6 +1513,51 @@ export default function App() {
             <button
               type="button"
               onClick={() => setUnlockedTrailAlert(null)}
+              aria-label="Dismiss unlock notification"
+              className="p-1 rounded-lg text-[#79869C] hover:text-[#F0F6FC] transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Newly Unlocked Board Theme Notification Toast/Banner */}
+      {unlockedThemeAlert && (
+        <div
+          data-testid="theme-unlock-banner"
+          className="fixed top-3 sm:top-5 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[92%] sm:w-auto min-w-[280px] bg-[#0B0E1A]/95 border border-[#FFD700] rounded-2xl p-2.5 sm:p-3 shadow-[0_0_30px_rgba(255,215,0,0.45)] backdrop-blur-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-[#FFD700]/20 border border-[#FFD700]/40 text-[#FFD700] shrink-0">
+              <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5 text-[#FFD700]" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[9px] sm:text-[10px] font-black font-display tracking-widest text-[#FFD700] uppercase">
+                NEW BOARD UNLOCKED!
+              </div>
+              <div className="text-xs sm:text-sm font-black font-display text-[#F0F6FC] truncate">
+                {unlockedThemeAlert.name}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setUnlockedThemeAlert(null);
+                setCustomizationTab('themes');
+                setShowSkinCollection(true);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-[#FFD700] hover:bg-[#FFE55C] text-[#05070E] font-display font-bold text-[10px] sm:text-xs tracking-wider transition-all cursor-pointer active:scale-95 shadow-sm"
+            >
+              VIEW
+            </button>
+            <button
+              type="button"
+              onClick={() => setUnlockedThemeAlert(null)}
               aria-label="Dismiss unlock notification"
               className="p-1 rounded-lg text-[#79869C] hover:text-[#F0F6FC] transition-colors cursor-pointer"
             >

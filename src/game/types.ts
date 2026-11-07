@@ -151,6 +151,68 @@ export interface TrailUnlockContext {
   maxFoodInRun?: number;
 }
 
+export type BoardThemeId =
+  | 'obsidian_grid'
+  | 'industrial_foundry'
+  | 'arctic_research'
+  | 'bio_dome'
+  | 'solar_array'
+  | 'void_observatory';
+
+export type ThemeUnlockType = 'default' | 'level' | 'zen_wraps' | 'maze_stage' | 'food_single_run' | 'campaign_victory';
+
+export interface ThemeUnlockCondition {
+  type: ThemeUnlockType;
+  description: string;
+  requiredLevel?: number;
+  requiredZenWraps?: number;
+  requiredMazeStage?: number;
+  requiredFoodSingleRun?: number;
+  requiredCampaignVictory?: boolean;
+}
+
+export interface BoardThemeDefinition {
+  id: BoardThemeId;
+  name: string;
+  tagline: string;
+  description: string;
+  category: string;
+  primaryAccent: string;
+  secondaryAccent: string;
+  floorBg: string;
+  floorGradient: {
+    center: string;
+    edge: string;
+  };
+  grid: {
+    lineColor: string;
+    crosshairColor: string;
+    accentFrequency: number;
+  };
+  border: {
+    outerBase: string;
+    shadowOcclusion: string;
+    specularChamfer: string;
+    emissivePerimeter: string;
+    cornerReticle: string;
+  };
+  unlock: ThemeUnlockCondition;
+  altUnlock?: ThemeUnlockCondition;
+}
+
+export interface PlayerThemesState {
+  equippedThemeId: BoardThemeId;
+  unlockedThemeIds: BoardThemeId[];
+}
+
+export interface ThemeUnlockContext {
+  level: number;
+  zenWallsWrapped: number;
+  highestMazeStage: number;
+  maxFoodInRun?: number;
+  campaignWon?: boolean;
+}
+
 export interface ActivePowerUps {
   slowMoUntil: number; // timestamp ms
   hasShield: boolean;
@@ -206,6 +268,7 @@ export interface GameSettings {
   dpadPreference: 'auto' | 'always' | 'never';
   skin: SnakeSkinId;
   trail: SnakeTrailId;
+  boardTheme: BoardThemeId;
   controlMode: ControlMode;
 }
 

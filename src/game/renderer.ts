@@ -3,10 +3,11 @@
  * Designed for 60fps performance with smooth visual interpolation,
  * zero-GC particle ring buffer, and headless software rendering compatibility.
  */
-import type { GameEngineState, GridCoord, FoodItem, SnakeSkinId, SnakeSkin, SnakeTrailId, Obstacle, WarpGate } from './types.ts';
+import type { GameEngineState, GridCoord, FoodItem, SnakeSkinId, SnakeSkin, SnakeTrailId, BoardThemeId, Obstacle, WarpGate } from './types.ts';
 import { SKINS } from './constants.ts';
 import { drawNaturalStylizedSnake } from './snake_renderer.ts';
 import { TrailHistoryManager, drawSnakeTrail } from './trail_renderer.ts';
+import { getThemeDefinition, isValidThemeId } from './themes.ts';
 
 function safeEllipse(
   ctx: CanvasRenderingContext2D,
@@ -181,6 +182,7 @@ export class NeonRenderer {
       visualEffects: 'high' | 'performance' | 'reduced';
       skin?: SnakeSkinId;
       trail?: SnakeTrailId;
+      boardTheme?: BoardThemeId;
       isPlaying?: boolean;
     },
     frameTimeMs?: number
@@ -207,8 +209,8 @@ export class NeonRenderer {
     const cellH = height / state.gridHeight;
     const now = Number.isFinite(frameTimeMs) ? (frameTimeMs as number) : Date.now();
 
-    // 1. Cyber Grid
-    this.drawGrid(ctx, width, height, state.gridWidth, state.gridHeight, cellW, cellH, allowGlow);
+    // 1. Board Surface, Grid & Boundaries (Theme-Driven)
+    this.drawGrid(ctx, width, height, state.gridWidth, state.gridHeight, cellW, cellH, allowGlow, settings.boardTheme);
 
     // 1.5 Maze Mode Rendering: Obstacles & Warp Gate (only in Maze mode)
     if (state.mode === 'maze') {
@@ -251,13 +253,36 @@ export class NeonRenderer {
     gridH: number,
     cellW: number,
     cellH: number,
-    allowGlow: boolean
+    allowGlow: boolean,
+    themeId?: BoardThemeId
   ): void {
+    const safeThemeId: BoardThemeId = isValidThemeId(themeId) ? themeId : 'obsidian_grid';
+    const theme = getThemeDefinition(safeThemeId);
+
     ctx.save();
+
+    // 0. Base Floor Material & Atmospheric Radial Depth
+    ctx.fillStyle = theme.floorBg;
+    ctx.fillRect(0, 0, w, h);
+
+    if (typeof ctx.createRadialGradient === 'function') {
+      const grad = ctx.createRadialGradient(
+        w * 0.5,
+        h * 0.5,
+        Math.min(w, h) * 0.1,
+        w * 0.5,
+        h * 0.5,
+        Math.max(w, h) * 0.72
+      );
+      grad.addColorStop(0, theme.floorGradient.center);
+      grad.addColorStop(1, theme.floorGradient.edge);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+    }
 
     // 1. Subtle Architectural Floor Grid
     ctx.lineWidth = 0.75;
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.035)';
+    ctx.strokeStyle = theme.grid.lineColor;
     ctx.beginPath();
     for (let x = 1; x < gridW; x++) {
       ctx.moveTo(x * cellW, 0);
@@ -269,24 +294,60 @@ export class NeonRenderer {
     }
     ctx.stroke();
 
-    // Micro tactical crosshairs at 4-cell intersections
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
-    for (let x = 4; x < gridW; x += 4) {
-      for (let y = 4; y < gridH; y += 4) {
+    // Micro tactical crosshairs / node markers at intersections
+    ctx.fillStyle = theme.grid.crosshairColor;
+    const freq = theme.grid.accentFrequency || 4;
+    for (let x = freq; x < gridW; x += freq) {
+      for (let y = freq; y < gridH; y += freq) {
         const px = x * cellW;
         const py = y * cellH;
         ctx.fillRect(px - 1, py - 1, 2, 2);
       }
     }
 
+    // Theme-specific surface micro-textures & accents
+    if (safeThemeId === 'industrial_foundry') {
+      // Warm industrial rivets along 2-cell intersections
+      ctx.fillStyle = 'rgba(255, 158, 11, 0.08)';
+      for (let x = 2; x < gridW; x += 4) {
+        for (let y = 2; y < gridH; y += 4) {
+          ctx.fillRect(x * cellW - 0.75, y * cellH - 0.75, 1.5, 1.5);
+        }
+      }
+    } else if (safeThemeId === 'arctic_research') {
+      // Sub-zero diamond cryo-sensor points
+      ctx.fillStyle = 'rgba(224, 247, 250, 0.14)';
+      for (let x = 2; x < gridW; x += 6) {
+        for (let y = 2; y < gridH; y += 6) {
+          const px = x * cellW;
+          const py = y * cellH;
+          ctx.beginPath();
+          ctx.moveTo(px, py - 2);
+          ctx.lineTo(px + 2, py);
+          ctx.lineTo(px, py + 2);
+          ctx.lineTo(px - 2, py);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    } else if (safeThemeId === 'solar_array') {
+      // Photovoltaic panel seam dots
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.12)';
+      for (let x = 2; x < gridW; x += 4) {
+        for (let y = 2; y < gridH; y += 4) {
+          ctx.fillRect(x * cellW - 0.75, y * cellH - 0.75, 1.5, 1.5);
+        }
+      }
+    }
+
     // 2. Precision Outer Containment Frame (Directional Beveling & Materials)
-    // Dark carbon-alloy base bezel
-    ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
+    // Dark base bezel
+    ctx.strokeStyle = theme.border.outerBase;
     ctx.lineWidth = 3;
     ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
 
     // Bottom and Right Ambient Occlusion Bevel (Shadow)
-    ctx.strokeStyle = 'rgba(2, 6, 23, 0.95)';
+    ctx.strokeStyle = theme.border.shadowOcclusion;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(w - 1, 1);
@@ -295,7 +356,7 @@ export class NeonRenderer {
     ctx.stroke();
 
     // Top and Left Directional Key-Light Specular Chamfer
-    ctx.strokeStyle = 'rgba(67, 245, 255, 0.35)';
+    ctx.strokeStyle = theme.border.specularChamfer;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(1, h - 1);
@@ -304,10 +365,10 @@ export class NeonRenderer {
     ctx.stroke();
 
     // Emissive Containment Perimeter (Restrained and Controlled)
-    ctx.strokeStyle = 'rgba(67, 245, 255, 0.75)';
+    ctx.strokeStyle = theme.border.emissivePerimeter;
     ctx.lineWidth = 1;
     if (allowGlow) {
-      ctx.shadowColor = 'rgba(67, 245, 255, 0.5)';
+      ctx.shadowColor = theme.border.emissivePerimeter;
       ctx.shadowBlur = 6;
     }
     ctx.strokeRect(2.5, 2.5, w - 5, h - 5);
@@ -315,10 +376,10 @@ export class NeonRenderer {
 
     // 3. Precision Machined Corner Reticles
     const cornerSize = Math.min(cellW, cellH) * 1.4;
-    ctx.strokeStyle = 'rgba(152, 101, 255, 0.8)';
+    ctx.strokeStyle = theme.border.cornerReticle;
     ctx.lineWidth = 2;
     if (allowGlow) {
-      ctx.shadowColor = 'rgba(152, 101, 255, 0.4)';
+      ctx.shadowColor = theme.border.cornerReticle;
       ctx.shadowBlur = 5;
     }
 
@@ -349,6 +410,15 @@ export class NeonRenderer {
     ctx.lineTo(w - 1.5, h - 1.5);
     ctx.lineTo(w - 1.5, h - cornerSize);
     ctx.stroke();
+
+    // Industrial notch details on corners if industrial theme
+    if (safeThemeId === 'industrial_foundry') {
+      ctx.fillStyle = theme.border.cornerReticle;
+      ctx.fillRect(4, 4, 3, 3);
+      ctx.fillRect(w - 7, 4, 3, 3);
+      ctx.fillRect(4, h - 7, 3, 3);
+      ctx.fillRect(w - 7, h - 7, 3, 3);
+    }
 
     ctx.restore();
   }

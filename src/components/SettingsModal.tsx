@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { X, Volume2, Eye, Smartphone, Trash2, Check, AlertTriangle, Palette, Sparkles } from 'lucide-react';
-import type { ControlMode, GameSettings, SnakeSkinId, SnakeTrailId } from '../game/types.ts';
+import { X, Volume2, Eye, Smartphone, Trash2, Check, AlertTriangle, Palette, Sparkles, LayoutGrid } from 'lucide-react';
+import type { BoardThemeId, ControlMode, GameSettings, SnakeSkinId, SnakeTrailId } from '../game/types.ts';
 import { SKINS } from '../game/constants.ts';
 import { getTrailDefinition } from '../game/trails.ts';
+import { getThemeDefinition } from '../game/themes.ts';
 
 interface SettingsModalProps {
   settings: GameSettings;
   equippedSkinId?: SnakeSkinId;
   equippedTrailId?: SnakeTrailId;
+  equippedThemeId?: BoardThemeId;
   onUpdateSettings: (newSettings: GameSettings) => void;
   onResetScores: () => void;
-  onOpenSkinCollection?: (tab?: 'skins' | 'trails') => void;
+  onOpenSkinCollection?: (tab?: 'skins' | 'trails' | 'themes') => void;
   onClose: () => void;
 }
 
@@ -18,6 +20,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   equippedSkinId,
   equippedTrailId,
+  equippedThemeId,
   onUpdateSettings,
   onResetScores,
   onOpenSkinCollection,
@@ -285,6 +288,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               >
                 <Sparkles className="w-4 h-4" />
                 <span>SNAKE TRAILS</span>
+              </button>
+            )}
+          </div>
+
+          {/* 3.8 Board Environment Theme */}
+          <div className="bg-[#05070E] p-3.5 sm:p-4 rounded-xl border border-[#161B2E]">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#F0F6FC] flex items-center gap-2">
+                <LayoutGrid className="w-4 h-4 text-[#FFD700]" />
+                Board Environment Theme
+              </span>
+              <span className="text-[10px] font-mono text-[#FFD700] uppercase tracking-widest px-2 py-0.5 rounded bg-[#FFD700]/10 border border-[#FFD700]/30 font-bold">
+                ACTIVE
+              </span>
+            </div>
+
+            {/* Active Theme Info Card */}
+            {(() => {
+              const activeThemeId = equippedThemeId || settings.boardTheme || 'obsidian_grid';
+              const currentTheme = getThemeDefinition(activeThemeId);
+              return (
+                <div className="p-3 rounded-xl border border-[#FFD700]/40 bg-[#FFD700]/5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div
+                        className="w-4 h-4 rounded-md border border-white/20 shadow-sm"
+                        style={{ backgroundColor: currentTheme.primaryAccent }}
+                      />
+                      <div
+                        className="w-2.5 h-2.5 rounded-md"
+                        style={{ backgroundColor: currentTheme.secondaryAccent }}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold font-display text-[#F0F6FC] truncate">
+                        {currentTheme.name}
+                      </div>
+                      <div className="text-[10px] text-[#79869C] truncate">
+                        {currentTheme.tagline}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {onOpenSkinCollection && (
+              <button
+                type="button"
+                onClick={() => onOpenSkinCollection('themes')}
+                className="mt-3 w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#FFD700]/15 to-[#FF8A00]/20 border border-[#FFD700]/50 hover:border-[#FFD700] text-[#FFD700] hover:text-[#F0F6FC] font-display font-bold text-xs tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_12px_rgba(255,215,0,0.15)] active:scale-95"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span>BOARD THEMES</span>
               </button>
             )}
           </div>
