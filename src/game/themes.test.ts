@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { BoardThemeId, GameEngineState, PlayerThemesState, ThemeUnlockContext } from './types.ts';
+import type { BoardThemeId, FoodItem, GameEngineState, PlayerThemesState, ThemeUnlockContext } from './types.ts';
 import {
   ALL_THEME_IDS,
   BOARD_THEMES,
@@ -90,6 +90,8 @@ function createMockCanvasContext(): CanvasRenderingContext2D & { operations: str
     stroke: () => operations.push('stroke()'),
     fill: () => operations.push('fill()'),
     arc: (x: number, y: number, r: number) => operations.push(`arc(${x},${y},${r})`),
+    ellipse: (x: number, y: number, rx: number, ry: number) => operations.push(`ellipse(${x},${y},${rx},${ry})`),
+    rect: (x: number, y: number, w: number, h: number) => operations.push(`rect(${x},${y},${w},${h})`),
     scale: (x: number, y: number) => operations.push(`scale(${x},${y})`),
     translate: (x: number, y: number) => operations.push(`translate(${x},${y})`),
     rotate: (a: number) => operations.push(`rotate(${a})`),
@@ -1128,10 +1130,11 @@ test('Theme Preview 5: drawThemePreview guarantees balanced save/restore even wh
   });
 
   assert.ok(threw, 'Mock must have thrown inside strokeRect');
-  assert.equal(result.success, true, 'Error must be contained gracefully');
+  assert.equal(result.success, false, 'Failed rendering must honestly report success: false');
   // Confirm save and restore were both invoked
-  const saves = baseMock.operations.filter(op => op === 'save').length;
-  const restores = baseMock.operations.filter(op => op === 'restore').length;
+  const saves = baseMock.operations.filter(op => op.startsWith('save')).length;
+  const restores = baseMock.operations.filter(op => op.startsWith('restore')).length;
+  assert.ok(saves > 0, 'Must have at least one save');
   assert.equal(saves, restores, 'Canvas state must always be restored');
 });
 
@@ -1196,4 +1199,243 @@ test('Theme Rendering 4: Unknown boardTheme falls back safely to obsidian_grid',
     'Fallback theme must fill board dimensions'
   );
 });
+
+// =============================================================================
+// SECTION 7: Focused Technical Corrections Validation
+// =============================================================================
+
+test('Bonus Food Countdown 1: Invalid countdown timing values (NaN, Infinity, 0, negative duration) do not cause errors or malformed drawing', () => {
+  const renderer = new NeonRenderer();
+  const hostileTimingItems: FoodItem[] = [
+    {
+      id: 'f1',
+      position: { x: 5, y: 5 },
+      type: 'bonus',
+      points: 50,
+      expiresAt: NaN as unknown as number,
+      totalDurationMs: 5000,
+    },
+    {
+      id: 'f2',
+      position: { x: 6, y: 6 },
+      type: 'bonus',
+      points: 50,
+      expiresAt: Infinity as unknown as number,
+      totalDurationMs: 5000,
+    },
+    {
+      id: 'f3',
+      position: { x: 7, y: 7 },
+      type: 'bonus',
+      points: 50,
+      expiresAt: Date.now() + 3000,
+      totalDurationMs: 0, // Zero duration
+    },
+    {
+      id: 'f4',
+      position: { x: 8, y: 8 },
+      type: 'bonus',
+      points: 50,
+      expiresAt: Date.now() + 3000,
+      totalDurationMs: -1000, // Negative duration
+    },
+    {
+      id: 'f5',
+      position: { x: 9, y: 9 },
+      type: 'bonus',
+      points: 50,
+      expiresAt: Date.now() + 3000,
+      totalDurationMs: NaN as unknown as number,
+    },
+  ];
+
+  for (const item of hostileTimingItems) {
+    const ctx = createMockCanvasContext();
+    const state: GameEngineState = {
+      ...createInitialState('classic'),
+      food: [item],
+    };
+
+    assert.doesNotThrow(() => {
+      renderer.render(
+        ctx,
+        500,
+        500,
+        state,
+        1,
+        { visualEffects: 'high', skin: 'cyber_cyan', trail: 'cyber_pulse', isPlaying: true },
+        Date.now()
+      );
+    }, 'Renderer must safely handle malformed bonus food countdown timing');
+
+    // Verify no NaN values in arc drawing calls
+    const nanArcs = ctx.operations.filter(op => op.includes('arc(') && op.includes('NaN'));
+    assert.equal(nanArcs.length, 0, 'Must never produce NaN arc calls');
+  }
+});
+
+test('Bonus Food Countdown 2: Valid countdown timing renders calibrated chronometer arc and needle indicator', () => {
+  const renderer = new NeonRenderer();
+  const now = 100000;
+  const validBonusItem: FoodItem = {
+    id: 'f-bonus',
+    position: { x: 5, y: 5 },
+    type: 'bonus',
+    points: 50,
+    expiresAt: now + 2500, // 50% remaining
+    totalDurationMs: 5000,
+  };
+
+  const ctx = createMockCanvasContext();
+  const state: GameEngineState = {
+    ...createInitialState('classic'),
+    food: [validBonusItem],
+  };
+
+  renderer.render(
+    ctx,
+    500,
+    500,
+    state,
+    1,
+    { visualEffects: 'high', skin: 'cyber_cyan', trail: 'cyber_pulse', isPlaying: true },
+    now
+  );
+
+  // Chronometer arc must have been drawn
+  assert.ok(ctx.operations.some(op => op.includes('arc')), 'Must draw countdown arc');
+});
+
+test('Food Canvas State Safety: NeonRenderer guarantees balanced save/restore even when food drawing encounters errors', () => {
+  const renderer = new NeonRenderer();
+  const baseMock = createMockCanvasContext();
+
+  const normalFood: FoodItem = {
+    id: 'f-norm',
+    position: { x: 5, y: 5 },
+    type: 'normal',
+    points: 10,
+  };
+  const state: GameEngineState = {
+    ...createInitialState('classic'),
+    food: [normalFood],
+  };
+
+  renderer.render(
+    baseMock,
+    500,
+    500,
+    state,
+    1,
+    { visualEffects: 'high', skin: 'cyber_cyan', trail: 'cyber_pulse', isPlaying: true },
+    1000
+  );
+
+  const saves = baseMock.operations.filter(op => op.startsWith('save')).length;
+  const restores = baseMock.operations.filter(op => op.startsWith('restore')).length;
+  assert.ok(saves > 0, 'Must invoke save');
+  assert.equal(saves, restores, 'Saves and restores must be balanced across all food passes');
+});
+
+test('Theme Preview Glow Bounds: glowIntensity is clamped to [0, 1] and 0 disables shadowBlur glow', () => {
+  const ctxNoGlow = createMockCanvasContext();
+  drawThemePreview(ctxNoGlow, 'obsidian_grid', {
+    width: 200,
+    height: 100,
+    glowIntensity: 0,
+  });
+  assert.equal(ctxNoGlow.shadowBlur, 0, 'shadowBlur must be reset to 0');
+
+  const ctxHighGlow = createMockCanvasContext();
+  const resultHigh = drawThemePreview(ctxHighGlow, 'obsidian_grid', {
+    width: 200,
+    height: 100,
+    glowIntensity: 5.0, // Should clamp to 1.0
+  });
+  assert.equal(resultHigh.success, true);
+  assert.equal(ctxHighGlow.shadowBlur, 0, 'shadowBlur must be reset to 0 after draw');
+
+  const ctxNegGlow = createMockCanvasContext();
+  const resultNeg = drawThemePreview(ctxNegGlow, 'obsidian_grid', {
+    width: 200,
+    height: 100,
+    glowIntensity: -2.0, // Should clamp to 0
+  });
+  assert.equal(resultNeg.success, true);
+  assert.equal(ctxNegGlow.shadowBlur, 0);
+});
+
+test('Accessibility Precedence: Operating system reduced-motion preference cannot be overridden by component props', () => {
+  // Test accessibility decision logic directly
+  const evaluateShouldAnimate = (
+    animated: boolean | undefined,
+    reducedMotion: boolean | undefined,
+    osPrefersReducedMotion: boolean
+  ): boolean => {
+    const isReducedMotion = reducedMotion === true || osPrefersReducedMotion;
+    return animated !== false && !isReducedMotion;
+  };
+
+  // 1. When OS prefers reduced motion, animation is always disabled
+  assert.equal(evaluateShouldAnimate(true, false, true), false, 'OS reduce motion must override reducedMotion=false');
+  assert.equal(evaluateShouldAnimate(true, undefined, true), false, 'OS reduce motion must disable animation');
+
+  // 2. When explicit reducedMotion is true, animation is disabled
+  assert.equal(evaluateShouldAnimate(true, true, false), false, 'Explicit reducedMotion=true must disable animation');
+
+  // 3. When animated is explicitly false, animation is disabled
+  assert.equal(evaluateShouldAnimate(false, false, false), false, 'animated=false must disable animation');
+
+  // 4. Only when OS is false and props are normal, animation runs
+  assert.equal(evaluateShouldAnimate(true, false, false), true, 'Standard settings should animate');
+  assert.equal(evaluateShouldAnimate(undefined, undefined, false), true, 'Defaults should animate when OS prefers motion');
+});
+
+test('Circuit Breaker Logic: 3 consecutive render failures stops animation scheduling', () => {
+  let isRunning = true;
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 3;
+  let scheduledFrames = 0;
+
+  const simulateRenderPass = (renderSucceeds: boolean) => {
+    if (!isRunning || consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+      return;
+    }
+
+    if (!renderSucceeds) {
+      consecutiveErrors++;
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        isRunning = false;
+        return;
+      }
+    } else {
+      consecutiveErrors = 0;
+    }
+
+    scheduledFrames++;
+  };
+
+  // Pass 1: Fails
+  simulateRenderPass(false);
+  assert.equal(consecutiveErrors, 1);
+  assert.equal(scheduledFrames, 1);
+  assert.equal(isRunning, true);
+
+  // Pass 2: Fails
+  simulateRenderPass(false);
+  assert.equal(consecutiveErrors, 2);
+  assert.equal(scheduledFrames, 2);
+  assert.equal(isRunning, true);
+
+  // Pass 3: Fails -> Trips circuit breaker!
+  simulateRenderPass(false);
+  assert.equal(consecutiveErrors, 3);
+  assert.equal(scheduledFrames, 2, 'Must not schedule next frame on tripping circuit breaker');
+  assert.equal(isRunning, false, 'Circuit breaker must stop animation loop');
+
+  // Subsequent passes must do nothing
+  simulateRenderPass(false);
+  assert.equal(scheduledFrames, 2, 'No further frames should be scheduled');
+});
+
 

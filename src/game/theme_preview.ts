@@ -47,7 +47,12 @@ export function drawThemePreview(
   const height = Math.min(2048, Math.max(10, Math.floor(rawHeight)));
   const timeMs = typeof options.timeMs === 'number' && Number.isFinite(options.timeMs) && options.timeMs >= 0 ? options.timeMs : 0;
   const showSpecimen = options.showSpecimen ?? true;
+  const rawGlow = typeof options.glowIntensity === 'number' && Number.isFinite(options.glowIntensity)
+    ? options.glowIntensity
+    : 1.0;
+  const glow = Math.max(0, Math.min(1, rawGlow));
 
+  let renderSuccess = false;
   ctx.save();
   try {
     // 1. Clear Canvas (mandatory baseline for fresh rendering)
@@ -79,7 +84,7 @@ export function drawThemePreview(
     const cellH = height / rows;
 
     // 4. Distinct Environment Material Surface Treatments
-    drawThemeMaterialSurface(ctx, safeThemeId, width, height, cols, rows, cellW, cellH, timeMs);
+    drawThemeMaterialSurface(ctx, safeThemeId, width, height, cols, rows, cellW, cellH, timeMs, 'high');
 
     // 5. Architectural Floor Grid Lines
     ctx.lineWidth = 0.75;
@@ -126,15 +131,24 @@ export function drawThemePreview(
     ctx.lineTo(width - 1, 1);
     ctx.stroke();
 
-    // Emissive Containment Perimeter
+    // Emissive Containment Perimeter with Bounded Glow Intensity
     ctx.lineWidth = 1;
     ctx.strokeStyle = theme.border.emissivePerimeter;
+    if (glow > 0) {
+      ctx.shadowColor = theme.border.emissivePerimeter;
+      ctx.shadowBlur = Math.round(5 * glow);
+    }
     ctx.strokeRect(2, 2, width - 4, height - 4);
+    ctx.shadowBlur = 0;
 
     // 8. Precision Corner Reticles
     const corner = Math.min(cellW, cellH) * 0.9;
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = theme.border.cornerReticle;
+    if (glow > 0) {
+      ctx.shadowColor = theme.border.cornerReticle;
+      ctx.shadowBlur = Math.round(4 * glow);
+    }
 
     // Top-Left Reticle
     ctx.beginPath();
@@ -163,19 +177,22 @@ export function drawThemePreview(
     ctx.lineTo(width - 3, height - 3);
     ctx.lineTo(width - 3, height - 3 - corner);
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     // 9. Coherent Miniature Specimen & Realistic Collectible
     if (showSpecimen) {
       drawMiniatureSpecimen(ctx, cellW, cellH, timeMs);
     }
+
+    renderSuccess = true;
   } catch {
-    // Graceful error containment; canvas state will always be restored
+    renderSuccess = false;
   } finally {
     ctx.restore();
   }
 
   return {
-    success: true,
+    success: renderSuccess,
     resolvedThemeId: safeThemeId,
     themeName: theme.name,
   };
@@ -183,8 +200,9 @@ export function drawThemePreview(
 
 /**
  * Draws the unique material surface texture and architectural markings for each theme.
+ * Exported so gameplay renderer and preview canvas maintain 100% material consistency.
  */
-function drawThemeMaterialSurface(
+export function drawThemeMaterialSurface(
   ctx: CanvasRenderingContext2D,
   themeId: BoardThemeId,
   width: number,
@@ -193,19 +211,22 @@ function drawThemeMaterialSurface(
   rows: number,
   cellW: number,
   cellH: number,
-  timeMs: number
+  timeMs: number,
+  visualEffects: 'high' | 'performance' | 'reduced' = 'high'
 ): void {
+  const isHigh = visualEffects === 'high';
+
   switch (themeId) {
     case 'obsidian_grid': {
       // Carbon-graphite diagonal weave on alternating panels
-      ctx.strokeStyle = 'rgba(67, 245, 255, 0.025)';
+      ctx.strokeStyle = 'rgba(67, 245, 255, 0.022)';
       ctx.lineWidth = 0.5;
       ctx.beginPath();
+      const step = isHigh ? Math.max(3, cellW * 0.25) : Math.max(5, cellW * 0.45);
       for (let c = 0; c < cols; c += 2) {
         for (let r = 0; r < rows; r += 2) {
           const x0 = c * cellW;
           const y0 = r * cellH;
-          const step = Math.max(3, cellW * 0.25);
           for (let offset = step; offset < cellW + cellH; offset += step) {
             const sx = x0 + Math.min(offset, cellW);
             const sy = y0 + Math.max(0, offset - cellW);
@@ -222,27 +243,34 @@ function drawThemeMaterialSurface(
       ctx.strokeStyle = 'rgba(0, 245, 255, 0.16)';
       ctx.lineWidth = 1;
       const midY = Math.floor(rows / 2) * cellH;
+      const midX = Math.floor(cols / 2) * cellW;
       ctx.beginPath();
-      for (let c = 1; c < cols; c++) {
+      for (let c = 1; c < cols; c += 2) {
         const x = c * cellW;
-        ctx.moveTo(x, midY - 2);
-        ctx.lineTo(x, midY + 2);
+        ctx.moveTo(x, midY - 2.5);
+        ctx.lineTo(x, midY + 2.5);
+      }
+      for (let r = 1; r < rows; r += 2) {
+        const y = r * cellH;
+        ctx.moveTo(midX - 2.5, y);
+        ctx.lineTo(midX + 2.5, y);
       }
       ctx.stroke();
       break;
     }
 
     case 'industrial_foundry': {
-      // 1. Heavy industrial floor plates with recessed expansion seams (every 2x2 cells)
-      for (let c = 0; c < cols; c += 2) {
-        for (let r = 0; r < rows; r += 2) {
+      // Heavy industrial floor plates with recessed expansion seams
+      const slabStep = cols > 12 ? 3 : 2;
+      for (let c = 0; c < cols; c += slabStep) {
+        for (let r = 0; r < rows; r += slabStep) {
           const px = c * cellW;
           const py = r * cellH;
-          const pw = cellW * 2;
-          const ph = cellH * 2;
+          const pw = Math.min(slabStep * cellW, width - px);
+          const ph = Math.min(slabStep * cellH, height - py);
 
           // Plate surface subtle metallic tint
-          ctx.fillStyle = (c + r) % 4 === 0 ? 'rgba(255, 158, 11, 0.018)' : 'rgba(0, 0, 0, 0.12)';
+          ctx.fillStyle = ((c / slabStep) + (r / slabStep)) % 2 === 0 ? 'rgba(255, 158, 11, 0.018)' : 'rgba(0, 0, 0, 0.12)';
           ctx.fillRect(px + 1, py + 1, pw - 2, ph - 2);
 
           // Recessed joint groove (shadow bottom-right, highlight top-left)
@@ -260,16 +288,18 @@ function drawThemeMaterialSurface(
           ctx.lineTo(px + pw - 1, py + 1);
           ctx.stroke();
 
-          // Brushed steel striation lines (horizontal micro-machining grain)
-          ctx.strokeStyle = 'rgba(245, 158, 11, 0.025)';
-          ctx.lineWidth = 0.5;
-          ctx.beginPath();
-          const grainStep = Math.max(3, cellH * 0.3);
-          for (let gy = py + grainStep; gy < py + ph - 2; gy += grainStep) {
-            ctx.moveTo(px + 2, gy);
-            ctx.lineTo(px + pw - 2, gy);
+          // Brushed steel striation lines (horizontal micro-machining grain) on high mode
+          if (isHigh) {
+            ctx.strokeStyle = 'rgba(245, 158, 11, 0.022)';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            const grainStep = Math.max(3, cellH * 0.32);
+            for (let gy = py + grainStep; gy < py + ph - 2; gy += grainStep) {
+              ctx.moveTo(px + 2, gy);
+              ctx.lineTo(px + pw - 2, gy);
+            }
+            ctx.stroke();
           }
-          ctx.stroke();
 
           // Countersunk corner rivets with specular glint
           ctx.fillStyle = 'rgba(245, 158, 11, 0.35)';
@@ -294,17 +324,20 @@ function drawThemeMaterialSurface(
             const y = r * cellH;
             ctx.moveTo(x + cellW * 0.2, y);
             ctx.lineTo(x + cellW * 0.8, y + cellH);
-            ctx.moveTo(x, y + cellH * 0.3);
-            ctx.lineTo(x + cellW, y + cellH * 0.7);
+            if (isHigh) {
+              ctx.moveTo(x, y + cellH * 0.3);
+              ctx.lineTo(x + cellW, y + cellH * 0.7);
+            }
           }
         }
       }
       ctx.stroke();
 
       // 2. Diamond cryo-sensor nodes at key intersections
-      ctx.fillStyle = 'rgba(224, 247, 250, 0.25)';
-      for (let c = 2; c < cols; c += 2) {
-        for (let r = 2; r < rows; r += 2) {
+      ctx.fillStyle = 'rgba(224, 247, 250, 0.24)';
+      const nodeStep = cols > 12 ? 3 : 2;
+      for (let c = nodeStep; c < cols; c += nodeStep) {
+        for (let r = nodeStep; r < rows; r += nodeStep) {
           const px = c * cellW;
           const py = r * cellH;
           ctx.beginPath();
@@ -317,8 +350,8 @@ function drawThemeMaterialSurface(
         }
       }
 
-      // 3. Perimeter frost condensation glaze (subtle cool gradient near corners)
-      ctx.strokeStyle = 'rgba(56, 225, 255, 0.07)';
+      // 3. Perimeter frost condensation glaze (subtle cool gradient near borders)
+      ctx.strokeStyle = 'rgba(56, 225, 255, 0.06)';
       ctx.lineWidth = 3;
       ctx.strokeRect(3, 3, width - 6, height - 6);
       break;
@@ -326,11 +359,12 @@ function drawThemeMaterialSurface(
 
     case 'bio_dome': {
       // 1. Dark organic vascular reticulum / hexagonal cellular mesh
-      ctx.strokeStyle = 'rgba(16, 255, 160, 0.032)';
+      ctx.strokeStyle = 'rgba(16, 255, 160, 0.03)';
       ctx.lineWidth = 0.75;
       ctx.beginPath();
-      for (let c = 0; c < cols; c++) {
-        for (let r = 0; r < rows; r++) {
+      const meshStep = isHigh ? 1 : 2;
+      for (let c = 0; c < cols; c += meshStep) {
+        for (let r = 0; r < rows; r += meshStep) {
           const cx = c * cellW + cellW * 0.5;
           const cy = r * cellH + cellH * 0.5;
           const rad = Math.min(cellW, cellH) * 0.35;
@@ -349,8 +383,9 @@ function drawThemeMaterialSurface(
       // 2. Living bioluminescent node respiration
       const bioPulse = Math.sin(timeMs * 0.003) * 0.06 + 0.18;
       ctx.fillStyle = `rgba(16, 255, 160, ${bioPulse.toFixed(3)})`;
-      for (let c = 2; c < cols; c += 2) {
-        for (let r = 2; r < rows; r += 2) {
+      const bioStep = cols > 12 ? 3 : 2;
+      for (let c = bioStep; c < cols; c += bioStep) {
+        for (let r = bioStep; r < rows; r += bioStep) {
           const px = c * cellW;
           const py = r * cellH;
           ctx.beginPath();
@@ -362,13 +397,14 @@ function drawThemeMaterialSurface(
     }
 
     case 'solar_array': {
-      // 1. Photovoltaic silicon wafer divisions (2x2 module blocks)
-      for (let c = 0; c < cols; c += 2) {
-        for (let r = 0; r < rows; r += 2) {
+      // 1. Photovoltaic silicon wafer divisions
+      const panelStep = cols > 12 ? 3 : 2;
+      for (let c = 0; c < cols; c += panelStep) {
+        for (let r = 0; r < rows; r += panelStep) {
           const px = c * cellW;
           const py = r * cellH;
-          const pw = cellW * 2;
-          const ph = cellH * 2;
+          const pw = Math.min(panelStep * cellW, width - px);
+          const ph = Math.min(panelStep * cellH, height - py);
 
           // Silicon cell antireflective tint
           ctx.fillStyle = 'rgba(255, 215, 0, 0.016)';
@@ -378,7 +414,7 @@ function drawThemeMaterialSurface(
           ctx.strokeStyle = 'rgba(255, 215, 0, 0.04)';
           ctx.lineWidth = 0.5;
           ctx.beginPath();
-          const traceStep = pw * 0.25;
+          const traceStep = pw * 0.33;
           for (let tx = px + traceStep; tx < px + pw - 1; tx += traceStep) {
             ctx.moveTo(tx, py + 1);
             ctx.lineTo(tx, py + ph - 1);
@@ -404,28 +440,31 @@ function drawThemeMaterialSurface(
       const midY = Math.floor(rows / 2) * cellH;
 
       ctx.beginPath();
-      for (let r = 0; r <= rows; r++) {
+      for (let r = 0; r <= rows; r += 2) {
         const y = r * cellH;
         ctx.moveTo(midX - 2.5, y);
         ctx.lineTo(midX + 2.5, y);
       }
-      for (let c = 0; c <= cols; c++) {
+      for (let c = 0; c <= cols; c += 2) {
         const x = c * cellW;
         ctx.moveTo(x, midY - 2.5);
         ctx.lineTo(x, midY + 2.5);
       }
       ctx.stroke();
 
-      // 2. Orbital focus boundary rings at quadrant centers
-      ctx.strokeStyle = 'rgba(124, 77, 255, 0.04)';
+      // 2. Orbital focus boundary rings at board center
+      ctx.strokeStyle = 'rgba(124, 77, 255, 0.045)';
       ctx.lineWidth = 0.75;
-      const quadX = cols * cellW * 0.5;
-      const quadY = rows * cellH * 0.5;
+      const quadX = width * 0.5;
+      const quadY = height * 0.5;
       ctx.beginPath();
-      ctx.arc(quadX, quadY, Math.min(cellW, cellH) * 1.8, 0, Math.PI * 2);
+      ctx.arc(quadX, quadY, Math.min(width, height) * 0.2, 0, Math.PI * 2);
+      if (isHigh) {
+        ctx.arc(quadX, quadY, Math.min(width, height) * 0.35, 0, Math.PI * 2);
+      }
       ctx.stroke();
 
-      // Quantum cyan reticle nodes
+      // Quantum cyan reticle node at center
       ctx.fillStyle = 'rgba(0, 245, 255, 0.35)';
       ctx.fillRect(midX - 1.5, midY - 1.5, 3, 3);
       break;
@@ -434,7 +473,7 @@ function drawThemeMaterialSurface(
 }
 
 /**
- * Draws a recognizable, stylized miniature cybernetic snake specimen and collectible.
+ * Draws a recognizable, stylized, continuous miniature cybernetic snake specimen and collectible.
  */
 function drawMiniatureSpecimen(
   ctx: CanvasRenderingContext2D,
@@ -455,7 +494,11 @@ function drawMiniatureSpecimen(
   // Soft directional ground contact shadow
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
   ctx.beginPath();
-  ctx.ellipse(foodX + 0.5, foodY + foodR * 0.85, foodR * 0.85, foodR * 0.35, 0, 0, Math.PI * 2);
+  if (typeof ctx.ellipse === 'function') {
+    ctx.ellipse(foodX + 0.5, foodY + foodR * 0.85, foodR * 0.85, foodR * 0.35, 0, 0, Math.PI * 2);
+  } else {
+    ctx.arc(foodX + 0.5, foodY + foodR * 0.85, foodR * 0.6, 0, Math.PI * 2);
+  }
   ctx.fill();
 
   // Outer gimbal containment ring
@@ -468,20 +511,21 @@ function drawMiniatureSpecimen(
   // Emerald core sphere with directional radial lighting
   if (typeof ctx.createRadialGradient === 'function') {
     const foodGrad = ctx.createRadialGradient(
-      foodX - foodR * 0.3,
-      foodY - foodR * 0.3,
-      foodR * 0.1,
+      foodX - foodR * 0.32,
+      foodY - foodR * 0.35,
+      foodR * 0.08,
       foodX,
       foodY,
       foodR
     );
     foodGrad.addColorStop(0, '#FFFFFF');
-    foodGrad.addColorStop(0.3, '#39FF14');
-    foodGrad.addColorStop(0.75, '#00C853');
-    foodGrad.addColorStop(1, '#004D20');
+    foodGrad.addColorStop(0.25, '#6EE7B7');
+    foodGrad.addColorStop(0.65, '#10B981');
+    foodGrad.addColorStop(0.9, '#047857');
+    foodGrad.addColorStop(1, '#022C22');
     ctx.fillStyle = foodGrad;
   } else {
-    ctx.fillStyle = '#39FF14';
+    ctx.fillStyle = '#10B981';
   }
   ctx.beginPath();
   ctx.arc(foodX, foodY, foodR, 0, Math.PI * 2);
@@ -490,121 +534,115 @@ function drawMiniatureSpecimen(
   // Specular reflection glint on top-left
   ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
   ctx.beginPath();
-  ctx.arc(foodX - foodR * 0.35, foodY - foodR * 0.35, foodR * 0.22, 0, Math.PI * 2);
+  ctx.arc(foodX - foodR * 0.35, foodY - foodR * 0.35, foodR * 0.2, 0, Math.PI * 2);
   ctx.fill();
 
   // ----------------------------------------------------
   // Miniature Cybernetic Snake Specimen at (3,3) -> (4,3) -> (5,3)
-  // Head at (5,3) facing right, body at (4,3), tail at (3,3)
+  // Continuous connected body silhouette facing right (+X)
   // ----------------------------------------------------
-  const segments = [
-    { x: 3 * cellW + cellW * 0.5, y: 3 * cellH + cellH * 0.5, type: 'tail' },
-    { x: 4 * cellW + cellW * 0.5, y: 3 * cellH + cellH * 0.5, type: 'body' },
-    { x: 5 * cellW + cellW * 0.5, y: 3 * cellH + cellH * 0.5, type: 'head' },
-  ];
+  const tailX = 3 * cellW + cellW * 0.5;
+  const bodyX = 4 * cellW + cellW * 0.5;
+  const headX = 5 * cellW + cellW * 0.5;
+  const cy = 3 * cellH + cellH * 0.5;
 
-  // 1. Ground contact shadows for all segments
+  const tailR = unit * 0.26;
+  const bodyR = unit * 0.32;
+  const headR = unit * 0.36;
+
+  // 1. Continuous Ground Contact Shadow beneath the entire connected silhouette
   ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
-  for (const seg of segments) {
-    const r = unit * (seg.type === 'head' ? 0.36 : seg.type === 'body' ? 0.32 : 0.26);
-    ctx.beginPath();
-    ctx.ellipse(seg.x + 0.75, seg.y + r * 0.85, r * 0.85, r * 0.35, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  const shadowY = cy + bodyR * 0.88;
+  const shadowStart = tailX - tailR * 0.8;
+  const shadowEnd = headX + headR * 0.9;
+  ctx.fillRect(shadowStart, shadowY - bodyR * 0.25, shadowEnd - shadowStart, bodyR * 0.55);
 
-  // 2. Articulated body segments (Tail and Mid-body)
-  for (let i = 0; i < 2; i++) {
-    const seg = segments[i];
-    const isTail = seg.type === 'tail';
-    const r = unit * (isTail ? 0.28 : 0.33);
-
-    // Segment base armor
-    if (typeof ctx.createRadialGradient === 'function') {
-      const bodyGrad = ctx.createRadialGradient(
-        seg.x - r * 0.3,
-        seg.y - r * 0.3,
-        r * 0.1,
-        seg.x,
-        seg.y,
-        r
-      );
-      bodyGrad.addColorStop(0, '#B388FF');
-      bodyGrad.addColorStop(0.5, '#9865FF');
-      bodyGrad.addColorStop(1, '#5B25C6');
-      ctx.fillStyle = bodyGrad;
-    } else {
-      ctx.fillStyle = '#9865FF';
-    }
-    ctx.beginPath();
-    ctx.arc(seg.x, seg.y, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Dorsal spine core line
-    ctx.strokeStyle = '#43F5FF';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(seg.x - r * 0.6, seg.y);
-    ctx.lineTo(seg.x + r * 0.6, seg.y);
-    ctx.stroke();
-
-    // Top-left specular glint
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.beginPath();
-    ctx.arc(seg.x - r * 0.3, seg.y - r * 0.3, r * 0.22, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // 3. Directional Head Segment (Aerodynamic armor facing right)
-  const head = segments[2];
-  const hr = unit * 0.36;
-
-  // Head armor contour
-  if (typeof ctx.createRadialGradient === 'function') {
-    const headGrad = ctx.createRadialGradient(
-      head.x - hr * 0.3,
-      head.y - hr * 0.3,
-      hr * 0.1,
-      head.x,
-      head.y,
-      hr
-    );
-    headGrad.addColorStop(0, '#80F8FF');
-    headGrad.addColorStop(0.5, '#43F5FF');
-    headGrad.addColorStop(1, '#00838F');
-    ctx.fillStyle = headGrad;
-  } else {
-    ctx.fillStyle = '#43F5FF';
-  }
-
-  // Tapered forward-facing cybernetic head
+  // 2. Visually Connected, Continuous Snake Hull (Unifying tail, mid-body, and head)
   ctx.beginPath();
-  ctx.moveTo(head.x + hr * 1.05, head.y); // Nose apex
-  ctx.lineTo(head.x - hr * 0.35, head.y - hr * 0.95); // Top-left cheek
-  ctx.lineTo(head.x - hr * 0.85, head.y - hr * 0.55); // Back-top
-  ctx.lineTo(head.x - hr * 0.85, head.y + hr * 0.55); // Back-bottom
-  ctx.lineTo(head.x - hr * 0.35, head.y + hr * 0.95); // Bottom-left cheek
+  // Nose apex at front of head
+  ctx.moveTo(headX + headR * 1.05, cy);
+  // Upper head taper to back-top of head
+  ctx.lineTo(headX + headR * 0.2, cy - headR * 0.9);
+  ctx.lineTo(headX - headR * 0.4, cy - headR * 0.75);
+  // Smooth continuous upper flank across body and tail
+  ctx.lineTo(bodyX, cy - bodyR);
+  ctx.lineTo(tailX, cy - tailR);
+  // Rounded tail apex cap
+  ctx.arc(tailX, cy, tailR, -Math.PI / 2, Math.PI / 2, true);
+  // Smooth continuous lower flank across tail and body
+  ctx.lineTo(bodyX, cy + bodyR);
+  ctx.lineTo(headX - headR * 0.4, cy + headR * 0.75);
+  ctx.lineTo(headX + headR * 0.2, cy + headR * 0.9);
   ctx.closePath();
+
+  // Continuous cybernetic gradient along body length (specular top-left light)
+  if (typeof ctx.createLinearGradient === 'function') {
+    const hullGrad = ctx.createLinearGradient(tailX, cy - bodyR, headX + headR, cy + bodyR);
+    hullGrad.addColorStop(0, '#5B25C6');
+    hullGrad.addColorStop(0.35, '#7C3AED');
+    hullGrad.addColorStop(0.65, '#0284C7');
+    hullGrad.addColorStop(1, '#00F5FF');
+    ctx.fillStyle = hullGrad;
+  } else {
+    ctx.fillStyle = '#00F5FF';
+  }
   ctx.fill();
 
-  // Head armor border
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+  // Hull perimeter key-light stroke
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
   ctx.lineWidth = 0.75;
   ctx.stroke();
 
-  // Ocular Optic Sensors (Slit visor facing right)
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(head.x + hr * 0.1, head.y - hr * 0.45, hr * 0.4, hr * 0.18);
-  ctx.fillRect(head.x + hr * 0.1, head.y + hr * 0.27, hr * 0.4, hr * 0.18);
-
-  ctx.fillStyle = '#00F5FF';
-  ctx.fillRect(head.x + hr * 0.2, head.y - hr * 0.4, hr * 0.25, hr * 0.1);
-  ctx.fillRect(head.x + hr * 0.2, head.y + hr * 0.32, hr * 0.25, hr * 0.1);
-
-  // Top specular armor highlight
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
-  ctx.lineWidth = 0.75;
+  // 3. Articulated Armor Plates (Interlocking transverse segment cowl seams)
+  // Tail-to-body articulation seam
+  ctx.strokeStyle = 'rgba(10, 15, 30, 0.6)';
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(head.x - hr * 0.2, head.y - hr * 0.65);
-  ctx.lineTo(head.x + hr * 0.65, head.y - hr * 0.2);
+  const seam1X = (tailX + bodyX) * 0.5;
+  ctx.moveTo(seam1X, cy - bodyR * 0.95);
+  ctx.lineTo(seam1X + unit * 0.08, cy);
+  ctx.lineTo(seam1X, cy + bodyR * 0.95);
   ctx.stroke();
+
+  // Body-to-head articulation seam
+  ctx.beginPath();
+  const seam2X = (bodyX + headX) * 0.5;
+  ctx.moveTo(seam2X, cy - headR * 0.85);
+  ctx.lineTo(seam2X + unit * 0.1, cy);
+  ctx.lineTo(seam2X, cy + headR * 0.85);
+  ctx.stroke();
+
+  // Specular chamfer on articulation plates
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(seam1X + 1, cy - bodyR * 0.8);
+  ctx.lineTo(seam1X + unit * 0.08 + 1, cy);
+  ctx.moveTo(seam2X + 1, cy - headR * 0.7);
+  ctx.lineTo(seam2X + unit * 0.1 + 1, cy);
+  ctx.stroke();
+
+  // 4. Continuous Dorsal Spine Runner Line (Unifying all segments along center line)
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(tailX - tailR * 0.4, cy);
+  ctx.lineTo(headX + headR * 0.35, cy);
+  ctx.stroke();
+
+  // 5. Head Visor & Sensor Optics (Slit visor facing forward)
+  // Visor slot
+  ctx.fillStyle = '#020617';
+  ctx.fillRect(headX + headR * 0.05, cy - headR * 0.48, headR * 0.45, headR * 0.22);
+  ctx.fillRect(headX + headR * 0.05, cy + headR * 0.26, headR * 0.45, headR * 0.22);
+
+  // Active optical sensor bars
+  ctx.fillStyle = '#43F5FF';
+  ctx.fillRect(headX + headR * 0.15, cy - headR * 0.42, headR * 0.3, headR * 0.11);
+  ctx.fillRect(headX + headR * 0.15, cy + headR * 0.31, headR * 0.3, headR * 0.11);
+
+  // Visor specular glint
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(headX + headR * 0.28, cy - headR * 0.42, headR * 0.12, headR * 0.11);
+  ctx.fillRect(headX + headR * 0.28, cy + headR * 0.31, headR * 0.12, headR * 0.11);
 }

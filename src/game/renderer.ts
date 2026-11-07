@@ -8,6 +8,7 @@ import { SKINS } from './constants.ts';
 import { drawNaturalStylizedSnake } from './snake_renderer.ts';
 import { TrailHistoryManager, drawSnakeTrail } from './trail_renderer.ts';
 import { getThemeDefinition, isValidThemeId } from './themes.ts';
+import { drawThemeMaterialSurface } from './theme_preview.ts';
 
 function safeEllipse(
   ctx: CanvasRenderingContext2D,
@@ -311,7 +312,7 @@ export class NeonRenderer {
 
       // Theme-specific distinct material surface structures (omitted on reduced mode for pure contrast & battery)
       if (effects !== 'reduced') {
-        this.drawThemeGameplayMaterialSurface(ctx, safeThemeId, w, h, gridW, gridH, cellW, cellH, effects, now);
+        drawThemeMaterialSurface(ctx, safeThemeId, w, h, gridW, gridH, cellW, cellH, now, effects);
       }
 
       // Micro tactical crosshairs / node markers at intersections
@@ -411,274 +412,6 @@ export class NeonRenderer {
     }
   }
 
-  private drawThemeGameplayMaterialSurface(
-    ctx: CanvasRenderingContext2D,
-    themeId: BoardThemeId,
-    w: number,
-    h: number,
-    gridW: number,
-    gridH: number,
-    cellW: number,
-    cellH: number,
-    effects: 'high' | 'performance' | 'reduced',
-    now: number
-  ): void {
-    const isHigh = effects === 'high';
-
-    switch (themeId) {
-      case 'obsidian_grid': {
-        // Carbon-graphite diagonal weave on alternating panels
-        ctx.strokeStyle = 'rgba(67, 245, 255, 0.022)';
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        const step = isHigh ? Math.max(4, cellW * 0.25) : Math.max(6, cellW * 0.5);
-        for (let c = 0; c < gridW; c += 2) {
-          for (let r = 0; r < gridH; r += 2) {
-            const x0 = c * cellW;
-            const y0 = r * cellH;
-            for (let offset = step; offset < cellW + cellH; offset += step) {
-              const sx = x0 + Math.min(offset, cellW);
-              const sy = y0 + Math.max(0, offset - cellW);
-              const ex = x0 + Math.max(0, offset - cellH);
-              const ey = y0 + Math.min(offset, cellH);
-              ctx.moveTo(sx, sy);
-              ctx.lineTo(ex, ey);
-            }
-          }
-        }
-        ctx.stroke();
-
-        // Precision cyan vernier alignment ticks along horizontal and vertical mid-axes
-        ctx.strokeStyle = 'rgba(0, 245, 255, 0.16)';
-        ctx.lineWidth = 1;
-        const midY = Math.floor(gridH / 2) * cellH;
-        const midX = Math.floor(gridW / 2) * cellW;
-        ctx.beginPath();
-        for (let c = 1; c < gridW; c += 2) {
-          const x = c * cellW;
-          ctx.moveTo(x, midY - 2.5);
-          ctx.lineTo(x, midY + 2.5);
-        }
-        for (let r = 1; r < gridH; r += 2) {
-          const y = r * cellH;
-          ctx.moveTo(midX - 2.5, y);
-          ctx.lineTo(midX + 2.5, y);
-        }
-        ctx.stroke();
-        break;
-      }
-
-      case 'industrial_foundry': {
-        // Heavy dark iron plates in 3x3 modular slabs with recessed expansion seams
-        const slabSize = 3;
-        for (let c = 0; c < gridW; c += slabSize) {
-          for (let r = 0; r < gridH; r += slabSize) {
-            const px = c * cellW;
-            const py = r * cellH;
-            const pw = Math.min(slabSize * cellW, w - px);
-            const ph = Math.min(slabSize * cellH, h - py);
-
-            // Plate surface subtle metallic tint
-            ctx.fillStyle = ((c / slabSize) + (r / slabSize)) % 2 === 0 ? 'rgba(255, 158, 11, 0.016)' : 'rgba(0, 0, 0, 0.12)';
-            ctx.fillRect(px + 1, py + 1, pw - 2, ph - 2);
-
-            // Recessed joint groove: shadow bottom-right, highlight top-left
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(px + pw, py);
-            ctx.lineTo(px + pw, py + ph);
-            ctx.lineTo(px, py + ph);
-            ctx.stroke();
-
-            ctx.strokeStyle = 'rgba(255, 170, 50, 0.12)';
-            ctx.beginPath();
-            ctx.moveTo(px, py + 1);
-            ctx.lineTo(px + pw - 1, py + 1);
-            ctx.stroke();
-
-            // Brushed steel grain on high setting
-            if (isHigh) {
-              ctx.strokeStyle = 'rgba(245, 158, 11, 0.02)';
-              ctx.lineWidth = 0.5;
-              ctx.beginPath();
-              const grainStep = Math.max(4, cellH * 0.35);
-              for (let gy = py + grainStep; gy < py + ph - 2; gy += grainStep) {
-                ctx.moveTo(px + 2, gy);
-                ctx.lineTo(px + pw - 2, gy);
-              }
-              ctx.stroke();
-            }
-
-            // Countersunk corner rivets with specular glints
-            ctx.fillStyle = 'rgba(245, 158, 11, 0.32)';
-            ctx.fillRect(px + 2, py + 2, 1.5, 1.5);
-            ctx.fillRect(px + pw - 3.5, py + 2, 1.5, 1.5);
-            ctx.fillRect(px + 2, py + ph - 3.5, 1.5, 1.5);
-            ctx.fillRect(px + pw - 3.5, py + ph - 3.5, 1.5, 1.5);
-          }
-        }
-        break;
-      }
-
-      case 'arctic_research': {
-        // Crystalline fracture facets & sub-zero cryo-ceramic tiles
-        ctx.strokeStyle = 'rgba(224, 247, 250, 0.03)';
-        ctx.lineWidth = 0.6;
-        ctx.beginPath();
-        for (let c = 0; c < gridW; c++) {
-          for (let r = 0; r < gridH; r++) {
-            if ((c + r) % 2 === 0) {
-              const x = c * cellW;
-              const y = r * cellH;
-              ctx.moveTo(x + cellW * 0.2, y);
-              ctx.lineTo(x + cellW * 0.8, y + cellH);
-              if (isHigh) {
-                ctx.moveTo(x, y + cellH * 0.3);
-                ctx.lineTo(x + cellW, y + cellH * 0.7);
-              }
-            }
-          }
-        }
-        ctx.stroke();
-
-        // Diamond cryo-sensor nodes at key intersections
-        ctx.fillStyle = 'rgba(224, 247, 250, 0.22)';
-        for (let c = 2; c < gridW; c += 3) {
-          for (let r = 2; r < gridH; r += 3) {
-            const px = c * cellW;
-            const py = r * cellH;
-            ctx.beginPath();
-            ctx.moveTo(px, py - 2.5);
-            ctx.lineTo(px + 2, py);
-            ctx.lineTo(px, py + 2.5);
-            ctx.lineTo(px - 2, py);
-            ctx.closePath();
-            ctx.fill();
-          }
-        }
-
-        // Perimeter frost condensation glaze
-        ctx.strokeStyle = 'rgba(56, 225, 255, 0.06)';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(3, 3, w - 6, h - 6);
-        break;
-      }
-
-      case 'bio_dome': {
-        // Dark organic vascular reticulum / hexagonal cellular mesh
-        ctx.strokeStyle = 'rgba(16, 255, 160, 0.028)';
-        ctx.lineWidth = 0.75;
-        ctx.beginPath();
-        const step = isHigh ? 1 : 2;
-        for (let c = 0; c < gridW; c += step) {
-          for (let r = 0; r < gridH; r += step) {
-            const cx = c * cellW + cellW * 0.5;
-            const cy = r * cellH + cellH * 0.5;
-            const rad = Math.min(cellW, cellH) * 0.35;
-            for (let i = 0; i < 6; i++) {
-              const angle = (i * Math.PI) / 3;
-              const nx = cx + Math.cos(angle) * rad;
-              const ny = cy + Math.sin(angle) * rad;
-              if (i === 0) ctx.moveTo(nx, ny);
-              else ctx.lineTo(nx, ny);
-            }
-            ctx.closePath();
-          }
-        }
-        ctx.stroke();
-
-        // Living bioluminescent node respiration
-        const bioPulse = Math.sin(now * 0.003) * 0.06 + 0.18;
-        ctx.fillStyle = `rgba(16, 255, 160, ${bioPulse.toFixed(3)})`;
-        for (let c = 2; c < gridW; c += 3) {
-          for (let r = 2; r < gridH; r += 3) {
-            const px = c * cellW;
-            const py = r * cellH;
-            ctx.beginPath();
-            ctx.arc(px, py, 1.8, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-        break;
-      }
-
-      case 'solar_array': {
-        // Photovoltaic silicon wafer divisions in 3x3 module blocks
-        const panelSize = 3;
-        for (let c = 0; c < gridW; c += panelSize) {
-          for (let r = 0; r < gridH; r += panelSize) {
-            const px = c * cellW;
-            const py = r * cellH;
-            const pw = Math.min(panelSize * cellW, w - px);
-            const ph = Math.min(panelSize * cellH, h - py);
-
-            // Antireflective coating tint
-            ctx.fillStyle = 'rgba(255, 215, 0, 0.015)';
-            ctx.fillRect(px + 1, py + 1, pw - 2, ph - 2);
-
-            // Conductive busbar micro-traces across panels
-            ctx.strokeStyle = 'rgba(255, 215, 0, 0.04)';
-            ctx.lineWidth = 0.5;
-            ctx.beginPath();
-            const traceStep = pw * 0.33;
-            for (let tx = px + traceStep; tx < px + pw - 1; tx += traceStep) {
-              ctx.moveTo(tx, py + 1);
-              ctx.lineTo(tx, py + ph - 1);
-            }
-            ctx.stroke();
-
-            // Solder contact tabs at wafer junction points
-            ctx.fillStyle = 'rgba(255, 215, 0, 0.28)';
-            ctx.fillRect(px + 2, py + 2, 2, 2);
-            ctx.fillRect(px + pw - 4, py + 2, 2, 2);
-            ctx.fillRect(px + 2, py + ph - 4, 2, 2);
-            ctx.fillRect(px + pw - 4, py + ph - 4, 2, 2);
-          }
-        }
-        break;
-      }
-
-      case 'void_observatory': {
-        // Celestial coordinate ticks along center cross-axes
-        ctx.strokeStyle = 'rgba(124, 77, 255, 0.18)';
-        ctx.lineWidth = 1;
-        const midX = Math.floor(gridW / 2) * cellW;
-        const midY = Math.floor(gridH / 2) * cellH;
-
-        ctx.beginPath();
-        for (let r = 0; r <= gridH; r += 2) {
-          const y = r * cellH;
-          ctx.moveTo(midX - 2.5, y);
-          ctx.lineTo(midX + 2.5, y);
-        }
-        for (let c = 0; c <= gridW; c += 2) {
-          const x = c * cellW;
-          ctx.moveTo(x, midY - 2.5);
-          ctx.lineTo(x, midY + 2.5);
-        }
-        ctx.stroke();
-
-        // Concentric astronomical observatory focus rings around the board center
-        ctx.strokeStyle = 'rgba(124, 77, 255, 0.04)';
-        ctx.lineWidth = 0.75;
-        const centerX = w * 0.5;
-        const centerY = h * 0.5;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, Math.min(w, h) * 0.2, 0, Math.PI * 2);
-        if (isHigh) {
-          ctx.arc(centerX, centerY, Math.min(w, h) * 0.35, 0, Math.PI * 2);
-        }
-        ctx.stroke();
-
-        // Precision quantum reticle node at center
-        ctx.fillStyle = 'rgba(0, 245, 255, 0.35)';
-        ctx.fillRect(midX - 1.5, midY - 1.5, 3, 3);
-        break;
-      }
-    }
-  }
-
   private drawFoodItem(
     ctx: CanvasRenderingContext2D,
     item: FoodItem,
@@ -694,337 +427,357 @@ export class NeonRenderer {
     const r = baseRadius * pulse;
 
     ctx.save();
+    try {
+      if (item.type === 'normal') {
+        // ----------------------------------------
+        // NORMAL FOOD: Volumetric Emerald Power Sphere with Mechanical Gimbal Ring
+        // ----------------------------------------
 
-    if (item.type === 'normal') {
-      // ----------------------------------------
-      // NORMAL FOOD: Volumetric Emerald Power Sphere with Mechanical Gimbal Ring
-      // ----------------------------------------
-
-      // 1. Soft Ground Contact Shadow (directional, beneath and slightly right)
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
-      ctx.beginPath();
-      safeEllipse(ctx, cx + 0.5, cy + r * 0.88, r * 0.72, r * 0.28, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 2. Precision Counter-Rotating Gyroscopic Gimbal Rings
-      const ringAngle = now * 0.0016;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(ringAngle);
-      ctx.strokeStyle = 'rgba(52, 211, 153, 0.45)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      safeEllipse(ctx, 0, 0, r * 1.35, r * 0.65, 0, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Specular pin on gimbal ring
-      ctx.fillStyle = '#E0F2FE';
-      ctx.beginPath();
-      ctx.arc(r * 1.35, 0, 1.2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // 3. Volumetric Spherical Shading (Top-left key light source at -45°)
-      const lightX = cx - r * 0.32;
-      const lightY = cy - r * 0.35;
-      const sphereGrad = ctx.createRadialGradient(lightX, lightY, r * 0.06, cx, cy, r);
-      sphereGrad.addColorStop(0, '#FFFFFF');
-      sphereGrad.addColorStop(0.2, '#6EE7B7');
-      sphereGrad.addColorStop(0.55, '#10B981');
-      sphereGrad.addColorStop(0.85, '#047857');
-      sphereGrad.addColorStop(1, '#022C22');
-
-      if (allowGlow) {
-        ctx.shadowColor = 'rgba(52, 211, 153, 0.5)';
-        ctx.shadowBlur = 8;
-      }
-
-      ctx.fillStyle = sphereGrad;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // 4. Subtle Specular Highlight Glint
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.beginPath();
-      safeEllipse(ctx, lightX, lightY, r * 0.22, r * 0.14, -Math.PI / 4, 0, Math.PI * 2);
-      ctx.fill();
-
-    } else if (item.type === 'bonus') {
-      // ----------------------------------------
-      // BONUS FOOD: 3D Faceted Synthetic Octahedron Hyper-Gem with Chronometer
-      // ----------------------------------------
-
-      // 1. Soft Ground Contact Shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-      ctx.beginPath();
-      safeEllipse(ctx, cx + 0.5, cy + r * 1.05, r * 0.8, r * 0.3, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 2. Sleek Calibrated Radial Chronometer Countdown Bezel
-      if (item.expiresAt && item.totalDurationMs) {
-        const remaining = Math.max(0, item.expiresAt - now);
-        const fraction = remaining / item.totalDurationMs;
-        const bezelR = r * 1.45;
-
-        // Track background
-        ctx.strokeStyle = 'rgba(244, 63, 94, 0.18)';
-        ctx.lineWidth = 1.75;
+        // 1. Soft Ground Contact Shadow (directional, beneath and slightly right)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
         ctx.beginPath();
-        ctx.arc(cx, cy, bezelR, 0, Math.PI * 2);
-        ctx.stroke();
+        safeEllipse(ctx, cx + 0.5, cy + r * 0.88, r * 0.72, r * 0.28, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-        // Active countdown arc
-        if (fraction > 0) {
-          ctx.strokeStyle = fraction > 0.25 ? '#FB7185' : '#EF4444';
-          ctx.lineWidth = 2.2;
-          if (allowGlow) {
-            ctx.shadowColor = 'rgba(251, 113, 133, 0.5)';
-            ctx.shadowBlur = 6;
-          }
+        // 2. Precision Counter-Rotating Gyroscopic Gimbal Rings
+        const ringAngle = now * 0.0016;
+        ctx.save();
+        try {
+          ctx.translate(cx, cy);
+          ctx.rotate(ringAngle);
+          ctx.strokeStyle = 'rgba(52, 211, 153, 0.45)';
+          ctx.lineWidth = 1.2;
           ctx.beginPath();
-          ctx.arc(cx, cy, bezelR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fraction);
+          safeEllipse(ctx, 0, 0, r * 1.35, r * 0.65, 0, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.shadowBlur = 0;
 
-          // Countdown leading edge needle indicator
-          const tipA = -Math.PI / 2 + Math.PI * 2 * fraction;
+          // Specular pin on gimbal ring
+          ctx.fillStyle = '#E0F2FE';
+          ctx.beginPath();
+          ctx.arc(r * 1.35, 0, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        } finally {
+          ctx.restore();
+        }
+
+        // 3. Volumetric Spherical Shading (Top-left key light source at -45°)
+        const lightX = cx - r * 0.32;
+        const lightY = cy - r * 0.35;
+        const sphereGrad = ctx.createRadialGradient(lightX, lightY, r * 0.06, cx, cy, r);
+        sphereGrad.addColorStop(0, '#FFFFFF');
+        sphereGrad.addColorStop(0.2, '#6EE7B7');
+        sphereGrad.addColorStop(0.55, '#10B981');
+        sphereGrad.addColorStop(0.85, '#047857');
+        sphereGrad.addColorStop(1, '#022C22');
+
+        if (allowGlow) {
+          ctx.shadowColor = 'rgba(52, 211, 153, 0.5)';
+          ctx.shadowBlur = 8;
+        }
+
+        ctx.fillStyle = sphereGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // 4. Subtle Specular Highlight Glint
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.beginPath();
+        safeEllipse(ctx, lightX, lightY, r * 0.22, r * 0.14, -Math.PI / 4, 0, Math.PI * 2);
+        ctx.fill();
+
+      } else if (item.type === 'bonus') {
+        // ----------------------------------------
+        // BONUS FOOD: 3D Faceted Synthetic Octahedron Hyper-Gem with Chronometer
+        // ----------------------------------------
+
+        // 1. Soft Ground Contact Shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.beginPath();
+        safeEllipse(ctx, cx + 0.5, cy + r * 1.05, r * 0.8, r * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. Sleek Calibrated Radial Chronometer Countdown Bezel
+        // Defensively validate: requires positive duration and finite timestamps
+        const hasValidTiming =
+          typeof item.expiresAt === 'number' &&
+          Number.isFinite(item.expiresAt) &&
+          typeof item.totalDurationMs === 'number' &&
+          Number.isFinite(item.totalDurationMs) &&
+          item.totalDurationMs > 0;
+
+        if (hasValidTiming) {
+          const safeNow = Number.isFinite(now) ? now : Date.now();
+          const remaining = Math.max(0, (item.expiresAt as number) - safeNow);
+          const rawFraction = remaining / (item.totalDurationMs as number);
+          const fraction = Number.isFinite(rawFraction) ? Math.min(1, Math.max(0, rawFraction)) : 0;
+          const bezelR = r * 1.45;
+
+          if (Number.isFinite(bezelR) && bezelR > 0) {
+            // Track background
+            ctx.strokeStyle = 'rgba(244, 63, 94, 0.18)';
+            ctx.lineWidth = 1.75;
+            ctx.beginPath();
+            ctx.arc(cx, cy, bezelR, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Active countdown arc
+            if (fraction > 0) {
+              ctx.strokeStyle = fraction > 0.25 ? '#FB7185' : '#EF4444';
+              ctx.lineWidth = 2.2;
+              if (allowGlow) {
+                ctx.shadowColor = 'rgba(251, 113, 133, 0.5)';
+                ctx.shadowBlur = 6;
+              }
+              ctx.beginPath();
+              ctx.arc(cx, cy, bezelR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fraction);
+              ctx.stroke();
+              ctx.shadowBlur = 0;
+
+              // Countdown leading edge needle indicator
+              const tipA = -Math.PI / 2 + Math.PI * 2 * fraction;
+              ctx.fillStyle = '#FFFFFF';
+              ctx.beginPath();
+              ctx.arc(cx + Math.cos(tipA) * bezelR, cy + Math.sin(tipA) * bezelR, 1.75, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+
+        // 3. 3D Faceted Octahedron Geometry with Directional Lighting
+        const gemRot = now * 0.0012;
+        ctx.save();
+        try {
+          ctx.translate(cx, cy);
+          ctx.rotate(gemRot);
+
+          const gemW = r * 1.05;
+          const gemH = r * 1.35;
+          const topPt = { x: 0, y: -gemH };
+          const botPt = { x: 0, y: gemH };
+          const leftPt = { x: -gemW, y: 0 };
+          const rightPt = { x: gemW, y: 0 };
+          const centerPt = { x: 0, y: r * 0.15 };
+
+          // Top-Left Facet (Facing key light: brightest ruby-rose specular)
+          ctx.fillStyle = '#FECDD3';
+          ctx.beginPath();
+          ctx.moveTo(topPt.x, topPt.y);
+          ctx.lineTo(leftPt.x, leftPt.y);
+          ctx.lineTo(centerPt.x, centerPt.y);
+          ctx.closePath();
+          ctx.fill();
+
+          // Top-Right Facet (Vivid magenta-crimson)
+          ctx.fillStyle = '#F43F5E';
+          ctx.beginPath();
+          ctx.moveTo(topPt.x, topPt.y);
+          ctx.lineTo(rightPt.x, rightPt.y);
+          ctx.lineTo(centerPt.x, centerPt.y);
+          ctx.closePath();
+          ctx.fill();
+
+          // Bottom-Left Facet (Mid-tone ruby)
+          ctx.fillStyle = '#BE123C';
+          ctx.beginPath();
+          ctx.moveTo(botPt.x, botPt.y);
+          ctx.lineTo(leftPt.x, leftPt.y);
+          ctx.lineTo(centerPt.x, centerPt.y);
+          ctx.closePath();
+          ctx.fill();
+
+          // Bottom-Right Facet (Deep shadow crimson)
+          ctx.fillStyle = '#4C0519';
+          ctx.beginPath();
+          ctx.moveTo(botPt.x, botPt.y);
+          ctx.lineTo(rightPt.x, rightPt.y);
+          ctx.lineTo(centerPt.x, centerPt.y);
+          ctx.closePath();
+          ctx.fill();
+
+          // Facet Seam Chamfers
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(topPt.x, topPt.y);
+          ctx.lineTo(centerPt.x, centerPt.y);
+          ctx.lineTo(botPt.x, botPt.y);
+          ctx.moveTo(leftPt.x, leftPt.y);
+          ctx.lineTo(centerPt.x, centerPt.y);
+          ctx.lineTo(rightPt.x, rightPt.y);
+          ctx.stroke();
+
+          // Center Core Specular Point
           ctx.fillStyle = '#FFFFFF';
           ctx.beginPath();
-          ctx.arc(cx + Math.cos(tipA) * bezelR, cy + Math.sin(tipA) * bezelR, 1.75, 0, Math.PI * 2);
+          ctx.arc(centerPt.x, centerPt.y, r * 0.16, 0, Math.PI * 2);
           ctx.fill();
+        } finally {
+          ctx.restore();
         }
+
+      } else if (item.type === 'powerup_slow') {
+        // ----------------------------------------
+        // POWERUP SLOW: Chrono-Shift Sapphire Chronometer Lens
+        // ----------------------------------------
+
+        // Ground shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+        ctx.beginPath();
+        safeEllipse(ctx, cx + 0.5, cy + r * 0.95, r * 0.75, r * 0.28, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Chronometer Rhombus Casing with Directional Beveling
+        const rw = r * 1.25;
+        const rh = r * 1.25;
+
+        // Dark glass body
+        const chronoGrad = ctx.createLinearGradient(cx - rw, cy - rh, cx + rw, cy + rh);
+        chronoGrad.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
+        chronoGrad.addColorStop(0.5, 'rgba(14, 116, 144, 0.25)');
+        chronoGrad.addColorStop(1, 'rgba(8, 47, 73, 0.4)');
+        ctx.fillStyle = chronoGrad;
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - rh);
+        ctx.lineTo(cx + rw, cy);
+        ctx.lineTo(cx, cy + rh);
+        ctx.lineTo(cx - rw, cy);
+        ctx.closePath();
+        ctx.fill();
+
+        // Directional Bevel Chamfer (top-left specular highlight, bottom-right shadow)
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - rw, cy);
+        ctx.lineTo(cx, cy - rh);
+        ctx.lineTo(cx + rw, cy);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(3, 105, 161, 0.55)';
+        ctx.beginPath();
+        ctx.moveTo(cx + rw, cy);
+        ctx.lineTo(cx, cy + rh);
+        ctx.lineTo(cx - rw, cy);
+        ctx.stroke();
+
+        // Concentric Chronometer Dial Ring
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.65, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Precision Machined Chronometer Hands
+        const handAngle = now * 0.003;
+        ctx.save();
+        try {
+          ctx.translate(cx, cy);
+
+          // Hour hand
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.lineWidth = 1.75;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(handAngle) * (r * 0.5), Math.sin(handAngle) * (r * 0.5));
+          ctx.stroke();
+
+          // Minute hand
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(handAngle * 2.5) * (r * 0.72), Math.sin(handAngle * 2.5) * (r * 0.72));
+          ctx.stroke();
+
+          // Pivot center bearing
+          ctx.fillStyle = '#FFFFFF';
+          ctx.beginPath();
+          ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        } finally {
+          ctx.restore();
+        }
+
+      } else if (item.type === 'powerup_shield') {
+        // ----------------------------------------
+        // POWERUP SHIELD: Aegis Nanotech Hexagonal Plate with Energy Matrix
+        // ----------------------------------------
+
+        // Ground shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+        ctx.beginPath();
+        safeEllipse(ctx, cx + 0.5, cy + r * 0.95, r * 0.8, r * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Hexagonal chassis with directional beveling
+        const hexR = r * 1.25;
+        const hexPoints: { x: number; y: number }[] = [];
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          hexPoints.push({
+            x: cx + Math.cos(a) * hexR,
+            y: cy + Math.sin(a) * hexR,
+          });
+        }
+
+        // Base Nanotech Chitin fill
+        const aegisGrad = ctx.createLinearGradient(cx - hexR, cy - hexR, cx + hexR, cy + hexR);
+        aegisGrad.addColorStop(0, 'rgba(168, 85, 247, 0.35)');
+        aegisGrad.addColorStop(0.5, 'rgba(107, 33, 168, 0.25)');
+        aegisGrad.addColorStop(1, 'rgba(59, 7, 100, 0.4)');
+        ctx.fillStyle = aegisGrad;
+
+        ctx.beginPath();
+        ctx.moveTo(hexPoints[0].x, hexPoints[0].y);
+        for (let i = 1; i < 6; i++) {
+          ctx.lineTo(hexPoints[i].x, hexPoints[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // Directional Specular Chamfers on Hexagon Rim
+        // Top facets (0-1, 1-2, 2-3)
+        ctx.strokeStyle = 'rgba(233, 213, 255, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(hexPoints[3].x, hexPoints[3].y);
+        ctx.lineTo(hexPoints[4].x, hexPoints[4].y);
+        ctx.lineTo(hexPoints[5].x, hexPoints[5].y);
+        ctx.lineTo(hexPoints[0].x, hexPoints[0].y);
+        ctx.stroke();
+
+        // Bottom facets (shadow)
+        ctx.strokeStyle = 'rgba(88, 28, 135, 0.6)';
+        ctx.beginPath();
+        ctx.moveTo(hexPoints[0].x, hexPoints[0].y);
+        ctx.lineTo(hexPoints[1].x, hexPoints[1].y);
+        ctx.lineTo(hexPoints[2].x, hexPoints[2].y);
+        ctx.lineTo(hexPoints[3].x, hexPoints[3].y);
+        ctx.stroke();
+
+        // Internal Aegis Chevron / Force-field Glyph
+        const pulseInner = Math.sin(now * 0.008) * 0.1 + 0.9;
+        ctx.strokeStyle = 'rgba(192, 132, 252, 0.85)';
+        ctx.lineWidth = 1.75;
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.45 * pulseInner, cy - r * 0.2);
+        ctx.lineTo(cx, cy + r * 0.45 * pulseInner);
+        ctx.lineTo(cx + r * 0.45 * pulseInner, cy - r * 0.2);
+        ctx.stroke();
+
+        // Aegis center pearl
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(cx, cy - r * 0.1, r * 0.18, 0, Math.PI * 2);
+        ctx.fill();
       }
-
-      // 3. 3D Faceted Octahedron Geometry with Directional Lighting
-      // Slow rotation for dynamic facet glints
-      const gemRot = now * 0.0012;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(gemRot);
-
-      const gemW = r * 1.05;
-      const gemH = r * 1.35;
-      const topPt = { x: 0, y: -gemH };
-      const botPt = { x: 0, y: gemH };
-      const leftPt = { x: -gemW, y: 0 };
-      const rightPt = { x: gemW, y: 0 };
-      const centerPt = { x: 0, y: r * 0.15 };
-
-      // Top-Left Facet (Facing key light: brightest ruby-rose specular)
-      ctx.fillStyle = '#FECDD3';
-      ctx.beginPath();
-      ctx.moveTo(topPt.x, topPt.y);
-      ctx.lineTo(leftPt.x, leftPt.y);
-      ctx.lineTo(centerPt.x, centerPt.y);
-      ctx.closePath();
-      ctx.fill();
-
-      // Top-Right Facet (Vivid magenta-crimson)
-      ctx.fillStyle = '#F43F5E';
-      ctx.beginPath();
-      ctx.moveTo(topPt.x, topPt.y);
-      ctx.lineTo(rightPt.x, rightPt.y);
-      ctx.lineTo(centerPt.x, centerPt.y);
-      ctx.closePath();
-      ctx.fill();
-
-      // Bottom-Left Facet (Mid-tone ruby)
-      ctx.fillStyle = '#BE123C';
-      ctx.beginPath();
-      ctx.moveTo(botPt.x, botPt.y);
-      ctx.lineTo(leftPt.x, leftPt.y);
-      ctx.lineTo(centerPt.x, centerPt.y);
-      ctx.closePath();
-      ctx.fill();
-
-      // Bottom-Right Facet (Deep shadow crimson)
-      ctx.fillStyle = '#4C0519';
-      ctx.beginPath();
-      ctx.moveTo(botPt.x, botPt.y);
-      ctx.lineTo(rightPt.x, rightPt.y);
-      ctx.lineTo(centerPt.x, centerPt.y);
-      ctx.closePath();
-      ctx.fill();
-
-      // Facet Seam Chamfers
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-      ctx.lineWidth = 0.8;
-      ctx.beginPath();
-      ctx.moveTo(topPt.x, topPt.y);
-      ctx.lineTo(centerPt.x, centerPt.y);
-      ctx.lineTo(botPt.x, botPt.y);
-      ctx.moveTo(leftPt.x, leftPt.y);
-      ctx.lineTo(centerPt.x, centerPt.y);
-      ctx.lineTo(rightPt.x, rightPt.y);
-      ctx.stroke();
-
-      // Center Core Specular Point
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath();
-      ctx.arc(centerPt.x, centerPt.y, r * 0.16, 0, Math.PI * 2);
-      ctx.fill();
-
+    } finally {
       ctx.restore();
-
-    } else if (item.type === 'powerup_slow') {
-      // ----------------------------------------
-      // POWERUP SLOW: Chrono-Shift Sapphire Chronometer Lens
-      // ----------------------------------------
-
-      // Ground shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
-      ctx.beginPath();
-      safeEllipse(ctx, cx + 0.5, cy + r * 0.95, r * 0.75, r * 0.28, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Chronometer Rhombus Casing with Directional Beveling
-      const rw = r * 1.25;
-      const rh = r * 1.25;
-
-      // Dark glass body
-      const chronoGrad = ctx.createLinearGradient(cx - rw, cy - rh, cx + rw, cy + rh);
-      chronoGrad.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
-      chronoGrad.addColorStop(0.5, 'rgba(14, 116, 144, 0.25)');
-      chronoGrad.addColorStop(1, 'rgba(8, 47, 73, 0.4)');
-      ctx.fillStyle = chronoGrad;
-
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - rh);
-      ctx.lineTo(cx + rw, cy);
-      ctx.lineTo(cx, cy + rh);
-      ctx.lineTo(cx - rw, cy);
-      ctx.closePath();
-      ctx.fill();
-
-      // Directional Bevel Chamfer (top-left specular highlight, bottom-right shadow)
-      ctx.strokeStyle = 'rgba(186, 230, 253, 0.85)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(cx - rw, cy);
-      ctx.lineTo(cx, cy - rh);
-      ctx.lineTo(cx + rw, cy);
-      ctx.stroke();
-
-      ctx.strokeStyle = 'rgba(3, 105, 161, 0.55)';
-      ctx.beginPath();
-      ctx.moveTo(cx + rw, cy);
-      ctx.lineTo(cx, cy + rh);
-      ctx.lineTo(cx - rw, cy);
-      ctx.stroke();
-
-      // Concentric Chronometer Dial Ring
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.65, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Precision Machined Chronometer Hands
-      const handAngle = now * 0.003;
-      ctx.save();
-      ctx.translate(cx, cy);
-
-      // Hour hand
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-      ctx.lineWidth = 1.75;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(handAngle) * (r * 0.5), Math.sin(handAngle) * (r * 0.5));
-      ctx.stroke();
-
-      // Minute hand
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(handAngle * 2.5) * (r * 0.72), Math.sin(handAngle * 2.5) * (r * 0.72));
-      ctx.stroke();
-
-      // Pivot center bearing
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath();
-      ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-    } else if (item.type === 'powerup_shield') {
-      // ----------------------------------------
-      // POWERUP SHIELD: Aegis Nanotech Hexagonal Plate with Energy Matrix
-      // ----------------------------------------
-
-      // Ground shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
-      ctx.beginPath();
-      safeEllipse(ctx, cx + 0.5, cy + r * 0.95, r * 0.8, r * 0.3, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Hexagonal chassis with directional beveling
-      const hexR = r * 1.25;
-      const hexPoints: { x: number; y: number }[] = [];
-      for (let i = 0; i < 6; i++) {
-        const a = (i * Math.PI) / 3;
-        hexPoints.push({
-          x: cx + Math.cos(a) * hexR,
-          y: cy + Math.sin(a) * hexR,
-        });
-      }
-
-      // Base Nanotech Chitin fill
-      const aegisGrad = ctx.createLinearGradient(cx - hexR, cy - hexR, cx + hexR, cy + hexR);
-      aegisGrad.addColorStop(0, 'rgba(168, 85, 247, 0.35)');
-      aegisGrad.addColorStop(0.5, 'rgba(107, 33, 168, 0.25)');
-      aegisGrad.addColorStop(1, 'rgba(59, 7, 100, 0.4)');
-      ctx.fillStyle = aegisGrad;
-
-      ctx.beginPath();
-      ctx.moveTo(hexPoints[0].x, hexPoints[0].y);
-      for (let i = 1; i < 6; i++) {
-        ctx.lineTo(hexPoints[i].x, hexPoints[i].y);
-      }
-      ctx.closePath();
-      ctx.fill();
-
-      // Directional Specular Chamfers on Hexagon Rim
-      // Top facets (0-1, 1-2, 2-3)
-      ctx.strokeStyle = 'rgba(233, 213, 255, 0.85)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(hexPoints[3].x, hexPoints[3].y);
-      ctx.lineTo(hexPoints[4].x, hexPoints[4].y);
-      ctx.lineTo(hexPoints[5].x, hexPoints[5].y);
-      ctx.lineTo(hexPoints[0].x, hexPoints[0].y);
-      ctx.stroke();
-
-      // Bottom facets (shadow)
-      ctx.strokeStyle = 'rgba(88, 28, 135, 0.6)';
-      ctx.beginPath();
-      ctx.moveTo(hexPoints[0].x, hexPoints[0].y);
-      ctx.lineTo(hexPoints[1].x, hexPoints[1].y);
-      ctx.lineTo(hexPoints[2].x, hexPoints[2].y);
-      ctx.lineTo(hexPoints[3].x, hexPoints[3].y);
-      ctx.stroke();
-
-      // Internal Aegis Chevron / Force-field Glyph
-      const pulseInner = Math.sin(now * 0.008) * 0.1 + 0.9;
-      ctx.strokeStyle = 'rgba(192, 132, 252, 0.85)';
-      ctx.lineWidth = 1.75;
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.45 * pulseInner, cy - r * 0.2);
-      ctx.lineTo(cx, cy + r * 0.45 * pulseInner);
-      ctx.lineTo(cx + r * 0.45 * pulseInner, cy - r * 0.2);
-      ctx.stroke();
-
-      // Aegis center pearl
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath();
-      ctx.arc(cx, cy - r * 0.1, r * 0.18, 0, Math.PI * 2);
-      ctx.fill();
     }
-
-    ctx.restore();
   }
 
   private drawSnake(

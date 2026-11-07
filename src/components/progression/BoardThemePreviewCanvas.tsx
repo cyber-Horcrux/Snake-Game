@@ -70,13 +70,15 @@ export const BoardThemePreviewCanvas: React.FC<BoardThemePreviewCanvasProps> = (
       return;
     }
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const handler = () => {
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
       try {
-        setOsPrefersReducedMotion(mediaQuery.matches);
+        setOsPrefersReducedMotion(Boolean(e && 'matches' in e ? e.matches : mediaQuery.matches));
       } catch {
         // Safe disposal fallback
       }
     };
+
+    setOsPrefersReducedMotion(Boolean(mediaQuery.matches));
 
     if (typeof mediaQuery.addEventListener === 'function') {
       mediaQuery.addEventListener('change', handler);
@@ -87,7 +89,10 @@ export const BoardThemePreviewCanvas: React.FC<BoardThemePreviewCanvasProps> = (
     }
   }, []);
 
-  const shouldAnimate = animated && !(reducedMotion ?? osPrefersReducedMotion);
+  // Reduced motion: If explicit reducedMotion is true OR operating system prefers reduced motion,
+  // motion MUST be disabled. An explicit false in component props cannot override OS accessibility preference.
+  const isReducedMotion = reducedMotion === true || osPrefersReducedMotion;
+  const shouldAnimate = animated !== false && !isReducedMotion;
 
   const safeThemeId: BoardThemeId = isValidThemeId(themeId) ? themeId : 'obsidian_grid';
   const themeDef = getThemeDefinition(safeThemeId);
@@ -133,7 +138,7 @@ export const BoardThemePreviewCanvas: React.FC<BoardThemePreviewCanvasProps> = (
           timeMs: time,
           showSpecimen: true,
         });
-        return result.success;
+        return Boolean(result && result.success);
       } catch {
         return false;
       } finally {
@@ -175,7 +180,9 @@ export const BoardThemePreviewCanvas: React.FC<BoardThemePreviewCanvasProps> = (
 
     const renderLoop = (timestamp: number) => {
       animationFrameRef.current = null;
-      if (!isRunning || !isIntersecting || !isDocumentVisible) return;
+      if (!isRunning || !isIntersecting || !isDocumentVisible || consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        return;
+      }
 
       // Throttle from 60/120fps to ~30fps for passive preview cards
       if (lastFrameTime !== 0 && timestamp - lastFrameTime < TARGET_INTERVAL_MS) {
@@ -187,11 +194,18 @@ export const BoardThemePreviewCanvas: React.FC<BoardThemePreviewCanvasProps> = (
       if (startTime === null) startTime = timestamp;
       const elapsed = timestamp - startTime;
 
-      const success = renderStaticFrame(elapsed);
+      let success = false;
+      try {
+        success = renderStaticFrame(elapsed);
+      } catch {
+        success = false;
+      }
+
       if (!success) {
         consecutiveErrors++;
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          // Permanently stop runaway animation loop on persistent error
+          // Permanently stop runaway animation loop on reaching persistent error threshold
+          cancelScheduledFrame();
           return;
         }
       } else {
