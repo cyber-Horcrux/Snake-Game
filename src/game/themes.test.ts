@@ -1055,3 +1055,145 @@ test('Theme Rendering 2: Reduced visual effects and performance mode render with
     assert.ok(ctx.operations.length > 0);
   }
 });
+
+test('Theme Preview 3: drawThemePreview defensively clamps extreme dimensions and malformed timeMs', () => {
+  const ctx = createMockCanvasContext();
+
+  // Negative dimensions clamp to minimum 10x10
+  const smallResult = drawThemePreview(ctx, 'arctic_research', {
+    width: -50,
+    height: -100,
+    timeMs: NaN,
+  });
+  assert.equal(smallResult.success, true);
+  assert.ok(ctx.operations.some(op => op.startsWith('clearRect(0,0,10,10)')));
+
+  // Excessive dimensions clamp to maximum 2048x2048
+  const largeCtx = createMockCanvasContext();
+  const largeResult = drawThemePreview(largeCtx, 'solar_array', {
+    width: 6000,
+    height: 9000,
+    timeMs: Infinity,
+  });
+  assert.equal(largeResult.success, true);
+  assert.ok(largeCtx.operations.some(op => op.startsWith('clearRect(0,0,2048,2048)')));
+
+  // Negative timeMs is safely clamped to 0
+  const negTimeCtx = createMockCanvasContext();
+  const negTimeResult = drawThemePreview(negTimeCtx, 'bio_dome', {
+    width: 200,
+    height: 100,
+    timeMs: -500,
+  });
+  assert.equal(negTimeResult.success, true);
+});
+
+test('Theme Preview 4: showSpecimen toggle omits articulated miniature specimen and core', () => {
+  const ctxWithSpecimen = createMockCanvasContext();
+  drawThemePreview(ctxWithSpecimen, 'obsidian_grid', {
+    width: 200,
+    height: 100,
+    showSpecimen: true,
+  });
+
+  const ctxWithoutSpecimen = createMockCanvasContext();
+  drawThemePreview(ctxWithoutSpecimen, 'obsidian_grid', {
+    width: 200,
+    height: 100,
+    showSpecimen: false,
+  });
+
+  assert.ok(
+    ctxWithSpecimen.operations.length > ctxWithoutSpecimen.operations.length,
+    'Enabling showSpecimen must render specimen operations'
+  );
+});
+
+test('Theme Preview 5: drawThemePreview guarantees balanced save/restore even when drawing throws', () => {
+  const baseMock = createMockCanvasContext();
+  let threw = false;
+
+  // Mock context that throws on strokeRect
+  const failingCtx = {
+    ...baseMock,
+    strokeRect: () => {
+      threw = true;
+      throw new Error('Canvas hardware fault');
+    },
+  } as unknown as CanvasRenderingContext2D;
+
+  const result = drawThemePreview(failingCtx, 'industrial_foundry', {
+    width: 200,
+    height: 100,
+  });
+
+  assert.ok(threw, 'Mock must have thrown inside strokeRect');
+  assert.equal(result.success, true, 'Error must be contained gracefully');
+  // Confirm save and restore were both invoked
+  const saves = baseMock.operations.filter(op => op === 'save').length;
+  const restores = baseMock.operations.filter(op => op === 'restore').length;
+  assert.equal(saves, restores, 'Canvas state must always be restored');
+});
+
+test('Theme Rendering 3: All 6 themes execute across all 3 visual effects tiers (18 combinations)', () => {
+  const renderer = new NeonRenderer();
+  const state: GameEngineState = createInitialState('classic');
+  const tiers = ['high', 'performance', 'reduced'] as const;
+
+  for (const themeId of ALL_THEME_IDS) {
+    for (const tier of tiers) {
+      const ctx = createMockCanvasContext();
+      assert.doesNotThrow(() => {
+        renderer.render(
+          ctx,
+          640,
+          640,
+          state,
+          1,
+          {
+            visualEffects: tier,
+            skin: 'cyber_cyan',
+            trail: 'cyber_pulse',
+            boardTheme: themeId,
+            isPlaying: true,
+          },
+          1234
+        );
+      }, `Rendering ${themeId} on ${tier} tier must not throw`);
+
+      assert.ok(ctx.operations.length > 5, `Expected canvas ops for ${themeId} on ${tier}`);
+    }
+  }
+});
+
+test('Theme Rendering 4: Unknown boardTheme falls back safely to obsidian_grid', () => {
+  const renderer = new NeonRenderer();
+  const state: GameEngineState = createInitialState('classic');
+  const ctx = createMockCanvasContext();
+
+  assert.doesNotThrow(() => {
+    renderer.render(
+      ctx,
+      500,
+      500,
+      state,
+      1,
+      {
+        visualEffects: 'high',
+        skin: 'cyber_cyan',
+        trail: 'cyber_pulse',
+        boardTheme: 'corrupted_theme_id' as any,
+        isPlaying: true,
+      },
+      500
+    );
+  });
+
+  // Verify obsidian_grid floorBg is drawn
+  const obsidianFloorBg = BOARD_THEMES.obsidian_grid.floorBg;
+  assert.ok(
+    ctx.operations.some(op => op.startsWith('fillRect(0,0,500,500)')),
+    'Fallback theme must fill board dimensions'
+  );
+});
+

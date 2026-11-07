@@ -210,7 +210,19 @@ export class NeonRenderer {
     const now = Number.isFinite(frameTimeMs) ? (frameTimeMs as number) : Date.now();
 
     // 1. Board Surface, Grid & Boundaries (Theme-Driven)
-    this.drawGrid(ctx, width, height, state.gridWidth, state.gridHeight, cellW, cellH, allowGlow, settings.boardTheme);
+    this.drawGrid(
+      ctx,
+      width,
+      height,
+      state.gridWidth,
+      state.gridHeight,
+      cellW,
+      cellH,
+      allowGlow,
+      settings.boardTheme,
+      settings.visualEffects,
+      now
+    );
 
     // 1.5 Maze Mode Rendering: Obstacles & Warp Gate (only in Maze mode)
     if (state.mode === 'maze') {
@@ -254,173 +266,417 @@ export class NeonRenderer {
     cellW: number,
     cellH: number,
     allowGlow: boolean,
-    themeId?: BoardThemeId
+    themeId?: BoardThemeId,
+    visualEffects?: 'high' | 'performance' | 'reduced',
+    now: number = 0
   ): void {
     const safeThemeId: BoardThemeId = isValidThemeId(themeId) ? themeId : 'obsidian_grid';
     const theme = getThemeDefinition(safeThemeId);
+    const effects = visualEffects || 'high';
 
     ctx.save();
-
-    // 0. Base Floor Material & Atmospheric Radial Depth
-    ctx.fillStyle = theme.floorBg;
-    ctx.fillRect(0, 0, w, h);
-
-    if (typeof ctx.createRadialGradient === 'function') {
-      const grad = ctx.createRadialGradient(
-        w * 0.5,
-        h * 0.5,
-        Math.min(w, h) * 0.1,
-        w * 0.5,
-        h * 0.5,
-        Math.max(w, h) * 0.72
-      );
-      grad.addColorStop(0, theme.floorGradient.center);
-      grad.addColorStop(1, theme.floorGradient.edge);
-      ctx.fillStyle = grad;
+    try {
+      // 0. Base Floor Material & Atmospheric Radial Depth
+      ctx.fillStyle = theme.floorBg;
       ctx.fillRect(0, 0, w, h);
-    }
 
-    // 1. Subtle Architectural Floor Grid
-    ctx.lineWidth = 0.75;
-    ctx.strokeStyle = theme.grid.lineColor;
-    ctx.beginPath();
-    for (let x = 1; x < gridW; x++) {
-      ctx.moveTo(x * cellW, 0);
-      ctx.lineTo(x * cellW, h);
-    }
-    for (let y = 1; y < gridH; y++) {
-      ctx.moveTo(0, y * cellH);
-      ctx.lineTo(w, y * cellH);
-    }
-    ctx.stroke();
-
-    // Micro tactical crosshairs / node markers at intersections
-    ctx.fillStyle = theme.grid.crosshairColor;
-    const freq = theme.grid.accentFrequency || 4;
-    for (let x = freq; x < gridW; x += freq) {
-      for (let y = freq; y < gridH; y += freq) {
-        const px = x * cellW;
-        const py = y * cellH;
-        ctx.fillRect(px - 1, py - 1, 2, 2);
+      if (typeof ctx.createRadialGradient === 'function') {
+        const grad = ctx.createRadialGradient(
+          w * 0.5,
+          h * 0.5,
+          Math.min(w, h) * 0.1,
+          w * 0.5,
+          h * 0.5,
+          Math.max(w, h) * 0.72
+        );
+        grad.addColorStop(0, theme.floorGradient.center);
+        grad.addColorStop(1, theme.floorGradient.edge);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
       }
-    }
 
-    // Theme-specific surface micro-textures & accents
-    if (safeThemeId === 'industrial_foundry') {
-      // Warm industrial rivets along 2-cell intersections
-      ctx.fillStyle = 'rgba(255, 158, 11, 0.08)';
-      for (let x = 2; x < gridW; x += 4) {
-        for (let y = 2; y < gridH; y += 4) {
-          ctx.fillRect(x * cellW - 0.75, y * cellH - 0.75, 1.5, 1.5);
-        }
+      // 1. Subtle Architectural Floor Grid
+      ctx.lineWidth = 0.75;
+      ctx.strokeStyle = theme.grid.lineColor;
+      ctx.beginPath();
+      for (let x = 1; x < gridW; x++) {
+        ctx.moveTo(x * cellW, 0);
+        ctx.lineTo(x * cellW, h);
       }
-    } else if (safeThemeId === 'arctic_research') {
-      // Sub-zero diamond cryo-sensor points
-      ctx.fillStyle = 'rgba(224, 247, 250, 0.14)';
-      for (let x = 2; x < gridW; x += 6) {
-        for (let y = 2; y < gridH; y += 6) {
+      for (let y = 1; y < gridH; y++) {
+        ctx.moveTo(0, y * cellH);
+        ctx.lineTo(w, y * cellH);
+      }
+      ctx.stroke();
+
+      // Theme-specific distinct material surface structures (omitted on reduced mode for pure contrast & battery)
+      if (effects !== 'reduced') {
+        this.drawThemeGameplayMaterialSurface(ctx, safeThemeId, w, h, gridW, gridH, cellW, cellH, effects, now);
+      }
+
+      // Micro tactical crosshairs / node markers at intersections
+      ctx.fillStyle = theme.grid.crosshairColor;
+      const freq = theme.grid.accentFrequency || 4;
+      for (let x = freq; x < gridW; x += freq) {
+        for (let y = freq; y < gridH; y += freq) {
           const px = x * cellW;
           const py = y * cellH;
-          ctx.beginPath();
-          ctx.moveTo(px, py - 2);
-          ctx.lineTo(px + 2, py);
-          ctx.lineTo(px, py + 2);
-          ctx.lineTo(px - 2, py);
-          ctx.closePath();
-          ctx.fill();
+          ctx.fillRect(px - 1, py - 1, 2, 2);
         }
       }
-    } else if (safeThemeId === 'solar_array') {
-      // Photovoltaic panel seam dots
-      ctx.fillStyle = 'rgba(255, 215, 0, 0.12)';
-      for (let x = 2; x < gridW; x += 4) {
-        for (let y = 2; y < gridH; y += 4) {
-          ctx.fillRect(x * cellW - 0.75, y * cellH - 0.75, 1.5, 1.5);
+
+      // 2. Precision Outer Containment Frame (Directional Beveling & Materials)
+      // Dark base bezel
+      ctx.strokeStyle = theme.border.outerBase;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
+
+      // Bottom and Right Ambient Occlusion Bevel (Shadow - Light from top-left)
+      ctx.strokeStyle = theme.border.shadowOcclusion;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(w - 1, 1);
+      ctx.lineTo(w - 1, h - 1);
+      ctx.lineTo(1, h - 1);
+      ctx.stroke();
+
+      // Top and Left Directional Key-Light Specular Chamfer
+      ctx.strokeStyle = theme.border.specularChamfer;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(1, h - 1);
+      ctx.lineTo(1, 1);
+      ctx.lineTo(w - 1, 1);
+      ctx.stroke();
+
+      // Emissive Containment Perimeter (Restrained and Controlled)
+      ctx.strokeStyle = theme.border.emissivePerimeter;
+      ctx.lineWidth = 1;
+      if (allowGlow) {
+        ctx.shadowColor = theme.border.emissivePerimeter;
+        ctx.shadowBlur = 6;
+      }
+      ctx.strokeRect(2.5, 2.5, w - 5, h - 5);
+      ctx.shadowBlur = 0;
+
+      // 3. Precision Machined Corner Reticles
+      const cornerSize = Math.min(cellW, cellH) * 1.4;
+      ctx.strokeStyle = theme.border.cornerReticle;
+      ctx.lineWidth = 2;
+      if (allowGlow) {
+        ctx.shadowColor = theme.border.cornerReticle;
+        ctx.shadowBlur = 5;
+      }
+
+      // Top-Left Reticle
+      ctx.beginPath();
+      ctx.moveTo(1.5, cornerSize);
+      ctx.lineTo(1.5, 1.5);
+      ctx.lineTo(cornerSize, 1.5);
+      ctx.stroke();
+
+      // Top-Right Reticle
+      ctx.beginPath();
+      ctx.moveTo(w - cornerSize, 1.5);
+      ctx.lineTo(w - 1.5, 1.5);
+      ctx.lineTo(w - 1.5, cornerSize);
+      ctx.stroke();
+
+      // Bottom-Left Reticle
+      ctx.beginPath();
+      ctx.moveTo(1.5, h - cornerSize);
+      ctx.lineTo(1.5, h - 1.5);
+      ctx.lineTo(cornerSize, h - 1.5);
+      ctx.stroke();
+
+      // Bottom-Right Reticle
+      ctx.beginPath();
+      ctx.moveTo(w - cornerSize, h - 1.5);
+      ctx.lineTo(w - 1.5, h - 1.5);
+      ctx.lineTo(w - 1.5, h - cornerSize);
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+
+      // Industrial notch details on corners if industrial theme
+      if (safeThemeId === 'industrial_foundry') {
+        ctx.fillStyle = theme.border.cornerReticle;
+        ctx.fillRect(4, 4, 3, 3);
+        ctx.fillRect(w - 7, 4, 3, 3);
+        ctx.fillRect(4, h - 7, 3, 3);
+        ctx.fillRect(w - 7, h - 7, 3, 3);
+      }
+    } finally {
+      ctx.restore();
+    }
+  }
+
+  private drawThemeGameplayMaterialSurface(
+    ctx: CanvasRenderingContext2D,
+    themeId: BoardThemeId,
+    w: number,
+    h: number,
+    gridW: number,
+    gridH: number,
+    cellW: number,
+    cellH: number,
+    effects: 'high' | 'performance' | 'reduced',
+    now: number
+  ): void {
+    const isHigh = effects === 'high';
+
+    switch (themeId) {
+      case 'obsidian_grid': {
+        // Carbon-graphite diagonal weave on alternating panels
+        ctx.strokeStyle = 'rgba(67, 245, 255, 0.022)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        const step = isHigh ? Math.max(4, cellW * 0.25) : Math.max(6, cellW * 0.5);
+        for (let c = 0; c < gridW; c += 2) {
+          for (let r = 0; r < gridH; r += 2) {
+            const x0 = c * cellW;
+            const y0 = r * cellH;
+            for (let offset = step; offset < cellW + cellH; offset += step) {
+              const sx = x0 + Math.min(offset, cellW);
+              const sy = y0 + Math.max(0, offset - cellW);
+              const ex = x0 + Math.max(0, offset - cellH);
+              const ey = y0 + Math.min(offset, cellH);
+              ctx.moveTo(sx, sy);
+              ctx.lineTo(ex, ey);
+            }
+          }
         }
+        ctx.stroke();
+
+        // Precision cyan vernier alignment ticks along horizontal and vertical mid-axes
+        ctx.strokeStyle = 'rgba(0, 245, 255, 0.16)';
+        ctx.lineWidth = 1;
+        const midY = Math.floor(gridH / 2) * cellH;
+        const midX = Math.floor(gridW / 2) * cellW;
+        ctx.beginPath();
+        for (let c = 1; c < gridW; c += 2) {
+          const x = c * cellW;
+          ctx.moveTo(x, midY - 2.5);
+          ctx.lineTo(x, midY + 2.5);
+        }
+        for (let r = 1; r < gridH; r += 2) {
+          const y = r * cellH;
+          ctx.moveTo(midX - 2.5, y);
+          ctx.lineTo(midX + 2.5, y);
+        }
+        ctx.stroke();
+        break;
+      }
+
+      case 'industrial_foundry': {
+        // Heavy dark iron plates in 3x3 modular slabs with recessed expansion seams
+        const slabSize = 3;
+        for (let c = 0; c < gridW; c += slabSize) {
+          for (let r = 0; r < gridH; r += slabSize) {
+            const px = c * cellW;
+            const py = r * cellH;
+            const pw = Math.min(slabSize * cellW, w - px);
+            const ph = Math.min(slabSize * cellH, h - py);
+
+            // Plate surface subtle metallic tint
+            ctx.fillStyle = ((c / slabSize) + (r / slabSize)) % 2 === 0 ? 'rgba(255, 158, 11, 0.016)' : 'rgba(0, 0, 0, 0.12)';
+            ctx.fillRect(px + 1, py + 1, pw - 2, ph - 2);
+
+            // Recessed joint groove: shadow bottom-right, highlight top-left
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(px + pw, py);
+            ctx.lineTo(px + pw, py + ph);
+            ctx.lineTo(px, py + ph);
+            ctx.stroke();
+
+            ctx.strokeStyle = 'rgba(255, 170, 50, 0.12)';
+            ctx.beginPath();
+            ctx.moveTo(px, py + 1);
+            ctx.lineTo(px + pw - 1, py + 1);
+            ctx.stroke();
+
+            // Brushed steel grain on high setting
+            if (isHigh) {
+              ctx.strokeStyle = 'rgba(245, 158, 11, 0.02)';
+              ctx.lineWidth = 0.5;
+              ctx.beginPath();
+              const grainStep = Math.max(4, cellH * 0.35);
+              for (let gy = py + grainStep; gy < py + ph - 2; gy += grainStep) {
+                ctx.moveTo(px + 2, gy);
+                ctx.lineTo(px + pw - 2, gy);
+              }
+              ctx.stroke();
+            }
+
+            // Countersunk corner rivets with specular glints
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.32)';
+            ctx.fillRect(px + 2, py + 2, 1.5, 1.5);
+            ctx.fillRect(px + pw - 3.5, py + 2, 1.5, 1.5);
+            ctx.fillRect(px + 2, py + ph - 3.5, 1.5, 1.5);
+            ctx.fillRect(px + pw - 3.5, py + ph - 3.5, 1.5, 1.5);
+          }
+        }
+        break;
+      }
+
+      case 'arctic_research': {
+        // Crystalline fracture facets & sub-zero cryo-ceramic tiles
+        ctx.strokeStyle = 'rgba(224, 247, 250, 0.03)';
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        for (let c = 0; c < gridW; c++) {
+          for (let r = 0; r < gridH; r++) {
+            if ((c + r) % 2 === 0) {
+              const x = c * cellW;
+              const y = r * cellH;
+              ctx.moveTo(x + cellW * 0.2, y);
+              ctx.lineTo(x + cellW * 0.8, y + cellH);
+              if (isHigh) {
+                ctx.moveTo(x, y + cellH * 0.3);
+                ctx.lineTo(x + cellW, y + cellH * 0.7);
+              }
+            }
+          }
+        }
+        ctx.stroke();
+
+        // Diamond cryo-sensor nodes at key intersections
+        ctx.fillStyle = 'rgba(224, 247, 250, 0.22)';
+        for (let c = 2; c < gridW; c += 3) {
+          for (let r = 2; r < gridH; r += 3) {
+            const px = c * cellW;
+            const py = r * cellH;
+            ctx.beginPath();
+            ctx.moveTo(px, py - 2.5);
+            ctx.lineTo(px + 2, py);
+            ctx.lineTo(px, py + 2.5);
+            ctx.lineTo(px - 2, py);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+
+        // Perimeter frost condensation glaze
+        ctx.strokeStyle = 'rgba(56, 225, 255, 0.06)';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(3, 3, w - 6, h - 6);
+        break;
+      }
+
+      case 'bio_dome': {
+        // Dark organic vascular reticulum / hexagonal cellular mesh
+        ctx.strokeStyle = 'rgba(16, 255, 160, 0.028)';
+        ctx.lineWidth = 0.75;
+        ctx.beginPath();
+        const step = isHigh ? 1 : 2;
+        for (let c = 0; c < gridW; c += step) {
+          for (let r = 0; r < gridH; r += step) {
+            const cx = c * cellW + cellW * 0.5;
+            const cy = r * cellH + cellH * 0.5;
+            const rad = Math.min(cellW, cellH) * 0.35;
+            for (let i = 0; i < 6; i++) {
+              const angle = (i * Math.PI) / 3;
+              const nx = cx + Math.cos(angle) * rad;
+              const ny = cy + Math.sin(angle) * rad;
+              if (i === 0) ctx.moveTo(nx, ny);
+              else ctx.lineTo(nx, ny);
+            }
+            ctx.closePath();
+          }
+        }
+        ctx.stroke();
+
+        // Living bioluminescent node respiration
+        const bioPulse = Math.sin(now * 0.003) * 0.06 + 0.18;
+        ctx.fillStyle = `rgba(16, 255, 160, ${bioPulse.toFixed(3)})`;
+        for (let c = 2; c < gridW; c += 3) {
+          for (let r = 2; r < gridH; r += 3) {
+            const px = c * cellW;
+            const py = r * cellH;
+            ctx.beginPath();
+            ctx.arc(px, py, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        break;
+      }
+
+      case 'solar_array': {
+        // Photovoltaic silicon wafer divisions in 3x3 module blocks
+        const panelSize = 3;
+        for (let c = 0; c < gridW; c += panelSize) {
+          for (let r = 0; r < gridH; r += panelSize) {
+            const px = c * cellW;
+            const py = r * cellH;
+            const pw = Math.min(panelSize * cellW, w - px);
+            const ph = Math.min(panelSize * cellH, h - py);
+
+            // Antireflective coating tint
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.015)';
+            ctx.fillRect(px + 1, py + 1, pw - 2, ph - 2);
+
+            // Conductive busbar micro-traces across panels
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.04)';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            const traceStep = pw * 0.33;
+            for (let tx = px + traceStep; tx < px + pw - 1; tx += traceStep) {
+              ctx.moveTo(tx, py + 1);
+              ctx.lineTo(tx, py + ph - 1);
+            }
+            ctx.stroke();
+
+            // Solder contact tabs at wafer junction points
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.28)';
+            ctx.fillRect(px + 2, py + 2, 2, 2);
+            ctx.fillRect(px + pw - 4, py + 2, 2, 2);
+            ctx.fillRect(px + 2, py + ph - 4, 2, 2);
+            ctx.fillRect(px + pw - 4, py + ph - 4, 2, 2);
+          }
+        }
+        break;
+      }
+
+      case 'void_observatory': {
+        // Celestial coordinate ticks along center cross-axes
+        ctx.strokeStyle = 'rgba(124, 77, 255, 0.18)';
+        ctx.lineWidth = 1;
+        const midX = Math.floor(gridW / 2) * cellW;
+        const midY = Math.floor(gridH / 2) * cellH;
+
+        ctx.beginPath();
+        for (let r = 0; r <= gridH; r += 2) {
+          const y = r * cellH;
+          ctx.moveTo(midX - 2.5, y);
+          ctx.lineTo(midX + 2.5, y);
+        }
+        for (let c = 0; c <= gridW; c += 2) {
+          const x = c * cellW;
+          ctx.moveTo(x, midY - 2.5);
+          ctx.lineTo(x, midY + 2.5);
+        }
+        ctx.stroke();
+
+        // Concentric astronomical observatory focus rings around the board center
+        ctx.strokeStyle = 'rgba(124, 77, 255, 0.04)';
+        ctx.lineWidth = 0.75;
+        const centerX = w * 0.5;
+        const centerY = h * 0.5;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, Math.min(w, h) * 0.2, 0, Math.PI * 2);
+        if (isHigh) {
+          ctx.arc(centerX, centerY, Math.min(w, h) * 0.35, 0, Math.PI * 2);
+        }
+        ctx.stroke();
+
+        // Precision quantum reticle node at center
+        ctx.fillStyle = 'rgba(0, 245, 255, 0.35)';
+        ctx.fillRect(midX - 1.5, midY - 1.5, 3, 3);
+        break;
       }
     }
-
-    // 2. Precision Outer Containment Frame (Directional Beveling & Materials)
-    // Dark base bezel
-    ctx.strokeStyle = theme.border.outerBase;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
-
-    // Bottom and Right Ambient Occlusion Bevel (Shadow)
-    ctx.strokeStyle = theme.border.shadowOcclusion;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(w - 1, 1);
-    ctx.lineTo(w - 1, h - 1);
-    ctx.lineTo(1, h - 1);
-    ctx.stroke();
-
-    // Top and Left Directional Key-Light Specular Chamfer
-    ctx.strokeStyle = theme.border.specularChamfer;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(1, h - 1);
-    ctx.lineTo(1, 1);
-    ctx.lineTo(w - 1, 1);
-    ctx.stroke();
-
-    // Emissive Containment Perimeter (Restrained and Controlled)
-    ctx.strokeStyle = theme.border.emissivePerimeter;
-    ctx.lineWidth = 1;
-    if (allowGlow) {
-      ctx.shadowColor = theme.border.emissivePerimeter;
-      ctx.shadowBlur = 6;
-    }
-    ctx.strokeRect(2.5, 2.5, w - 5, h - 5);
-    ctx.shadowBlur = 0;
-
-    // 3. Precision Machined Corner Reticles
-    const cornerSize = Math.min(cellW, cellH) * 1.4;
-    ctx.strokeStyle = theme.border.cornerReticle;
-    ctx.lineWidth = 2;
-    if (allowGlow) {
-      ctx.shadowColor = theme.border.cornerReticle;
-      ctx.shadowBlur = 5;
-    }
-
-    // Top-Left Reticle
-    ctx.beginPath();
-    ctx.moveTo(1.5, cornerSize);
-    ctx.lineTo(1.5, 1.5);
-    ctx.lineTo(cornerSize, 1.5);
-    ctx.stroke();
-
-    // Top-Right Reticle
-    ctx.beginPath();
-    ctx.moveTo(w - cornerSize, 1.5);
-    ctx.lineTo(w - 1.5, 1.5);
-    ctx.lineTo(w - 1.5, cornerSize);
-    ctx.stroke();
-
-    // Bottom-Left Reticle
-    ctx.beginPath();
-    ctx.moveTo(1.5, h - cornerSize);
-    ctx.lineTo(1.5, h - 1.5);
-    ctx.lineTo(cornerSize, h - 1.5);
-    ctx.stroke();
-
-    // Bottom-Right Reticle
-    ctx.beginPath();
-    ctx.moveTo(w - cornerSize, h - 1.5);
-    ctx.lineTo(w - 1.5, h - 1.5);
-    ctx.lineTo(w - 1.5, h - cornerSize);
-    ctx.stroke();
-
-    // Industrial notch details on corners if industrial theme
-    if (safeThemeId === 'industrial_foundry') {
-      ctx.fillStyle = theme.border.cornerReticle;
-      ctx.fillRect(4, 4, 3, 3);
-      ctx.fillRect(w - 7, 4, 3, 3);
-      ctx.fillRect(4, h - 7, 3, 3);
-      ctx.fillRect(w - 7, h - 7, 3, 3);
-    }
-
-    ctx.restore();
   }
 
   private drawFoodItem(

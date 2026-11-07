@@ -50,8 +50,9 @@ export const BoardThemePreviewCanvas: React.FC<BoardThemePreviewCanvasProps> = (
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  const safeWidth = Math.max(10, Math.floor(width || 200));
-  const safeHeight = Math.max(10, Math.floor(height || 110));
+  // 1. Defensively validate and clamp dimensions between 10px and 2048px
+  const safeWidth = Math.min(2048, Math.max(10, Math.floor(Number.isFinite(width) ? width : 200)));
+  const safeHeight = Math.min(2048, Math.max(10, Math.floor(Number.isFinite(height) ? height : 110)));
 
   const [osPrefersReducedMotion, setOsPrefersReducedMotion] = useState<boolean>(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -100,60 +101,152 @@ export const BoardThemePreviewCanvas: React.FC<BoardThemePreviewCanvasProps> = (
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Retina / High-DPI support
-    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-    const internalWidth = Math.round(safeWidth * dpr);
-    const internalHeight = Math.round(safeHeight * dpr);
+    // Retina / High-DPI support with backing-store clamping
+    const rawDpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+    const dpr = Number.isFinite(rawDpr) ? Math.min(3, Math.max(1, rawDpr)) : 1;
+
+    const MAX_BACKING_DIMENSION = 4096;
+    let internalWidth = Math.round(safeWidth * dpr);
+    let internalHeight = Math.round(safeHeight * dpr);
+
+    if (internalWidth > MAX_BACKING_DIMENSION || internalHeight > MAX_BACKING_DIMENSION) {
+      const scaleDown = MAX_BACKING_DIMENSION / Math.max(internalWidth, internalHeight);
+      internalWidth = Math.max(1, Math.floor(internalWidth * scaleDown));
+      internalHeight = Math.max(1, Math.floor(internalHeight * scaleDown));
+    }
 
     if (canvas.width !== internalWidth || canvas.height !== internalHeight) {
       canvas.width = internalWidth;
       canvas.height = internalHeight;
     }
 
+    const scaleX = internalWidth / safeWidth;
+    const scaleY = internalHeight / safeHeight;
+
+    const renderStaticFrame = (time: number = 0): boolean => {
+      ctx.save();
+      ctx.scale(scaleX, scaleY);
+      try {
+        const result = drawThemePreview(ctx, safeThemeId, {
+          width: safeWidth,
+          height: safeHeight,
+          timeMs: time,
+          showSpecimen: true,
+        });
+        return result.success;
+      } catch {
+        return false;
+      } finally {
+        ctx.restore();
+      }
+    };
+
     // Static single-pass render when animation is disabled
     if (!shouldAnimate) {
-      ctx.save();
-      ctx.scale(dpr, dpr);
-      drawThemePreview(ctx, safeThemeId, {
-        width: safeWidth,
-        height: safeHeight,
-        timeMs: 0,
-        showSpecimen: true,
-      });
-      ctx.restore();
+      renderStaticFrame(0);
       return;
     }
 
-    // Continuous 60fps loop with frame time
+    // Dynamic lifecycle management: 30fps throttling, visibility & offscreen pausing, error containment
     let startTime: number | null = null;
+    let lastFrameTime = 0;
+    const TARGET_INTERVAL_MS = 32; // Throttle cosmetic preview animation to ~30 FPS
     let isRunning = true;
+    let isIntersecting = true;
+    let isDocumentVisible = typeof document === 'undefined' ? true : !document.hidden;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 3;
 
-    const renderLoop = (timestamp: number) => {
-      if (!isRunning) return;
-
-      if (startTime === null) startTime = timestamp;
-      const elapsed = timestamp - startTime;
-
-      ctx.save();
-      ctx.scale(dpr, dpr);
-      drawThemePreview(ctx, safeThemeId, {
-        width: safeWidth,
-        height: safeHeight,
-        timeMs: elapsed,
-        showSpecimen: true,
-      });
-      ctx.restore();
-
-      animationFrameRef.current = safeRequestAnimationFrame(renderLoop);
+    const scheduleNextFrame = () => {
+      if (!isRunning || !isIntersecting || !isDocumentVisible || consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        return;
+      }
+      if (animationFrameRef.current === null) {
+        animationFrameRef.current = safeRequestAnimationFrame(renderLoop);
+      }
     };
 
-    animationFrameRef.current = safeRequestAnimationFrame(renderLoop);
-
-    return () => {
-      isRunning = false;
+    const cancelScheduledFrame = () => {
       if (animationFrameRef.current !== null) {
         safeCancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
+      }
+    };
+
+    const renderLoop = (timestamp: number) => {
+      animationFrameRef.current = null;
+      if (!isRunning || !isIntersecting || !isDocumentVisible) return;
+
+      // Throttle from 60/120fps to ~30fps for passive preview cards
+      if (lastFrameTime !== 0 && timestamp - lastFrameTime < TARGET_INTERVAL_MS) {
+        scheduleNextFrame();
+        return;
+      }
+
+      lastFrameTime = timestamp;
+      if (startTime === null) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+
+      const success = renderStaticFrame(elapsed);
+      if (!success) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          // Permanently stop runaway animation loop on persistent error
+          return;
+        }
+      } else {
+        consecutiveErrors = 0;
+      }
+
+      scheduleNextFrame();
+    };
+
+    // 1. Initial draw and kick off loop
+    scheduleNextFrame();
+
+    // 2. Pause when document / tab is hidden
+    const handleVisibilityChange = () => {
+      isDocumentVisible = typeof document === 'undefined' ? true : !document.hidden;
+      if (isDocumentVisible) {
+        scheduleNextFrame();
+      } else {
+        cancelScheduledFrame();
+      }
+    };
+
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    // 3. Pause when canvas is scrolled off-screen via IntersectionObserver
+    let observer: IntersectionObserver | null = null;
+    if (typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function') {
+      try {
+        observer = new IntersectionObserver((entries) => {
+          const entry = entries[0];
+          if (entry) {
+            isIntersecting = entry.isIntersecting;
+            if (isIntersecting) {
+              scheduleNextFrame();
+            } else {
+              cancelScheduledFrame();
+            }
+          }
+        }, { threshold: 0.05 });
+        observer.observe(canvas);
+      } catch {
+        // Fallback: keep isIntersecting = true
+      }
+    }
+
+    return () => {
+      isRunning = false;
+      cancelScheduledFrame();
+      if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+      if (observer) {
+        observer.disconnect();
       }
     };
   }, [safeThemeId, safeWidth, safeHeight, shouldAnimate]);
