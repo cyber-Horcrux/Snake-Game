@@ -64,6 +64,18 @@ class MemoryStorage implements StorageLike {
   }
 }
 
+// Controlled failing storage double for fault injection on specific keys
+class ControlledFailingStorage extends MemoryStorage {
+  public failOnSetKeys = new Set<string>();
+
+  override setItem(key: string, value: string): void {
+    if (this.failOnSetKeys.has(key)) {
+      throw new Error(`Controlled storage failure on key: ${key}`);
+    }
+    super.setItem(key, value);
+  }
+}
+
 // ============================================================================
 // 1. XP CALCULATIONS & RECONFIRMED EXAMPLES
 // ============================================================================
@@ -1164,14 +1176,25 @@ test('Crash Interruption 1: Crash after ledger write recovers BOTH 50 XP and 25 
 
   // Completed challenge in daily state, but reward NOT yet claimed
   const dailyState = createInitialDailyState(date, now);
-  dailyState.challenges[0] = {
-    ...dailyState.challenges[0],
-    id: 'easy_score_100',
-    progress: 100,
-    target: 100,
-    completed: true,
-    rewardClaimed: false,
-  };
+  const targetIndex = dailyState.challenges.findIndex(c => c.id === 'easy_score_100');
+  if (targetIndex >= 0) {
+    dailyState.challenges[targetIndex] = {
+      ...dailyState.challenges[targetIndex],
+      progress: 100,
+      target: 100,
+      completed: true,
+      rewardClaimed: false,
+    };
+  } else {
+    dailyState.challenges[0] = {
+      ...dailyState.challenges[0],
+      id: 'easy_score_100',
+      progress: 100,
+      target: 100,
+      completed: true,
+      rewardClaimed: false,
+    };
+  }
   dailyState.lifetimeStars = 50;
   saveDailyChallengeState(dailyState, storage);
 
@@ -1202,8 +1225,8 @@ test('Crash Interruption 1: Crash after ledger write recovers BOTH 50 XP and 25 
     storage
   );
 
-  // App restarts and runs reconciliation
-  const recon = reconcileDailyRewards(storage);
+  // App restarts and runs reconciliation with explicit timestamp
+  const recon = reconcileDailyRewards(storage, now);
 
   // Verify XP recovered
   assert.equal(recon.reconciledCount, 1);
@@ -1217,7 +1240,9 @@ test('Crash Interruption 1: Crash after ledger write recovers BOTH 50 XP and 25 
 
   const updatedDaily = loadDailyChallengeState(storage, now);
   assert.equal(updatedDaily.lifetimeStars, 75); // 50 + 25
-  assert.equal(updatedDaily.challenges[0].rewardClaimed, true);
+  const recoveredChallenge = updatedDaily.challenges.find(c => c.id === 'easy_score_100');
+  assert.ok(recoveredChallenge, 'Target challenge easy_score_100 must exist');
+  assert.equal(recoveredChallenge.rewardClaimed, true);
   assert.equal(updatedDaily.appliedRewardIds?.includes(rewardId), true);
 });
 
@@ -1229,14 +1254,25 @@ test('Crash Interruption 2: Crash after XP write but before Trophy Stars recover
 
   // Completed challenge in daily state, but reward NOT yet marked claimed and stars NOT credited
   const dailyState = createInitialDailyState(date, now);
-  dailyState.challenges[0] = {
-    ...dailyState.challenges[0],
-    id: 'easy_score_100',
-    progress: 100,
-    target: 100,
-    completed: true,
-    rewardClaimed: false,
-  };
+  const targetIndex = dailyState.challenges.findIndex(c => c.id === 'easy_score_100');
+  if (targetIndex >= 0) {
+    dailyState.challenges[targetIndex] = {
+      ...dailyState.challenges[targetIndex],
+      progress: 100,
+      target: 100,
+      completed: true,
+      rewardClaimed: false,
+    };
+  } else {
+    dailyState.challenges[0] = {
+      ...dailyState.challenges[0],
+      id: 'easy_score_100',
+      progress: 100,
+      target: 100,
+      completed: true,
+      rewardClaimed: false,
+    };
+  }
   dailyState.lifetimeStars = 100;
   dailyState.appliedRewardIds = [];
   saveDailyChallengeState(dailyState, storage);
@@ -1268,8 +1304,8 @@ test('Crash Interruption 2: Crash after XP write but before Trophy Stars recover
     storage
   );
 
-  // Run reconciliation
-  const recon = reconcileDailyRewards(storage);
+  // Run reconciliation with explicit timestamp
+  const recon = reconcileDailyRewards(storage, now);
 
   // XP: must NOT be duplicated (0 extra XP)
   assert.equal(recon.reconciledCount, 0);
@@ -1281,7 +1317,9 @@ test('Crash Interruption 2: Crash after XP write but before Trophy Stars recover
 
   const updatedDaily = loadDailyChallengeState(storage, now);
   assert.equal(updatedDaily.lifetimeStars, 125, 'Trophy stars must be recovered to 125');
-  assert.equal(updatedDaily.challenges[0].rewardClaimed, true);
+  const recoveredChallenge = updatedDaily.challenges.find(c => c.id === 'easy_score_100');
+  assert.ok(recoveredChallenge, 'Target challenge easy_score_100 must exist');
+  assert.equal(recoveredChallenge.rewardClaimed, true);
   assert.equal(updatedDaily.appliedRewardIds?.includes(rewardId), true);
 });
 
@@ -1293,14 +1331,25 @@ test('Crash Interruption 3: Crash after Trophy Stars but before XP recovers XP w
 
   // Daily challenge state: STARS ALREADY APPLIED (25 stars added, rewardId in appliedRewardIds)
   const dailyState = createInitialDailyState(date, now);
-  dailyState.challenges[0] = {
-    ...dailyState.challenges[0],
-    id: 'easy_score_100',
-    progress: 100,
-    target: 100,
-    completed: true,
-    rewardClaimed: true,
-  };
+  const targetIndex = dailyState.challenges.findIndex(c => c.id === 'easy_score_100');
+  if (targetIndex >= 0) {
+    dailyState.challenges[targetIndex] = {
+      ...dailyState.challenges[targetIndex],
+      progress: 100,
+      target: 100,
+      completed: true,
+      rewardClaimed: true,
+    };
+  } else {
+    dailyState.challenges[0] = {
+      ...dailyState.challenges[0],
+      id: 'easy_score_100',
+      progress: 100,
+      target: 100,
+      completed: true,
+      rewardClaimed: true,
+    };
+  }
   dailyState.lifetimeStars = 125;
   dailyState.appliedRewardIds = [rewardId];
   saveDailyChallengeState(dailyState, storage);
@@ -1332,8 +1381,8 @@ test('Crash Interruption 3: Crash after Trophy Stars but before XP recovers XP w
     storage
   );
 
-  // Run reconciliation
-  const recon = reconcileDailyRewards(storage);
+  // Run reconciliation with explicit timestamp
+  const recon = reconcileDailyRewards(storage, now);
 
   // XP: must be safely recovered (+50 XP)
   assert.equal(recon.reconciledCount, 1);
@@ -1345,6 +1394,9 @@ test('Crash Interruption 3: Crash after Trophy Stars but before XP recovers XP w
 
   const updatedDaily = loadDailyChallengeState(storage, now);
   assert.equal(updatedDaily.lifetimeStars, 125, 'Trophy stars must remain 125 without duplicate award');
+  const recoveredChallenge = updatedDaily.challenges.find(c => c.id === 'easy_score_100');
+  assert.ok(recoveredChallenge, 'Target challenge easy_score_100 must exist');
+  assert.equal(recoveredChallenge.rewardClaimed, true);
 });
 
 test('Crash Interruption 4: Crash recovery across midnight date rollover preserves lifetime stars and XP', () => {
@@ -1394,7 +1446,7 @@ test('Crash Interruption 4: Crash recovery across midnight date rollover preserv
   assert.equal(todayState.activeDate, todayDate);
 
   // Run reconciliation
-  const recon = reconcileDailyRewards(storage);
+  const recon = reconcileDailyRewards(storage, todayTime);
 
   assert.equal(recon.reconciledCount, 1);
   assert.equal(recon.progressionState.totalLifetimeXp, 250); // 200 + 50 XP
@@ -1431,14 +1483,14 @@ test('Crash Interruption 5: Repeated reconciliation runs across multiple restart
   );
 
   // First reconciliation recovers everything
-  const r1 = reconcileDailyRewards(storage);
+  const r1 = reconcileDailyRewards(storage, now);
   assert.equal(r1.reconciledCount, 1);
   assert.equal(r1.reconciledStarsCount, 1);
   assert.equal(r1.progressionState.totalLifetimeXp, 50);
 
   // 5 consecutive simulated reboots / re-reconciliations
   for (let cycle = 2; cycle <= 6; cycle++) {
-    const rCycle = reconcileDailyRewards(storage);
+    const rCycle = reconcileDailyRewards(storage, now);
     assert.equal(rCycle.reconciledCount, 0, `Cycle ${cycle} must not reconcile XP`);
     assert.equal(rCycle.reconciledStarsCount, 0, `Cycle ${cycle} must not reconcile Stars`);
     assert.equal(rCycle.progressionState.totalLifetimeXp, 50, `Cycle ${cycle} XP must remain 50`);
@@ -1446,6 +1498,166 @@ test('Crash Interruption 5: Repeated reconciliation runs across multiple restart
     const daily = loadDailyChallengeState(storage, now);
     assert.equal(daily.lifetimeStars, 25, `Cycle ${cycle} Stars must remain 25`);
   }
+});
+
+test('Deterministic reconciliation clock: injected timestamp operates independently of machine current date', () => {
+  const storage = new MemoryStorage();
+  const customDate = '2028-08-18';
+  const customTime = Date.UTC(2028, 7, 18, 14, 30, 0);
+  const rewardId = generateDailyRewardId(customDate, 'easy_score_100');
+
+  // Ledger has record timestamped at customTime
+  saveDailyRewardLedger(
+    {
+      records: [
+        {
+          rewardId,
+          utcDate: customDate,
+          challengeId: 'easy_score_100',
+          xpAmount: 50,
+          starsAmount: 25,
+          claimedAt: customTime,
+        },
+      ],
+    },
+    storage
+  );
+
+  // Challenge on customDate is completed but uncredited
+  const customDaily = createInitialDailyState(customDate, customTime);
+  const challengeIdx = customDaily.challenges.findIndex(c => c.id === 'easy_score_100');
+  if (challengeIdx >= 0) {
+    customDaily.challenges[challengeIdx].progress = 100;
+    customDaily.challenges[challengeIdx].completed = true;
+    customDaily.challenges[challengeIdx].rewardClaimed = false;
+  }
+  saveDailyChallengeState(customDaily, storage);
+
+  // Initial progression
+  savePlayerProgression({ ...DEFAULT_PLAYER_PROGRESSION, totalLifetimeXp: 100 }, storage);
+
+  // Reconcile with injected timestamp
+  const recon = reconcileDailyRewards(storage, customTime);
+  assert.equal(recon.reconciledCount, 1);
+  assert.equal(recon.reconciledStarsCount, 1);
+  assert.equal(recon.progressionState.totalLifetimeXp, 150);
+
+  const updatedDaily = loadDailyChallengeState(storage, customTime);
+  assert.equal(updatedDaily.activeDate, customDate);
+  assert.equal(updatedDaily.lifetimeStars, 25);
+  const ch = updatedDaily.challenges.find(c => c.id === 'easy_score_100');
+  assert.ok(ch);
+  assert.equal(ch.rewardClaimed, true);
+
+  // Running reconciliation again with same timestamp is completely idempotent
+  const recon2 = reconcileDailyRewards(storage, customTime);
+  assert.equal(recon2.reconciledCount, 0);
+  assert.equal(recon2.reconciledStarsCount, 0);
+  assert.equal(recon2.progressionState.totalLifetimeXp, 150);
+});
+
+test('Ledger persistence failure: transaction halts immediately, awarding no XP, no Stars, and leaving challenge unclaimed', () => {
+  const storage = new ControlledFailingStorage();
+  const date = '2026-11-06';
+  const now = Date.UTC(2026, 10, 6, 12, 0, 0);
+
+  // Configure daily state with completed easy_score_100 challenge
+  const dailyState = createInitialDailyState(date, now);
+  const targetIndex = dailyState.challenges.findIndex(c => c.id === 'easy_score_100');
+  if (targetIndex >= 0) {
+    dailyState.challenges[targetIndex] = {
+      ...dailyState.challenges[targetIndex],
+      progress: 100,
+      target: 100,
+      completed: true,
+      rewardClaimed: false,
+    };
+  }
+  dailyState.lifetimeStars = 50;
+  saveDailyChallengeState(dailyState, storage);
+
+  // Initial progression: 100 XP
+  savePlayerProgression(
+    {
+      ...DEFAULT_PLAYER_PROGRESSION,
+      totalLifetimeXp: 100,
+      appliedRewardIds: [],
+    },
+    storage
+  );
+
+  // Storage fails specifically when saving the daily reward ledger
+  storage.failOnSetKeys.add(STORAGE_KEYS.DAILY_REWARD_LEDGER);
+
+  // Attempt to claim daily reward
+  const claimResult = recordDailyRewardClaim('easy_score_100', date, storage, now);
+
+  // Verify transaction halted immediately with informative failure
+  assert.equal(claimResult.success, false, 'Transaction must not report success');
+  assert.equal(claimResult.xpEarned, 0, 'No XP must be reported earned');
+  assert.equal(claimResult.alreadyClaimed, false, 'Should not be marked alreadyClaimed');
+  assert.ok(claimResult.error && claimResult.error.length > 0, 'Informative error string must be returned');
+  assert.equal(claimResult.progressionState.totalLifetimeXp, 100, 'Returned progression state must not increase XP');
+  assert.equal(claimResult.progressionState.appliedRewardIds.length, 0, 'No rewardId applied in returned state');
+
+  // Verify storage state: progression was NOT modified
+  const persistedProgression = loadPlayerProgression(storage);
+  assert.equal(persistedProgression.totalLifetimeXp, 100, 'Persisted progression XP must not increase');
+  assert.equal(persistedProgression.appliedRewardIds.length, 0, 'Persisted progression must have 0 applied rewards');
+
+  // Verify storage state: daily challenge was NOT marked claimed and stars NOT credited
+  const persistedDaily = loadDailyChallengeState(storage, now);
+  assert.equal(persistedDaily.lifetimeStars, 50, 'Lifetime stars must not increase');
+  assert.equal(persistedDaily.appliedRewardIds?.length ?? 0, 0, 'No rewardId applied to daily state');
+  const targetChallenge = persistedDaily.challenges.find(c => c.id === 'easy_score_100');
+  assert.ok(targetChallenge, 'Target challenge must exist');
+  assert.equal(targetChallenge.rewardClaimed, false, 'Target challenge must remain unclaimed');
+
+  // Verify storage state: ledger was NOT modified
+  storage.failOnSetKeys.clear();
+  const persistedLedger = loadDailyRewardLedger(storage);
+  assert.equal(persistedLedger.records.length, 0, 'Ledger must not contain any records');
+});
+
+test('Existing reward behavior and compatibility: successful claim awards XP and Stars, prevents duplicate claim', () => {
+  const storage = new MemoryStorage();
+  const date = '2026-11-06';
+  const now = Date.UTC(2026, 10, 6, 12, 0, 0);
+
+  const dailyState = createInitialDailyState(date, now);
+  const targetIndex = dailyState.challenges.findIndex(c => c.id === 'easy_score_100');
+  if (targetIndex >= 0) {
+    dailyState.challenges[targetIndex] = {
+      ...dailyState.challenges[targetIndex],
+      progress: 100,
+      target: 100,
+      completed: true,
+      rewardClaimed: false,
+    };
+  }
+  dailyState.lifetimeStars = 50;
+  saveDailyChallengeState(dailyState, storage);
+  savePlayerProgression({ ...DEFAULT_PLAYER_PROGRESSION, totalLifetimeXp: 100 }, storage);
+
+  // Successful claim
+  const claimResult = recordDailyRewardClaim('easy_score_100', date, storage, now);
+  assert.equal(claimResult.success, true);
+  assert.equal(claimResult.xpEarned, 50);
+  assert.equal(claimResult.alreadyClaimed, false);
+  assert.equal(claimResult.progressionState.totalLifetimeXp, 150);
+
+  const dailyAfter = loadDailyChallengeState(storage, now);
+  assert.equal(dailyAfter.lifetimeStars, 75);
+  const chAfter = dailyAfter.challenges.find(c => c.id === 'easy_score_100');
+  assert.ok(chAfter);
+  assert.equal(chAfter.rewardClaimed, true);
+
+  // Duplicate claim attempt
+  const dupeResult = recordDailyRewardClaim('easy_score_100', date, storage, now);
+  assert.equal(dupeResult.success, false);
+  assert.equal(dupeResult.alreadyClaimed, true);
+  assert.equal(dupeResult.xpEarned, 0);
+  assert.equal(dupeResult.progressionState.totalLifetimeXp, 150);
 });
 
 test('Crash Interruption 6: Malformed daily challenge storage does not crash reconciliation', () => {

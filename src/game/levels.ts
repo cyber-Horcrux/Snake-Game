@@ -913,7 +913,17 @@ export function recordDailyRewardClaim(
     claimedAt: effectiveTimestamp,
   };
   ledger.records.push(newRecord);
-  saveDailyRewardLedger(ledger, storage);
+  const ledgerSaved = saveDailyRewardLedger(ledger, storage);
+  if (!ledgerSaved) {
+    return {
+      success: false,
+      rewardId,
+      xpEarned: 0,
+      alreadyClaimed: false,
+      error: 'Failed to persist daily reward ledger to storage',
+      progressionState: currentProgression,
+    };
+  }
 
   // 4. Apply 50 XP to PlayerProgressionState (recording rewardId in appliedRewardIds)
   const earnResult = awardCustomXp(
@@ -960,11 +970,12 @@ export function recordDailyRewardClaim(
  * - Completely idempotent: running repeatedly produces 0 duplicate rewards.
  */
 export function reconcileDailyRewards(
-  storage: StorageLike | null = getBrowserStorage()
+  storage: StorageLike | null = getBrowserStorage(),
+  currentTimestamp: number = Date.now()
 ): DailyRewardReconciliationResult {
   const progression = loadPlayerProgression(storage);
   const ledger = loadDailyRewardLedger(storage);
-  const dailyState = loadDailyChallengeState(storage);
+  const dailyState = loadDailyChallengeState(storage, currentTimestamp);
 
   if (ledger.records.length === 0) {
     return {
@@ -1015,32 +1026,31 @@ export function reconcileDailyRewards(
   // 2. Reconcile Trophy Stars in DailyChallengeUserState
   const appliedStarsSet = new Set(dailyState.appliedRewardIds || []);
   const missingStarsRecords: DailyRewardRecord[] = [];
+  let totalStarsToAdd = 0;
+  const reconciledStarsRewardIds: string[] = [];
+  let dailyStateModified = false;
 
   for (const record of ledger.records) {
     if (!appliedStarsSet.has(record.rewardId)) {
       appliedStarsSet.add(record.rewardId);
       missingStarsRecords.push(record);
+      totalStarsToAdd += sanitizeNonNegativeInt(record.starsAmount, REWARD_STARS.PER_CHALLENGE);
+      reconciledStarsRewardIds.push(record.rewardId);
+      dailyStateModified = true;
+    }
+
+    // If active challenges on that date include this challenge, mark it claimed
+    if (dailyState.activeDate === record.utcDate) {
+      const challenge = dailyState.challenges.find(c => c.id === record.challengeId);
+      if (challenge && (!challenge.rewardClaimed || !challenge.completed)) {
+        challenge.completed = true;
+        challenge.rewardClaimed = true;
+        dailyStateModified = true;
+      }
     }
   }
 
-  let totalStarsToAdd = 0;
-  const reconciledStarsRewardIds: string[] = [];
-
-  if (missingStarsRecords.length > 0) {
-    for (const record of missingStarsRecords) {
-      totalStarsToAdd += sanitizeNonNegativeInt(record.starsAmount, REWARD_STARS.PER_CHALLENGE);
-      reconciledStarsRewardIds.push(record.rewardId);
-
-      // If active challenges on that date include this challenge, mark it claimed
-      if (dailyState.activeDate === record.utcDate) {
-        const challenge = dailyState.challenges.find(c => c.id === record.challengeId);
-        if (challenge) {
-          challenge.completed = true;
-          challenge.rewardClaimed = true;
-        }
-      }
-    }
-
+  if (dailyStateModified) {
     dailyState.lifetimeStars += totalStarsToAdd;
     dailyState.appliedRewardIds = Array.from(appliedStarsSet);
     saveDailyChallengeState(dailyState, storage);
