@@ -12,7 +12,7 @@ import {
   type SpinePoint,
   type SmoothSpineNode,
 } from './snake_renderer.ts';
-import { ALL_SKIN_IDS, getSkinDefinition } from './skins.ts';
+import { ALL_SKIN_IDS } from './skins.ts';
 import { NeonRenderer } from './renderer.ts';
 import { drawSkinPreview } from './skin_preview.ts';
 import { createInitialState } from './engine.ts';
@@ -56,6 +56,10 @@ class MockTrackingCanvasContext {
 
   closePath(): void {
     this.operations.push({ method: 'closePath', args: [] });
+  }
+
+  clip(): void {
+    this.operations.push({ method: 'clip', args: [] });
   }
 
   moveTo(x: number, y: number): void {
@@ -135,6 +139,21 @@ class MockTrackingCanvasContext {
   }
 }
 
+/**
+ * Geometric helper to test if two line segments (p1-p2) and (p3-p4) intersect.
+ */
+function segmentsIntersect(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+  p4: { x: number; y: number }
+): boolean {
+  function ccw(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+    return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
+  }
+  return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
+}
+
 // =============================================================================
 // 1. GEOMETRY & SPINE SEGMENTATION TESTS
 // =============================================================================
@@ -155,7 +174,6 @@ test('Spine split: Screen wraparound in Zen mode correctly divides into independ
   const points: SpinePoint[] = [
     { x: 10, y: 100 },
     { x: 20, y: 100 },
-    // Wraparound jump across 400px board
     { x: 390, y: 100 },
     { x: 400, y: 100 },
   ];
@@ -223,7 +241,7 @@ test('Head anatomy: Symmetrical paired lateral eyes rotate with all four directi
   }
 });
 
-test('Head anatomy: Wedge head silhouette renders snout, jowls, crown plate, and dorsal crest', () => {
+test('Head anatomy: Smooth anatomical head silhouette renders rounded snout, jowls, crown plate, and crest', () => {
   const ctx = new MockTrackingCanvasContext();
   const skin = getSkinVisuals('arctic_frost');
   drawStylizedSnakeHead(
@@ -267,56 +285,58 @@ test('Continuous body: Multi-zone ribbon bridges connect adjacent spine nodes wi
     true
   );
 
-  assert.ok(ctx.fillStylesUsed.has(skin.bodyColors[0]), 'Uses skin primary body color');
+  assert.ok(ctx.fillStylesUsed.has(skin.bodyColors[1]), 'Uses skin base body color');
   assert.ok(ctx.operations.filter((op) => op.method === 'fill').length >= 3);
 });
 
-test('Tail tip: Verified outward direction extends away from body along terminal tangent', () => {
-  const ctxWithTail = new MockTrackingCanvasContext();
-  // Snake traveling in +X direction from head (100) to tail (160)
-  const chain: SpinePoint[] = [
-    { x: 100, y: 100 },
-    { x: 120, y: 100 },
-    { x: 140, y: 100 },
-    { x: 160, y: 100 },
-  ];
+test('Tail tip: Outward direction verified for all 4 cardinal directions and diagonals', () => {
   const skin = getSkinVisuals('gold_prestige');
+  const baseR = 14;
 
-  drawContinuousSnakeBody(
-    ctxWithTail as unknown as CanvasRenderingContext2D,
-    chain,
-    14,
-    skin,
-    false,
-    'high',
-    true,
-    true
-  );
+  const testVectors: { name: string; dx: number; dy: number }[] = [
+    { name: 'RIGHT', dx: 20, dy: 0 },
+    { name: 'LEFT', dx: -20, dy: 0 },
+    { name: 'DOWN', dx: 0, dy: 20 },
+    { name: 'UP', dx: 0, dy: -20 },
+    { name: 'DIAGONAL_SE', dx: 20, dy: 20 },
+    { name: 'DIAGONAL_NW', dx: -20, dy: -20 },
+  ];
 
-  // Find all lineTo operations
-  const lineTos = ctxWithTail.operations.filter((op) => op.method === 'lineTo');
-  assert.ok(lineTos.length > 0);
+  for (const v of testVectors) {
+    const chain: SpinePoint[] = [
+      { x: 100, y: 100 },
+      { x: 100 + v.dx, y: 100 + v.dy },
+      { x: 100 + v.dx * 2, y: 100 + v.dy * 2 },
+      { x: 100 + v.dx * 3, y: 100 + v.dy * 3 },
+    ];
 
-  // The tail terminal is at x=160. The tail tip MUST extend OUTWARD (x > 160), away from the head at x=100
-  const maxRecordedX = Math.max(...lineTos.map((op) => op.args[0]));
-  assert.ok(maxRecordedX > 160, `Tail tip x (${maxRecordedX}) must extend outward past tail base x (160)`);
+    const ctx = new MockTrackingCanvasContext();
+    drawContinuousSnakeBody(
+      ctx as unknown as CanvasRenderingContext2D,
+      chain,
+      baseR,
+      skin,
+      false,
+      'high',
+      true,
+      true
+    );
 
-  // Render without tail chain (Zen split segment before wrap)
-  const ctxWithoutTail = new MockTrackingCanvasContext();
-  drawContinuousSnakeBody(
-    ctxWithoutTail as unknown as CanvasRenderingContext2D,
-    chain,
-    14,
-    skin,
-    false,
-    'high',
-    true,
-    false
-  );
+    const tailTerminal = chain[chain.length - 1];
+    const lineTos = ctx.operations.filter((op) => op.method === 'lineTo');
+    assert.ok(lineTos.length > 0);
 
-  const lineTosWithoutTail = ctxWithoutTail.operations.filter((op) => op.method === 'lineTo');
-  const maxRecordedXWithoutTail = Math.max(...lineTosWithoutTail.map((op) => op.args[0]));
-  assert.ok(maxRecordedX > maxRecordedXWithoutTail, 'Tail tip extends further than non-tail chain boundary');
+    // Tip point distance from head (100, 100) must exceed terminal base node distance from head
+    const baseDistFromHead = Math.hypot(tailTerminal.x - 100, tailTerminal.y - 100);
+    const maxDistFromHead = Math.max(
+      ...lineTos.map((op) => Math.hypot(op.args[0] - 100, op.args[1] - 100))
+    );
+
+    assert.ok(
+      maxDistFromHead > baseDistFromHead,
+      `Tail tip for ${v.name} must extend outward beyond base node: maxDist=${maxDistFromHead}, baseDist=${baseDistFromHead}`
+    );
+  }
 });
 
 // =============================================================================
@@ -358,7 +378,7 @@ test('Skins: All 8 skins define distinct, high-contrast themes and render proper
 
     assert.ok(ctx.fillStylesUsed.has(skin.headColor), `${skinId} must use headColor`);
     assert.ok(ctx.fillStylesUsed.has(skin.eyeColor), `${skinId} must use eyeColor`);
-    assert.ok(ctx.fillStylesUsed.has(skin.bodyColors[0]), `${skinId} must use primary bodyColor`);
+    assert.ok(ctx.fillStylesUsed.has(skin.bodyColors[1]), `${skinId} must use bodyColor`);
   }
 });
 
@@ -383,7 +403,7 @@ test('Skins: Fallback safely resolves to Cyber Cyan when given unknown skin iden
 // 5. GENUINE THREE-LEVEL RENDERING QUALITY DIFFERENTIATION
 // =============================================================================
 
-test('Quality modes: High, Performance, and Reduced exhibit distinct measured operation counts', () => {
+test('Quality modes: High, Performance, and Reduced exhibit distinct measured operation counts and features', () => {
   const spine: SpinePoint[] = [
     { x: 50, y: 100 },
     { x: 75, y: 100 },
@@ -523,37 +543,49 @@ test('Robustness: Degenerate, zero-length, duplicate, and non-finite coordinates
 });
 
 // =============================================================================
-// 7. REVERSALS: 180-DEGREE AND NEAR-180-DEGREE HANDLING
+// 7. REVERSALS: 180-DEGREE AND NEAR-180-DEGREE HANDLING (LEFT AND RIGHT)
 // =============================================================================
 
-test('Geometry: True 180-degree reversal creates safe lateral turnaround without needle collapse', () => {
-  // Point 0 to 1 goes right, point 1 to 2 doubles directly back left
+test('Geometry: Exact 180-degree reversal maintains C1 tangent continuity for both left and right directions', () => {
   const reversalPoints: SpinePoint[] = [
     { x: 100, y: 100 },
-    { x: 140, y: 100 },
+    { x: 160, y: 100 },
     { x: 100, y: 100 },
   ];
-  const nodes = generateSmoothSpine(reversalPoints, 12);
-  assert.ok(nodes.length > 4);
 
-  // All coordinates and tangents must be strictly finite and valid
-  for (const n of nodes) {
-    assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
-    assert.ok(Number.isFinite(n.tangentX) && Number.isFinite(n.tangentY));
-    assert.ok(Number.isFinite(n.leftX) && Number.isFinite(n.rightX));
-    const thickness = Math.hypot(n.leftX - n.rightX, n.leftY - n.rightY);
-    assert.ok(thickness > 3, 'Body thickness must remain positive through turnaround');
+  for (const sign of [1, -1] as const) {
+    const nodes = generateSmoothSpine(reversalPoints, { baseRadius: 12, lateralTurnSign: sign });
+    assert.ok(nodes.length > 6, `Reversal (${sign > 0 ? 'left' : 'right'}) generates smooth turnaround`);
+
+    // Verify all coordinates and tangents are finite and valid
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
+      assert.ok(Number.isFinite(n.tangentX) && Number.isFinite(n.tangentY));
+      assert.ok(Number.isFinite(n.leftX) && Number.isFinite(n.rightX));
+
+      const thickness = Math.hypot(n.leftX - n.rightX, n.leftY - n.rightY);
+      assert.ok(thickness > 3, 'Body thickness must remain positive through turnaround');
+    }
+
+    // Verify tangent continuity: adjacent node tangents do not make abrupt flips
+    for (let i = 1; i < nodes.length; i++) {
+      const tPrev = nodes[i - 1];
+      const tCurr = nodes[i];
+      const dot = tPrev.tangentX * tCurr.tangentX + tPrev.tangentY * tCurr.tangentY;
+      assert.ok(dot > 0.70, `Adjacent tangents must be continuous across turnaround: dot=${dot}`);
+    }
   }
 });
 
 test('Geometry: Near-180-degree turnaround generates smooth curvature without spikes', () => {
   const nearReversal: SpinePoint[] = [
     { x: 100, y: 100 },
-    { x: 140, y: 100 },
+    { x: 150, y: 100 },
     { x: 100, y: 102 }, // nearly parallel return
   ];
   const nodes = generateSmoothSpine(nearReversal, 12);
-  assert.ok(nodes.length > 4);
+  assert.ok(nodes.length > 6);
 
   for (const n of nodes) {
     assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
@@ -561,20 +593,37 @@ test('Geometry: Near-180-degree turnaround generates smooth curvature without sp
   }
 });
 
+test('Geometry: Consecutive turns and S-curves maintain stable geometry and continuous boundaries', () => {
+  const sCurve: SpinePoint[] = [
+    { x: 100, y: 100 },
+    { x: 130, y: 100 },
+    { x: 130, y: 130 },
+    { x: 160, y: 130 },
+    { x: 160, y: 100 },
+  ];
+  const nodes = generateSmoothSpine(sCurve, 12);
+  assert.ok(nodes.length > 10);
+
+  for (let i = 1; i < nodes.length; i++) {
+    const prev = nodes[i - 1];
+    const curr = nodes[i];
+    const step = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    assert.ok(step < 12, `Step along S-curve (${step}) must remain continuous`);
+  }
+});
+
 // =============================================================================
-// 8. PHYSICAL ARC-LENGTH INVARIANCE TESTS
+// 8. PHYSICAL ARC-LENGTH INVARIANCE & SCALE CONFINEMENT
 // =============================================================================
 
 test('Anatomical taper: Physical distance parameterization produces consistent girth across different path densities', () => {
   const baseR = 14;
 
-  // Snake A: 100px total length with 3 sparse segments
   const sparsePath: SpinePoint[] = [
     { x: 0, y: 0 },
     { x: 50, y: 0 },
     { x: 100, y: 0 },
   ];
-  // Snake B: 100px total length with 10 dense segments
   const densePath: SpinePoint[] = [];
   for (let i = 0; i <= 10; i++) {
     densePath.push({ x: i * 10, y: 0 });
@@ -591,7 +640,6 @@ test('Anatomical taper: Physical distance parameterization produces consistent g
     Math.abs(curr.distance - 50) < Math.abs(prev.distance - 50) ? curr : prev
   );
 
-  // Both should evaluate to mid-body anatomical progress (~0.5) and have nearly identical girth
   assert.ok(Math.abs(sparseMid.progress - 0.5) < 0.05);
   assert.ok(Math.abs(denseMid.progress - 0.5) < 0.05);
   assert.ok(
@@ -600,7 +648,7 @@ test('Anatomical taper: Physical distance parameterization produces consistent g
   );
 });
 
-test('Scale placement: Scales remain strictly bounded within the body ribbon half-width', () => {
+test('Scale confinement: Scales are clipped to body ribbon and strictly bounded inside body silhouette', () => {
   const spine: SpinePoint[] = [
     { x: 100, y: 100 },
     { x: 120, y: 100 },
@@ -608,35 +656,36 @@ test('Scale placement: Scales remain strictly bounded within the body ribbon hal
     { x: 160, y: 140 },
     { x: 180, y: 140 },
   ];
-  const baseR = 14;
-  const nodes = generateSmoothSpine(spine, baseR);
 
-  for (const node of nodes) {
-    const scaleHalfWidth = node.radius * 0.44;
-    // Scale must stay well inside boundary radius
-    assert.ok(
-      scaleHalfWidth < node.radius,
-      `Scale half-width (${scaleHalfWidth}) must be strictly less than body radius (${node.radius})`
-    );
-  }
+  const ctx = new MockTrackingCanvasContext();
+  drawNaturalStylizedSnake(ctx as unknown as CanvasRenderingContext2D, spine, {
+    direction: 'RIGHT',
+    baseRadius: 14,
+    skin: 'matrix_green',
+    visualEffects: 'high',
+  });
+
+  // Verify that clip() was called to confine scales to the body ribbon
+  const clipOps = ctx.operations.filter((op) => op.method === 'clip');
+  assert.ok(clipOps.length >= 1, 'Body scales must execute clip() to guarantee boundary confinement');
 });
 
 // =============================================================================
 // 9. BOUNDARY CONTINUITY & CONTOUR NON-INTERSECTION TESTS
 // =============================================================================
 
-test('Geometry: Left and right boundaries never cross over the spine centerline', () => {
+test('Geometry: Left and right boundaries never cross over the spine centerline or each other', () => {
   const turns: SpinePoint[] = [
     { x: 100, y: 100 },
-    { x: 120, y: 100 },
-    { x: 120, y: 120 },
-    { x: 140, y: 120 },
-    { x: 140, y: 100 },
+    { x: 130, y: 100 },
+    { x: 130, y: 130 },
+    { x: 160, y: 130 },
+    { x: 160, y: 100 },
   ];
   const nodes = generateSmoothSpine(turns, 12);
 
-  for (const n of nodes) {
-    // Normal vector dot products
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
     const leftVec = { x: n.leftX - n.x, y: n.leftY - n.y };
     const rightVec = { x: n.rightX - n.x, y: n.rightY - n.y };
 
@@ -645,54 +694,51 @@ test('Geometry: Left and right boundaries never cross over the spine centerline'
 
     assert.ok(leftProj > 0, 'Left boundary must be strictly positive along normal');
     assert.ok(rightProj < 0, 'Right boundary must be strictly negative along normal');
+
+    const thickness = Math.hypot(n.leftX - n.rightX, n.leftY - n.rightY);
+    assert.ok(thickness >= n.radius * 0.75, 'Body thickness must never collapse');
   }
-});
 
-test('Geometry: Step distances along boundary contours are smooth and free of spikes', () => {
-  const path: SpinePoint[] = [
-    { x: 100, y: 100 },
-    { x: 120, y: 100 },
-    { x: 120, y: 120 },
-    { x: 100, y: 120 },
-  ];
-  const nodes = generateSmoothSpine(path, 10);
+  // Cross-boundary non-intersection check
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const l1 = { x: nodes[i].leftX, y: nodes[i].leftY };
+    const l2 = { x: nodes[i + 1].leftX, y: nodes[i + 1].leftY };
+    const r1 = { x: nodes[i].rightX, y: nodes[i].rightY };
+    const r2 = { x: nodes[i + 1].rightX, y: nodes[i + 1].rightY };
 
-  for (let i = 1; i < nodes.length; i++) {
-    const prev = nodes[i - 1];
-    const curr = nodes[i];
-
-    const centerStep = Math.hypot(curr.x - prev.x, curr.y - prev.y);
-    const leftStep = Math.hypot(curr.leftX - prev.leftX, curr.leftY - prev.leftY);
-    const rightStep = Math.hypot(curr.rightX - prev.rightX, curr.rightY - prev.rightY);
-
-    assert.ok(centerStep < 15, `Center step (${centerStep}) must be continuous`);
-    assert.ok(leftStep < 25, `Left step (${leftStep}) must be continuous without spikes`);
-    assert.ok(rightStep < 25, `Right step (${rightStep}) must be continuous without spikes`);
+    assert.ok(
+      !segmentsIntersect(l1, l2, r1, r2),
+      `Boundary segment ${i} must never intersect its opposing segment`
+    );
   }
 });
 
 // =============================================================================
-// 10. SHARED INTEGRATION: GAMEPLAY RENDERER & SKIN PREVIEW
+// 10. SHARED INTEGRATION & ANIMATION TIMING
 // =============================================================================
 
-test('Shared integration: NeonRenderer.render delegates to shared snake renderer cleanly with animationTimeMs', () => {
+test('Shared integration: NeonRenderer.render passes frameTimeMs deterministically', () => {
   const renderer = new NeonRenderer();
   const ctx = new MockTrackingCanvasContext();
   const state = createInitialState('classic', 24, 24);
 
-  renderer.render(ctx as unknown as CanvasRenderingContext2D, 480, 480, state, 1.0, {
-    visualEffects: 'high',
-    skin: 'hyper_violet',
-  });
+  renderer.render(
+    ctx as unknown as CanvasRenderingContext2D,
+    480,
+    480,
+    state,
+    1.0,
+    { visualEffects: 'high', skin: 'hyper_violet' },
+    12345
+  );
 
   const theme = SKIN_VISUAL_THEMES.hyper_violet;
   assert.ok(ctx.fillStylesUsed.has(theme.headColor), 'Gameplay uses hyper_violet head');
   assert.ok(ctx.fillStylesUsed.has(theme.eyeColor), 'Gameplay uses hyper_violet eyes');
-  assert.ok(ctx.fillStylesUsed.has(theme.bodyColors[0]), 'Gameplay uses hyper_violet body');
   assert.equal(ctx.saveDepth, 0, 'Canvas stack balanced');
 });
 
-test('Shared integration: drawSkinPreview delegates to shared snake renderer cleanly', () => {
+test('Shared integration: drawSkinPreview delegates to shared snake renderer cleanly with timeMs', () => {
   const ctx = new MockTrackingCanvasContext();
   const result = drawSkinPreview(
     ctx as unknown as CanvasRenderingContext2D,

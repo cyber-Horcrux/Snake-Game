@@ -152,7 +152,8 @@ export class NeonRenderer {
     height: number,
     state: GameEngineState,
     alpha: number,
-    settings: { visualEffects: 'high' | 'performance' | 'reduced'; skin?: SnakeSkinId }
+    settings: { visualEffects: 'high' | 'performance' | 'reduced'; skin?: SnakeSkinId },
+    frameTimeMs?: number
   ): void {
     ctx.save();
     ctx.clearRect(0, 0, width, height);
@@ -174,7 +175,7 @@ export class NeonRenderer {
 
     const cellW = width / state.gridWidth;
     const cellH = height / state.gridHeight;
-    const now = Date.now();
+    const now = Number.isFinite(frameTimeMs) ? (frameTimeMs as number) : Date.now();
 
     // 1. Cyber Grid
     this.drawGrid(ctx, width, height, state.gridWidth, state.gridHeight, cellW, cellH, allowGlow);
