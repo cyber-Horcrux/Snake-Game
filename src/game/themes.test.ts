@@ -18,6 +18,7 @@ import {
   getThemeUnlockDescription,
   isThemeEligible,
   isThemeUnlocked,
+  isValidNonNegativeNumber,
   isValidThemeId,
   reconcilePlayerThemes,
   sanitizePlayerThemesState,
@@ -275,6 +276,270 @@ test('Theme Eligibility 6: getThemeUnlockDescription returns clear descriptions 
   assert.ok(arcticDesc.includes('Level 6'));
   assert.ok(arcticDesc.includes('25'));
 });
+
+test('Theme Eligibility Telemetry 1: isValidNonNegativeNumber helper accepts only finite non-negative numbers', () => {
+  // Valid non-negative finite numbers
+  assert.equal(isValidNonNegativeNumber(0), true, '0 must be valid');
+  assert.equal(isValidNonNegativeNumber(1), true, '1 must be valid');
+  assert.equal(isValidNonNegativeNumber(6), true, '6 must be valid');
+  assert.equal(isValidNonNegativeNumber(25.5), true, 'Fractions must be accepted without truncation');
+  assert.equal(isValidNonNegativeNumber(1000), true, 'Large finite numbers must be accepted');
+
+  // Rejections: NaN, Infinities, negatives, non-numbers
+  assert.equal(isValidNonNegativeNumber(NaN), false, 'NaN must be rejected');
+  assert.equal(isValidNonNegativeNumber(Infinity), false, '+Infinity must be rejected');
+  assert.equal(isValidNonNegativeNumber(-Infinity), false, '-Infinity must be rejected');
+  assert.equal(isValidNonNegativeNumber(-1), false, '-1 must be rejected');
+  assert.equal(isValidNonNegativeNumber(-0.0001), false, 'Negative fractions must be rejected');
+  assert.equal(isValidNonNegativeNumber('6'), false, 'Strings must be rejected');
+  assert.equal(isValidNonNegativeNumber(''), false, 'Empty strings must be rejected');
+  assert.equal(isValidNonNegativeNumber(null), false, 'null must be rejected');
+  assert.equal(isValidNonNegativeNumber(undefined), false, 'undefined must be rejected');
+  assert.equal(isValidNonNegativeNumber({}), false, 'Objects must be rejected');
+  assert.equal(isValidNonNegativeNumber([]), false, 'Arrays must be rejected');
+  assert.equal(isValidNonNegativeNumber(true), false, 'Booleans must be rejected');
+});
+
+test('Theme Eligibility Telemetry 2: Rejects NaN, Infinity, -Infinity for every numeric telemetry field', () => {
+  const invalidNumbers = [NaN, Infinity, -Infinity];
+
+  for (const invalidVal of invalidNumbers) {
+    // 1. Invalid level must not unlock Arctic Research (lvl 6), Bio-Dome (lvl 10), Solar Array (lvl 20), Void Observatory (lvl 35)
+    const badLevelCtx: ThemeUnlockContext = {
+      level: invalidVal,
+      zenWallsWrapped: 0,
+      highestMazeStage: 0,
+      maxFoodInRun: 0,
+      campaignWon: false,
+    };
+    assert.equal(isThemeEligible('arctic_research', badLevelCtx), false, `level=${invalidVal} must not unlock arctic_research`);
+    assert.equal(isThemeEligible('bio_dome', badLevelCtx), false, `level=${invalidVal} must not unlock bio_dome`);
+    assert.equal(isThemeEligible('solar_array', badLevelCtx), false, `level=${invalidVal} must not unlock solar_array`);
+    assert.equal(isThemeEligible('void_observatory', badLevelCtx), false, `level=${invalidVal} must not unlock void_observatory`);
+
+    // 2. Invalid zenWallsWrapped must not unlock Arctic Research (alt: 25 zen wraps)
+    const badZenCtx: ThemeUnlockContext = {
+      level: 1,
+      zenWallsWrapped: invalidVal,
+      highestMazeStage: 0,
+      maxFoodInRun: 0,
+      campaignWon: false,
+    };
+    assert.equal(isThemeEligible('arctic_research', badZenCtx), false, `zenWallsWrapped=${invalidVal} must not unlock arctic_research`);
+
+    // 3. Invalid highestMazeStage must not unlock Solar Array (alt: stage 2)
+    const badMazeCtx: ThemeUnlockContext = {
+      level: 1,
+      zenWallsWrapped: 0,
+      highestMazeStage: invalidVal,
+      maxFoodInRun: 0,
+      campaignWon: false,
+    };
+    assert.equal(isThemeEligible('solar_array', badMazeCtx), false, `highestMazeStage=${invalidVal} must not unlock solar_array`);
+
+    // 4. Invalid maxFoodInRun must not unlock Bio-Dome (alt: 15 food in single run)
+    const badFoodCtx: ThemeUnlockContext = {
+      level: 1,
+      zenWallsWrapped: 0,
+      highestMazeStage: 0,
+      maxFoodInRun: invalidVal,
+      campaignWon: false,
+    };
+    assert.equal(isThemeEligible('bio_dome', badFoodCtx), false, `maxFoodInRun=${invalidVal} must not unlock bio_dome`);
+  }
+});
+
+test('Theme Eligibility Telemetry 3: Rejects negative values and non-number types for all telemetry fields', () => {
+  const malformedValues = [-1, -6, -25, -100, '6', '25', '100', null, undefined, {}, [], false];
+
+  for (const val of malformedValues) {
+    const badLevelCtx = {
+      level: val,
+      zenWallsWrapped: 0,
+      highestMazeStage: 0,
+    } as unknown as ThemeUnlockContext;
+    assert.equal(isThemeEligible('arctic_research', badLevelCtx), false, `level=${String(val)} must be rejected`);
+
+    const badZenCtx = {
+      level: 1,
+      zenWallsWrapped: val,
+      highestMazeStage: 0,
+    } as unknown as ThemeUnlockContext;
+    assert.equal(isThemeEligible('arctic_research', badZenCtx), false, `zenWallsWrapped=${String(val)} must be rejected`);
+
+    const badMazeCtx = {
+      level: 1,
+      zenWallsWrapped: 0,
+      highestMazeStage: val,
+    } as unknown as ThemeUnlockContext;
+    assert.equal(isThemeEligible('solar_array', badMazeCtx), false, `highestMazeStage=${String(val)} must be rejected`);
+
+    const badFoodCtx = {
+      level: 1,
+      zenWallsWrapped: 0,
+      highestMazeStage: 0,
+      maxFoodInRun: val,
+    } as unknown as ThemeUnlockContext;
+    assert.equal(isThemeEligible('bio_dome', badFoodCtx), false, `maxFoodInRun=${String(val)} must be rejected`);
+  }
+});
+
+test('Theme Eligibility Telemetry 4: Missing optional maxFoodInRun is treated safely as zero without error', () => {
+  // Missing maxFoodInRun property entirely
+  const contextWithoutFood: ThemeUnlockContext = {
+    level: 1,
+    zenWallsWrapped: 0,
+    highestMazeStage: 1,
+  };
+
+  assert.equal(isThemeEligible('bio_dome', contextWithoutFood), false, 'Missing maxFoodInRun must be treated as 0 and not unlock bio_dome');
+  assert.equal(isThemeEligible('obsidian_grid', contextWithoutFood), true, 'Starter themes remain eligible with missing optional food');
+
+  // Explicit zero preserves valid comparison (0 < 15)
+  const contextWithZeroFood: ThemeUnlockContext = {
+    level: 1,
+    zenWallsWrapped: 0,
+    highestMazeStage: 1,
+    maxFoodInRun: 0,
+  };
+  assert.equal(isThemeEligible('bio_dome', contextWithZeroFood), false);
+
+  // Legitimate threshold unlocks bio_dome
+  const contextWithEarnedFood: ThemeUnlockContext = {
+    level: 1,
+    zenWallsWrapped: 0,
+    highestMazeStage: 1,
+    maxFoodInRun: 15,
+  };
+  assert.equal(isThemeEligible('bio_dome', contextWithEarnedFood), true);
+});
+
+test('Theme Eligibility Telemetry 5: Campaign victory requires exact boolean true (rejects arbitrary truthy values)', () => {
+  const baseContext: ThemeUnlockContext = {
+    level: 1,
+    zenWallsWrapped: 0,
+    highestMazeStage: 1,
+    maxFoodInRun: 0,
+  };
+
+  // Exact boolean true satisfies campaign_victory
+  assert.equal(isThemeEligible('void_observatory', { ...baseContext, campaignWon: true }), true);
+
+  // Arbitrary truthy values must all be rejected
+  const invalidTruthyValues = ['true', 'TRUE', '1', 1, 100, {}, [], 'yes', () => true];
+  for (const val of invalidTruthyValues) {
+    const context = { ...baseContext, campaignWon: val as unknown as boolean };
+    assert.equal(
+      isThemeEligible('void_observatory', context),
+      false,
+      `campaignWon=${JSON.stringify(val)} must NOT satisfy campaign_victory requirement`
+    );
+  }
+
+  // Falsy values must not satisfy
+  assert.equal(isThemeEligible('void_observatory', { ...baseContext, campaignWon: false }), false);
+  assert.equal(isThemeEligible('void_observatory', { ...baseContext, campaignWon: undefined }), false);
+  assert.equal(isThemeEligible('void_observatory', { ...baseContext, campaignWon: null as unknown as boolean }), false);
+  assert.equal(isThemeEligible('void_observatory', { ...baseContext, campaignWon: 0 as unknown as boolean }), false);
+});
+
+test('Theme Eligibility Telemetry 6: Both alternatives of OR-based unlock conditions cannot be bypassed with invalid telemetry', () => {
+  // 1. Arctic Research: level 6 OR zen_wraps 25
+  assert.equal(isThemeEligible('arctic_research', { level: Infinity, zenWallsWrapped: 0, highestMazeStage: 0 }), false);
+  assert.equal(isThemeEligible('arctic_research', { level: 0, zenWallsWrapped: Infinity, highestMazeStage: 0 }), false);
+  assert.equal(isThemeEligible('arctic_research', { level: NaN, zenWallsWrapped: NaN, highestMazeStage: 0 }), false);
+  assert.equal(isThemeEligible('arctic_research', { level: -6, zenWallsWrapped: -25, highestMazeStage: 0 }), false);
+
+  // 2. Bio-Dome: level 10 OR food_single_run 15
+  assert.equal(isThemeEligible('bio_dome', { level: Infinity, zenWallsWrapped: 0, highestMazeStage: 0, maxFoodInRun: 0 }), false);
+  assert.equal(isThemeEligible('bio_dome', { level: 0, zenWallsWrapped: 0, highestMazeStage: 0, maxFoodInRun: Infinity }), false);
+  assert.equal(isThemeEligible('bio_dome', { level: NaN, zenWallsWrapped: 0, highestMazeStage: 0, maxFoodInRun: NaN }), false);
+  assert.equal(isThemeEligible('bio_dome', { level: -10, zenWallsWrapped: 0, highestMazeStage: 0, maxFoodInRun: -15 }), false);
+
+  // 3. Solar Array: level 20 OR maze_stage 2
+  assert.equal(isThemeEligible('solar_array', { level: Infinity, zenWallsWrapped: 0, highestMazeStage: 0 }), false);
+  assert.equal(isThemeEligible('solar_array', { level: 0, zenWallsWrapped: 0, highestMazeStage: Infinity }), false);
+  assert.equal(isThemeEligible('solar_array', { level: NaN, zenWallsWrapped: 0, highestMazeStage: NaN }), false);
+  assert.equal(isThemeEligible('solar_array', { level: -20, zenWallsWrapped: 0, highestMazeStage: -2 }), false);
+
+  // 4. Void Observatory: level 35 OR campaign_victory true
+  assert.equal(isThemeEligible('void_observatory', { level: Infinity, zenWallsWrapped: 0, highestMazeStage: 0, campaignWon: false }), false);
+  assert.equal(isThemeEligible('void_observatory', { level: 0, zenWallsWrapped: 0, highestMazeStage: 0, campaignWon: 'true' as any }), false);
+  assert.equal(isThemeEligible('void_observatory', { level: NaN, zenWallsWrapped: 0, highestMazeStage: 0, campaignWon: 1 as any }), false);
+  assert.equal(isThemeEligible('void_observatory', { level: -35, zenWallsWrapped: 0, highestMazeStage: 0, campaignWon: 'yes' as any }), false);
+});
+
+test('Theme Eligibility Telemetry 7: Null or malformed context object safely falls back without throwing', () => {
+  // Passing null or undefined context to isThemeEligible
+  assert.equal(isThemeEligible('obsidian_grid', null as unknown as ThemeUnlockContext), true, 'Starter theme is always eligible');
+  assert.equal(isThemeEligible('industrial_foundry', undefined as unknown as ThemeUnlockContext), true, 'Starter theme is always eligible');
+  assert.equal(isThemeEligible('arctic_research', null as unknown as ThemeUnlockContext), false);
+  assert.equal(isThemeEligible('bio_dome', undefined as unknown as ThemeUnlockContext), false);
+  assert.equal(isThemeEligible('solar_array', {} as unknown as ThemeUnlockContext), false);
+  assert.equal(isThemeEligible('void_observatory', 'invalid_context' as unknown as ThemeUnlockContext), false);
+});
+
+test('Theme Reconciliation Telemetry 1: Reconciliation with malformed context generates 0 false newly unlocked themes', () => {
+  const initial: PlayerThemesState = {
+    equippedThemeId: 'obsidian_grid',
+    unlockedThemeIds: ['obsidian_grid', 'industrial_foundry'],
+  };
+
+  const malformedContext = {
+    level: NaN,
+    zenWallsWrapped: Infinity,
+    highestMazeStage: -Infinity,
+    maxFoodInRun: -10,
+    campaignWon: 'true' as unknown as boolean,
+  } as ThemeUnlockContext;
+
+  const result = reconcilePlayerThemes(initial, malformedContext);
+  assert.deepEqual(result.newlyUnlocked, [], 'No false themes must be unlocked with malformed telemetry');
+  assert.deepEqual(result.state.unlockedThemeIds, ['obsidian_grid', 'industrial_foundry']);
+  assert.equal(result.state.equippedThemeId, 'obsidian_grid');
+});
+
+test('Theme Reconciliation Telemetry 2: Legitimate unlocks are never relocked by invalid or missing telemetry', () => {
+  const allUnlocked: PlayerThemesState = {
+    equippedThemeId: 'void_observatory',
+    unlockedThemeIds: [...ALL_THEME_IDS],
+  };
+
+  const hostileContext = {
+    level: -100,
+    zenWallsWrapped: NaN,
+    highestMazeStage: -5,
+    maxFoodInRun: -50,
+    campaignWon: false,
+  } as ThemeUnlockContext;
+
+  const result = reconcilePlayerThemes(allUnlocked, hostileContext);
+  assert.deepEqual(result.newlyUnlocked, []);
+  assert.deepEqual(result.state.unlockedThemeIds, ALL_THEME_IDS, 'Previously unlocked themes must never be relocked');
+  assert.equal(result.state.equippedThemeId, 'void_observatory');
+});
+
+test('Theme Persistence Telemetry 1: reconcileAndMigratePlayerThemes prevents malformed context overrides from granting themes', () => {
+  const storage = createMockStorage({
+    [STORAGE_KEYS.SETTINGS]: JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      boardTheme: 'obsidian_grid',
+    }),
+  });
+
+  // Malformed overrides passed directly into reconcileAndMigratePlayerThemes
+  const result = reconcileAndMigratePlayerThemes(storage, {
+    level: Infinity as unknown as number,
+    campaignWon: 'true' as unknown as boolean,
+    zenWallsWrapped: NaN as unknown as number,
+  });
+
+  assert.equal(result.success, true);
+  // Only starter themes should be unlocked
+  assert.deepEqual(result.newlyUnlocked, []);
+  assert.deepEqual(result.themesState.unlockedThemeIds, ['obsidian_grid', 'industrial_foundry']);
+});
+
 
 // =============================================================================
 // SECTION 3: State Sanitization & Reconciliation

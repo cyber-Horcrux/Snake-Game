@@ -273,25 +273,48 @@ export function getThemeUnlockDescription(id: BoardThemeId): string {
   return desc;
 }
 
+/**
+ * Validates that a value is a finite, non-negative number.
+ * Rejects NaN, positive and negative infinity, negative values, and non-number types.
+ * Preserves zero and legitimate threshold values without rounding or mutation.
+ */
+export function isValidNonNegativeNumber(val: unknown): val is number {
+  return typeof val === 'number' && Number.isFinite(val) && val >= 0;
+}
+
 function checkSingleCondition(condition: ThemeUnlockCondition, context: ThemeUnlockContext): boolean {
+  if (!context || typeof context !== 'object') {
+    return condition.type === 'default';
+  }
+
   switch (condition.type) {
     case 'default':
       return true;
 
     case 'level':
-      return typeof condition.requiredLevel === 'number' && context.level >= condition.requiredLevel;
+      if (!isValidNonNegativeNumber(condition.requiredLevel)) return false;
+      if (!isValidNonNegativeNumber(context.level)) return false;
+      return context.level >= condition.requiredLevel;
 
     case 'zen_wraps':
-      return typeof condition.requiredZenWraps === 'number' && context.zenWallsWrapped >= condition.requiredZenWraps;
+      if (!isValidNonNegativeNumber(condition.requiredZenWraps)) return false;
+      if (!isValidNonNegativeNumber(context.zenWallsWrapped)) return false;
+      return context.zenWallsWrapped >= condition.requiredZenWraps;
 
     case 'maze_stage':
-      return typeof condition.requiredMazeStage === 'number' && context.highestMazeStage >= condition.requiredMazeStage;
+      if (!isValidNonNegativeNumber(condition.requiredMazeStage)) return false;
+      if (!isValidNonNegativeNumber(context.highestMazeStage)) return false;
+      return context.highestMazeStage >= condition.requiredMazeStage;
 
-    case 'food_single_run':
-      return typeof condition.requiredFoodSingleRun === 'number' && (context.maxFoodInRun ?? 0) >= condition.requiredFoodSingleRun;
+    case 'food_single_run': {
+      if (!isValidNonNegativeNumber(condition.requiredFoodSingleRun)) return false;
+      const food = context.maxFoodInRun === undefined ? 0 : context.maxFoodInRun;
+      if (!isValidNonNegativeNumber(food)) return false;
+      return food >= condition.requiredFoodSingleRun;
+    }
 
     case 'campaign_victory':
-      return Boolean(condition.requiredCampaignVictory) && Boolean(context.campaignWon);
+      return condition.requiredCampaignVictory === true && context.campaignWon === true;
 
     default:
       return false;
