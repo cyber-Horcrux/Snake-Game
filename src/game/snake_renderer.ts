@@ -3,9 +3,12 @@
  * 
  * Reusable, high-fidelity canvas rendering engine providing:
  * - Natural, streamlined body geometry with curved continuous centerline and radius-aware offset boundaries.
+ * - Cumulative physical arc-length parameterization for consistent anatomical taper and scale placement.
  * - Organic, non-squarish 90-degree turns and consecutive turning handling without geometric pinching or spikes.
  * - Anatomically proportioned viper/colubrid head silhouette with expressive lateral eyes, jowls, and crown scutes.
+ * - Correct tail construction extending outward away from the body.
  * - Premium material realism and distinctive scale textures for all eight skins.
+ * - True three-tiered quality modes: High, Performance, and Reduced.
  * - 100% shared visual engine between gameplay (NeonRenderer) and collection previews (drawSkinPreview).
  * - Mobile-optimized for 60 FPS performance on devices such as Samsung Galaxy A14.
  */
@@ -53,7 +56,8 @@ export interface SmoothSpineNode {
   normalX: number;
   normalY: number;
   radius: number;
-  progress: number; // 0 at head / neck, 1 at tail
+  progress: number; // 0 at head / neck, 1 at tail (normalized physical arc-length)
+  distance: number; // cumulative physical distance from head (px)
   leftX: number;
   leftY: number;
   rightX: number;
@@ -255,6 +259,7 @@ export interface SnakeRenderOptions {
   visualEffects?: 'high' | 'performance' | 'reduced';
   hasShield?: boolean;
   maxWraparoundGap?: number;
+  animationTimeMs?: number;
 }
 
 /**
@@ -303,45 +308,73 @@ function toWorld(ox: number, oy: number, cos: number, sin: number, lx: number, l
 }
 
 /**
- * Calculates the natural anatomical body radius at progress u in [0, 1].
- * Smooth muscular neck transition at anterior, full robust girth mid-body,
- * and natural organic taper down to acute tail terminal.
+ * Calculates the natural anatomical body radius based on physical cumulative progress u in [0, 1].
+ * - Natural head-to-neck transition (0.78 matching head base).
+ * - Muscular neck expansion (widening to 0.88).
+ * - Consistent cylindrical mid-body girth (0.88 to 0.82).
+ * - Smooth, gradual organic taper toward the tail down to 0.24.
  */
 export function getAnatomicalRadius(u: number, baseRadius: number): number {
-  if (baseRadius <= 0) return 0;
-  const clampedU = Math.max(0, Math.min(1, u));
+  if (baseRadius <= 0 || !Number.isFinite(baseRadius)) return 0;
+  const clampedU = Math.max(0, Math.min(1, Number.isFinite(u) ? u : 0));
 
-  if (clampedU < 0.14) {
-    // Smooth transition from head neck base (0.78) to full body girth (0.86)
-    const t = clampedU / 0.14;
-    return baseRadius * (0.78 + t * 0.08);
-  } else if (clampedU < 0.58) {
-    // Main body: robust, natural cylindrical girth
-    const t = (clampedU - 0.14) / 0.44;
-    return baseRadius * (0.86 - t * 0.05);
+  if (clampedU < 0.12) {
+    // Smooth transition from head neck base (0.78) to full body girth (0.88)
+    const t = clampedU / 0.12;
+    const ease = t * t * (3 - 2 * t);
+    return baseRadius * (0.78 + ease * 0.10);
+  } else if (clampedU < 0.55) {
+    // Robust, natural cylindrical girth
+    const t = (clampedU - 0.12) / 0.43;
+    return baseRadius * (0.88 - t * 0.06);
   } else {
-    // Posterior to tail: gradual, natural organic taper down to ~0.28
-    const t = (clampedU - 0.58) / 0.42;
+    // Posterior to tail: gradual, natural organic taper down to ~0.24
+    const t = (clampedU - 0.55) / 0.45;
     const easeTaper = (1 - t) * (1 - t);
-    return baseRadius * (0.28 + 0.53 * easeTaper);
+    return baseRadius * (0.24 + 0.58 * easeTaper);
   }
 }
 
 /**
  * Generates a smooth, curved centerline and radius-aware offset geometry from discrete spine points.
- * Implements adaptive Bezier corner filleting to eliminate square/blocky 90-degree turns and
- * constructs seamless left/right offset boundaries with inner-miter pinch prevention.
+ * - Uses physical cumulative arc length to ensure anatomical taper and scale spacing are invariant
+ *   to path curvature and sampling density.
+ * - Implements adaptive Bezier corner filleting to eliminate square/blocky turns.
+ * - Handles degenerate inputs: 180-degree reversals, duplicate consecutive points, zero-length segments,
+ *   and non-finite coordinates.
+ * - Prevents inner-miter self-intersections and outer-miter spikes on tight turns.
  */
 export function generateSmoothSpine(
   chain: readonly SpinePoint[],
   baseRadius: number
 ): SmoothSpineNode[] {
-  const count = chain.length;
-  if (count === 0) return [];
+  if (!chain || chain.length === 0) return [];
+
+  // Defensive sanitization: filter out non-finite coordinates
+  const cleanPoints: SpinePoint[] = [];
+  for (const pt of chain) {
+    if (pt && Number.isFinite(pt.x) && Number.isFinite(pt.y)) {
+      cleanPoints.push({ x: pt.x, y: pt.y });
+    }
+  }
+  if (cleanPoints.length === 0) return [];
+
+  // Deduplicate consecutive zero-distance points
+  const points: SpinePoint[] = [cleanPoints[0]];
+  for (let i = 1; i < cleanPoints.length; i++) {
+    const prev = points[points.length - 1];
+    const curr = cleanPoints[i];
+    if (Math.hypot(curr.x - prev.x, curr.y - prev.y) > 0.001) {
+      points.push(curr);
+    }
+  }
+
+  const count = points.length;
+  const safeBaseR = Math.max(1, Number.isFinite(baseRadius) ? baseRadius : 12);
 
   if (count === 1) {
-    const pt = chain[0];
-    const r = getAnatomicalRadius(0, baseRadius);
+    const pt = points[0];
+    const r = getAnatomicalRadius(0, safeBaseR);
     return [{
       x: pt.x,
       y: pt.y,
@@ -351,6 +384,7 @@ export function generateSmoothSpine(
       normalY: 1,
       radius: r,
       progress: 0,
+      distance: 0,
       leftX: pt.x,
       leftY: pt.y + r,
       rightX: pt.x,
@@ -373,36 +407,37 @@ export function generateSmoothSpine(
 
   if (count === 2) {
     subSegments.push({
-      startX: chain[0].x,
-      startY: chain[0].y,
-      endX: chain[1].x,
-      endY: chain[1].y,
+      startX: points[0].x,
+      startY: points[0].y,
+      endX: points[1].x,
+      endY: points[1].y,
       isCorner: false,
     });
   } else {
-    // Corner filleting for count >= 3
-    let currentStart = { x: chain[0].x, y: chain[0].y };
+    let currentStart = { x: points[0].x, y: points[0].y };
 
     for (let i = 1; i < count - 1; i++) {
-      const pPrev = chain[i - 1];
-      const pCurr = chain[i];
-      const pNext = chain[i + 1];
+      const pPrev = points[i - 1];
+      const pCurr = points[i];
+      const pNext = points[i + 1];
 
       const inDx = pCurr.x - pPrev.x;
       const inDy = pCurr.y - pPrev.y;
-      const inLen = Math.hypot(inDx, inDy) || 1;
+      const inLen = Math.hypot(inDx, inDy);
+      if (inLen < 0.001) continue;
       const inUx = inDx / inLen;
       const inUy = inDy / inLen;
 
       const outDx = pNext.x - pCurr.x;
       const outDy = pNext.y - pCurr.y;
-      const outLen = Math.hypot(outDx, outDy) || 1;
+      const outLen = Math.hypot(outDx, outDy);
+      if (outLen < 0.001) continue;
       const outUx = outDx / outLen;
       const outUy = outDy / outLen;
 
       const dot = inUx * outUx + inUy * outUy;
 
-      // If nearly collinear (straight line), no corner rounding needed
+      // Check for nearly straight segments (dot > 0.998)
       if (dot > 0.998) {
         subSegments.push({
           startX: currentStart.x,
@@ -415,7 +450,49 @@ export function generateSmoothSpine(
         continue;
       }
 
-      // Turn detected: create adaptive fillet
+      // 180-degree or near-180-degree reversal handling (dot < -0.96)
+      if (dot < -0.96) {
+        // Snake is doubling directly back on itself; create smooth lateral U-turn bulge
+        const filletDist = Math.min(inLen * 0.44, outLen * 0.44);
+        const cornerStart = {
+          x: pCurr.x - inUx * filletDist,
+          y: pCurr.y - inUy * filletDist,
+        };
+        const cornerEnd = {
+          x: pCurr.x + outUx * filletDist,
+          y: pCurr.y + outUy * filletDist,
+        };
+        // Perpendicular lateral bulge
+        const latUx = -inUy;
+        const latUy = inUx;
+        const bulgeDist = Math.max(safeBaseR * 0.9, 10);
+        const bulgeCtrl = {
+          x: pCurr.x + latUx * bulgeDist,
+          y: pCurr.y + latUy * bulgeDist,
+        };
+
+        subSegments.push({
+          startX: currentStart.x,
+          startY: currentStart.y,
+          endX: cornerStart.x,
+          endY: cornerStart.y,
+          isCorner: false,
+        });
+        subSegments.push({
+          startX: cornerStart.x,
+          startY: cornerStart.y,
+          ctrlX: bulgeCtrl.x,
+          ctrlY: bulgeCtrl.y,
+          endX: cornerEnd.x,
+          endY: cornerEnd.y,
+          isCorner: true,
+        });
+
+        currentStart = cornerEnd;
+        continue;
+      }
+
+      // Standard turn: adaptive fillet curve around corner control point pCurr
       const filletDist = Math.min(inLen * 0.44, outLen * 0.44);
       const cornerStart = {
         x: pCurr.x - inUx * filletDist,
@@ -426,7 +503,6 @@ export function generateSmoothSpine(
         y: pCurr.y + outUy * filletDist,
       };
 
-      // Straight entry into turn
       subSegments.push({
         startX: currentStart.x,
         startY: currentStart.y,
@@ -434,8 +510,6 @@ export function generateSmoothSpine(
         endY: cornerStart.y,
         isCorner: false,
       });
-
-      // Smooth quadratic Bezier arc around corner control point pCurr
       subSegments.push({
         startX: cornerStart.x,
         startY: cornerStart.y,
@@ -449,12 +523,11 @@ export function generateSmoothSpine(
       currentStart = cornerEnd;
     }
 
-    // Final segment into tail
     subSegments.push({
       startX: currentStart.x,
       startY: currentStart.y,
-      endX: chain[count - 1].x,
-      endY: chain[count - 1].y,
+      endX: points[count - 1].x,
+      endY: points[count - 1].y,
       isCorner: false,
     });
   }
@@ -471,40 +544,40 @@ export function generateSmoothSpine(
 
   for (const seg of subSegments) {
     if (seg.isCorner && seg.ctrlX !== undefined && seg.ctrlY !== undefined) {
-      // Sample quadratic Bezier curve
-      const steps = 6;
+      // Adaptive sampling: curvature determines sample count
+      const chordLen = Math.hypot(seg.endX - seg.startX, seg.endY - seg.startY);
+      const steps = Math.max(5, Math.min(10, Math.round(chordLen / (safeBaseR * 0.35))));
+
       for (let s = 1; s <= steps; s++) {
         const t = s / steps;
         const mt = 1 - t;
         const x = mt * mt * seg.startX + 2 * mt * t * seg.ctrlX + t * t * seg.endX;
         const y = mt * mt * seg.startY + 2 * mt * t * seg.ctrlY + t * t * seg.endY;
 
-        // Derivative for exact tangent
         const dX = 2 * mt * (seg.ctrlX - seg.startX) + 2 * t * (seg.endX - seg.ctrlX);
         const dY = 2 * mt * (seg.ctrlY - seg.startY) + 2 * t * (seg.endY - seg.ctrlY);
-        const dLen = Math.hypot(dX, dY) || 1;
+        const dLen = Math.hypot(dX, dY);
 
         rawSamples.push({
           x,
           y,
-          tx: dX / dLen,
-          ty: dY / dLen,
+          tx: dLen > 0.0001 ? dX / dLen : 1,
+          ty: dLen > 0.0001 ? dY / dLen : 0,
         });
       }
     } else {
-      // Straight segment
       const dx = seg.endX - seg.startX;
       const dy = seg.endY - seg.startY;
       const len = Math.hypot(dx, dy);
 
       if (rawSamples.length === 0) {
-        const tx = len > 0.001 ? dx / len : 1;
-        const ty = len > 0.001 ? dy / len : 0;
+        const tx = len > 0.0001 ? dx / len : 1;
+        const ty = len > 0.0001 ? dy / len : 0;
         rawSamples.push({ x: seg.startX, y: seg.startY, tx, ty });
       }
 
       if (len > 0.001) {
-        const stepDist = Math.max(3.5, baseRadius * 0.28);
+        const stepDist = Math.max(3.0, safeBaseR * 0.28);
         const steps = Math.max(1, Math.round(len / stepDist));
         const tx = dx / len;
         const ty = dy / len;
@@ -525,13 +598,24 @@ export function generateSmoothSpine(
   const sampleCount = rawSamples.length;
   if (sampleCount === 0) return [];
 
-  // 3. Compute continuous radius-aware offset ribbon with miter-pinch prevention
+  // 3. Compute cumulative physical arc length along the centerline
+  const cumDistances = new Float64Array(sampleCount);
+  cumDistances[0] = 0;
+  for (let i = 1; i < sampleCount; i++) {
+    const dX = rawSamples[i].x - rawSamples[i - 1].x;
+    const dY = rawSamples[i].y - rawSamples[i - 1].y;
+    cumDistances[i] = cumDistances[i - 1] + Math.hypot(dX, dY);
+  }
+  const totalLength = cumDistances[sampleCount - 1];
+
+  // 4. Compute radius-aware offset boundaries using physical distance parameterization
   const nodes: SmoothSpineNode[] = new Array(sampleCount);
 
   for (let i = 0; i < sampleCount; i++) {
     const s = rawSamples[i];
-    const u = sampleCount > 1 ? i / (sampleCount - 1) : 0;
-    const r = getAnatomicalRadius(u, baseRadius);
+    const dist = cumDistances[i];
+    const u = totalLength > 0.001 ? dist / totalLength : (sampleCount > 1 ? i / (sampleCount - 1) : 0);
+    const r = getAnatomicalRadius(u, safeBaseR);
 
     // Normal vector perpendicular to forward tangent
     const nx = -s.ty;
@@ -546,6 +630,7 @@ export function generateSmoothSpine(
       normalY: ny,
       radius: r,
       progress: u,
+      distance: dist,
       leftX: s.x + nx * r,
       leftY: s.y + ny * r,
       rightX: s.x - nx * r,
@@ -553,28 +638,28 @@ export function generateSmoothSpine(
     };
   }
 
-  // 4. Inner-miter smoothing: prevent self-intersection on tight turns
+  // 5. Robust inner-miter smoothing: prevent boundary self-intersection on tight turns
   for (let i = 1; i < sampleCount - 1; i++) {
     const prev = nodes[i - 1];
     const curr = nodes[i];
 
-    // Inner left boundary check
+    // Left flank forward progression check
     const leftDx = curr.leftX - prev.leftX;
     const leftDy = curr.leftY - prev.leftY;
     const leftDot = leftDx * curr.tangentX + leftDy * curr.tangentY;
     if (leftDot < 0) {
-      // Inversion detected: clamp inner offset to prevent pinching
-      curr.leftX = curr.x + curr.normalX * (curr.radius * 0.45);
-      curr.leftY = curr.y + curr.normalY * (curr.radius * 0.45);
+      // Clamping inner miter
+      curr.leftX = curr.x + curr.normalX * (curr.radius * 0.42);
+      curr.leftY = curr.y + curr.normalY * (curr.radius * 0.42);
     }
 
-    // Inner right boundary check
+    // Right flank forward progression check
     const rightDx = curr.rightX - prev.rightX;
     const rightDy = curr.rightY - prev.rightY;
     const rightDot = rightDx * curr.tangentX + rightDy * curr.tangentY;
     if (rightDot < 0) {
-      curr.rightX = curr.x - curr.normalX * (curr.radius * 0.45);
-      curr.rightY = curr.y - curr.normalY * (curr.radius * 0.45);
+      curr.rightX = curr.x - curr.normalX * (curr.radius * 0.42);
+      curr.rightY = curr.y - curr.normalY * (curr.radius * 0.42);
     }
   }
 
@@ -584,10 +669,10 @@ export function generateSmoothSpine(
 /**
  * Draws the stylized, anatomical snake head.
  * Features:
- * - Natural viper/colubrid wedge silhouette with muscular jowls, rounded snout, and smooth neck taper.
+ * - Natural viper/colubrid wedge silhouette with muscular jowls, defined snoutWidth, and smooth neck taper.
  * - Direction-aware orientation.
- * - Expressive lateral eyes with dark socket ring and glowing pupil.
- * - Rostral plate, supraocular scutes, and crown scale detailing.
+ * - Symmetrical lateral eyes with dark socket ring and glowing pupil.
+ * - Crown scale plates and dorsal crest light.
  */
 export function drawStylizedSnakeHead(
   ctx: CanvasRenderingContext2D,
@@ -610,7 +695,8 @@ export function drawStylizedSnakeHead(
   }
 
   const skin = getSkinVisuals(skinInput as any);
-  const effectiveGlow = allowGlow && visualEffects !== 'reduced';
+  // Head glow is only active in high mode with allowGlow enabled
+  const effectiveGlow = allowGlow && visualEffects === 'high';
 
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
@@ -619,9 +705,9 @@ export function drawStylizedSnakeHead(
   const headLength = baseRadius * 1.35;
   const jowlWidth = baseRadius * 1.05;
   const neckWidth = baseRadius * 0.78;
-  const snoutWidth = baseRadius * 0.42;
+  const snoutWidth = baseRadius * 0.45; // Defined rostral width at snout
 
-  // 1. Head Glow Pass (if enabled)
+  // 1. Head Glow Pass (only in High quality mode)
   if (effectiveGlow) {
     ctx.shadowColor = skin.headGlow;
     ctx.shadowBlur = 14;
@@ -630,18 +716,22 @@ export function drawStylizedSnakeHead(
   }
 
   // 2. Anatomical Head Silhouette Path in World Coordinates
-  const pSnout = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.95, 0);
-  const pJawUpperL = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.35, -jowlWidth * 0.75);
-  const pJowlL = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.35, -jowlWidth * 0.95);
-  const pNeckL = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.95, -neckWidth);
-  const pNeckBase = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 1.05, 0);
-  const pNeckR = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.95, neckWidth);
-  const pJowlR = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.35, jowlWidth * 0.95);
-  const pJawUpperR = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.35, jowlWidth * 0.75);
+  // Uses snoutWidth at rostral anterior and flares into lateral temporal jowls
+  const pSnoutTip = toWorld(headPt.x, headPt.y, cos, sin, headLength * 1.02, 0);
+  const pSnoutL = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.88, -snoutWidth * 0.5);
+  const pJawUpperL = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.38, -jowlWidth * 0.82);
+  const pJowlL = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.28, -jowlWidth * 0.98);
+  const pNeckL = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.88, -neckWidth);
+  const pNeckBase = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 1.02, 0);
+  const pNeckR = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.88, neckWidth);
+  const pJowlR = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.28, jowlWidth * 0.98);
+  const pJawUpperR = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.38, jowlWidth * 0.82);
+  const pSnoutR = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.88, snoutWidth * 0.5);
 
   ctx.fillStyle = skin.headColor;
   ctx.beginPath();
-  ctx.moveTo(pSnout.x, pSnout.y);
+  ctx.moveTo(pSnoutTip.x, pSnoutTip.y);
+  ctx.lineTo(pSnoutL.x, pSnoutL.y);
   ctx.lineTo(pJawUpperL.x, pJawUpperL.y);
   ctx.lineTo(pJowlL.x, pJowlL.y);
   ctx.lineTo(pNeckL.x, pNeckL.y);
@@ -649,17 +739,17 @@ export function drawStylizedSnakeHead(
   ctx.lineTo(pNeckR.x, pNeckR.y);
   ctx.lineTo(pJowlR.x, pJowlR.y);
   ctx.lineTo(pJawUpperR.x, pJawUpperR.y);
+  ctx.lineTo(pSnoutR.x, pSnoutR.y);
   safeClosePath(ctx);
   ctx.fill();
 
-  // Reset shadow for crisp inner facial and scale markings
   ctx.shadowBlur = 0;
 
   // 3. Anatomical Crown Scale Plate / Frontal Scutes on Head
   const c1 = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.45, 0);
   const c2 = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.05, -jowlWidth * 0.35);
   const c3 = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.45, -jowlWidth * 0.28);
-  const c4 = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.7, 0);
+  const c4 = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.70, 0);
   const c5 = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.45, jowlWidth * 0.28);
   const c6 = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.05, jowlWidth * 0.35);
 
@@ -685,15 +775,12 @@ export function drawStylizedSnakeHead(
   ctx.stroke();
 
   // 4. Directional Symmetrical Eyes in World Coordinates
-  // Positioned symmetrically relative to the forward heading
   const forwardOffset = baseRadius * 0.44;
   const sideOffset = baseRadius * 0.52;
 
-  // Eye 1 (left of heading)
   const eye1X = headPt.x + cos * forwardOffset - sin * sideOffset;
   const eye1Y = headPt.y + sin * forwardOffset + cos * sideOffset;
 
-  // Eye 2 (right of heading)
   const eye2X = headPt.x + cos * forwardOffset + sin * sideOffset;
   const eye2Y = headPt.y + sin * forwardOffset - cos * sideOffset;
 
@@ -719,41 +806,53 @@ export function drawStylizedSnakeHead(
 
 /**
  * Draws skin-specific stylized scales along the curved body geometry.
- * Adapts scale orientation and scale size smoothly to the spine's local normal and tangent.
+ * Scales are placed at uniform physical distance intervals along the spine,
+ * adapting smoothly to local tangents and remaining strictly inside the body ribbon.
+ * 
+ * Level Differentiation:
+ * - High: Central dorsal scales + lateral flank scutes + specular highlights
+ * - Performance: Central dorsal scales only (streamlined path operations)
+ * - Reduced: Scales suppressed entirely (handled upstream)
  */
 function drawCurvedBodyScales(
   ctx: CanvasRenderingContext2D,
   nodes: SmoothSpineNode[],
   skin: SkinVisualTheme,
-  visualEffects: 'high' | 'performance' | 'reduced'
+  visualEffects: 'high' | 'performance'
 ): void {
-  if (visualEffects === 'reduced') return;
-
   const count = nodes.length;
   if (count < 4) return;
+
+  const totalLength = nodes[count - 1].distance;
+  if (totalLength < 10) return;
 
   ctx.save();
   ctx.shadowBlur = 0;
 
-  // Sample nodes along spine with adaptive spacing
-  let lastProgress = 0;
-  const minProgressStep = 0.065; // ~15 scale clusters along body
+  // Place scales at uniform physical distances (e.g. every baseRadius * 1.35)
+  const scaleStep = Math.max(8, nodes[0].radius * 1.5);
+  let nextDistance = scaleStep * 0.75;
+  let nodeIdx = 1;
 
-  for (let i = 2; i < count - 2; i++) {
-    const node = nodes[i];
-    if (node.progress - lastProgress < minProgressStep) continue;
-    lastProgress = node.progress;
+  while (nextDistance < totalLength - scaleStep * 0.6 && nodeIdx < count - 1) {
+    // Find node closest to physical target distance
+    while (nodeIdx < count - 1 && nodes[nodeIdx].distance < nextDistance) {
+      nodeIdx++;
+    }
+    const node = nodes[nodeIdx];
+    nextDistance += scaleStep;
 
     const r = node.radius;
-    if (r < 3.5) continue;
+    if (r < 3.0) continue;
 
     const tx = node.tangentX;
     const ty = node.tangentY;
     const nx = node.normalX;
     const ny = node.normalY;
 
-    const scaleLen = r * 0.72;
-    const scaleW = r * 0.48;
+    // Scale dimensions scaled to stay safely inside body half-width r
+    const scaleLen = r * 0.68;
+    const scaleW = r * 0.44;
 
     switch (skin.scaleStyle) {
       case 'reptilian_keeled': {
@@ -772,9 +871,8 @@ function drawCurvedBodyScales(
         safeClosePath(ctx);
         ctx.fill();
 
-        // Longitudinal keeled ridge
         ctx.strokeStyle = skin.dorsalHighlight;
-        ctx.lineWidth = Math.max(0.75, r * 0.09);
+        ctx.lineWidth = Math.max(0.75, r * 0.08);
         ctx.beginPath();
         ctx.moveTo(pB.x, pB.y);
         ctx.lineTo(pF.x, pF.y);
@@ -783,7 +881,6 @@ function drawCurvedBodyScales(
       }
 
       case 'cyber_hex': {
-        // Interlocking cybernetic hexagonal scutes
         const hl = scaleLen * 0.45;
         const hw = scaleW * 0.55;
         ctx.fillStyle = skin.scaleAccentColor;
@@ -807,7 +904,6 @@ function drawCurvedBodyScales(
       }
 
       case 'sunset_chevron': {
-        // Dynamic overlapping sunset chevrons
         const pApex = { x: node.x + tx * (scaleLen * 0.4), y: node.y + ty * (scaleLen * 0.4) };
         const pArmL = { x: node.x - tx * (scaleLen * 0.5) + nx * (scaleW * 0.65), y: node.y - ty * (scaleLen * 0.5) + ny * (scaleW * 0.65) };
         const pMid = { x: node.x - tx * (scaleLen * 0.15), y: node.y - ty * (scaleLen * 0.15) };
@@ -832,13 +928,11 @@ function drawCurvedBodyScales(
       }
 
       case 'geometric_facet': {
-        // Crystalline faceted scales with split specular reflections
         const pTop = { x: node.x + tx * (scaleLen * 0.5), y: node.y + ty * (scaleLen * 0.5) };
         const pBot = { x: node.x - tx * (scaleLen * 0.5), y: node.y - ty * (scaleLen * 0.5) };
         const pLeft = { x: node.x + nx * (scaleW * 0.6), y: node.y + ny * (scaleW * 0.6) };
         const pRight = { x: node.x - nx * (scaleW * 0.6), y: node.y - ny * (scaleW * 0.6) };
 
-        // Left facet
         ctx.fillStyle = skin.scaleAccentColor;
         ctx.beginPath();
         ctx.moveTo(pTop.x, pTop.y);
@@ -847,7 +941,6 @@ function drawCurvedBodyScales(
         safeClosePath(ctx);
         ctx.fill();
 
-        // Right facet
         ctx.fillStyle = skin.scaleSecondaryColor;
         ctx.beginPath();
         ctx.moveTo(pTop.x, pTop.y);
@@ -856,7 +949,6 @@ function drawCurvedBodyScales(
         safeClosePath(ctx);
         ctx.fill();
 
-        // Facet crest glint
         ctx.strokeStyle = skin.dorsalHighlight;
         ctx.lineWidth = Math.max(0.75, r * 0.08);
         ctx.beginPath();
@@ -867,7 +959,6 @@ function drawCurvedBodyScales(
       }
 
       case 'viper_scutes': {
-        // Broad, aggressive pit-viper dorsal plates
         const pFront = { x: node.x + tx * (scaleLen * 0.45), y: node.y + ty * (scaleLen * 0.45) };
         const pBack = { x: node.x - tx * (scaleLen * 0.45), y: node.y - ty * (scaleLen * 0.45) };
         const pL = { x: node.x - tx * (scaleLen * 0.1) + nx * (scaleW * 0.7), y: node.y - ty * (scaleLen * 0.1) + ny * (scaleW * 0.7) };
@@ -892,7 +983,6 @@ function drawCurvedBodyScales(
       }
 
       case 'frost_crystalline': {
-        // Delicate ice-crystal facets
         const pFront = { x: node.x + tx * (scaleLen * 0.5), y: node.y + ty * (scaleLen * 0.5) };
         const pBack = { x: node.x - tx * (scaleLen * 0.5), y: node.y - ty * (scaleLen * 0.5) };
         const pL = { x: node.x + nx * (scaleW * 0.55), y: node.y + ny * (scaleW * 0.55) };
@@ -917,7 +1007,6 @@ function drawCurvedBodyScales(
       }
 
       case 'gold_metallic': {
-        // Burnished golden lamellae with polished gleam
         const pFront = { x: node.x + tx * (scaleLen * 0.45), y: node.y + ty * (scaleLen * 0.45) };
         const pBack = { x: node.x - tx * (scaleLen * 0.45), y: node.y - ty * (scaleLen * 0.45) };
         const pL = { x: node.x + nx * (scaleW * 0.6), y: node.y + ny * (scaleW * 0.6) };
@@ -943,11 +1032,10 @@ function drawCurvedBodyScales(
 
       case 'void_chitin':
       default: {
-        // Layered obsidian chitin armor plates with electric cyan neural seam
         const pFront = { x: node.x + tx * (scaleLen * 0.45), y: node.y + ty * (scaleLen * 0.45) };
         const pBack = { x: node.x - tx * (scaleLen * 0.45), y: node.y - ty * (scaleLen * 0.45) };
-        const pL = { x: node.x + nx * (scaleW * 0.6), y: node.y + ny * (scaleW * 0.6) };
-        const pR = { x: node.x - nx * (scaleW * 0.6), y: node.y - ny * (scaleW * 0.6) };
+        const pL = { x: node.x - tx * (scaleLen * 0.1) + nx * (scaleW * 0.6), y: node.y - ty * (scaleLen * 0.1) + ny * (scaleW * 0.6) };
+        const pR = { x: node.x - tx * (scaleLen * 0.1) - nx * (scaleW * 0.6), y: node.y - ty * (scaleLen * 0.1) - ny * (scaleW * 0.6) };
 
         ctx.fillStyle = skin.scaleAccentColor;
         ctx.beginPath();
@@ -967,6 +1055,16 @@ function drawCurvedBodyScales(
         break;
       }
     }
+
+    // High quality mode: add refined lateral flank scales on left and right flanks
+    if (visualEffects === 'high') {
+      const latDist = r * 0.58;
+      ctx.fillStyle = skin.scaleSecondaryColor;
+      ctx.beginPath();
+      ctx.arc(node.x + nx * latDist, node.y + ny * latDist, r * 0.15, 0, Math.PI * 2);
+      ctx.arc(node.x - nx * latDist, node.y - ny * latDist, r * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   ctx.restore();
@@ -975,6 +1073,11 @@ function drawCurvedBodyScales(
 /**
  * Draws the continuous, streamlined snake body with smooth curved geometry,
  * multi-zone gradient fill, natural tail tapering, and curved scale patterns.
+ * 
+ * Distinct Quality Tiers:
+ * - High: Multi-zone ribbon + flank under-shading + dorsal highlight + full scales
+ * - Performance: Multi-zone ribbon + flank under-shading + dorsal highlight + dorsal scales only
+ * - Reduced: Multi-zone ribbon + dorsal highlight (no flank shading, no scales)
  */
 export function drawContinuousSnakeBody(
   ctx: CanvasRenderingContext2D,
@@ -997,25 +1100,30 @@ export function drawContinuousSnakeBody(
   ctx.save();
 
   // 2. Render multi-zone seamless curved ribbon from tail to head
-  // Guarantees all 3 body colors (bodyColors[2], bodyColors[1], bodyColors[0]) are cleanly applied
-  const splitIdx1 = Math.max(1, Math.floor(totalNodes * 0.35));
-  const splitIdx2 = Math.max(splitIdx1 + 1, Math.floor(totalNodes * 0.68));
+  // Zones are defined by normalized physical progress u in [0, 1]
+  let splitIdx1 = 1;
+  let splitIdx2 = totalNodes - 1;
+  for (let i = 0; i < totalNodes; i++) {
+    if (nodes[i].progress <= 0.35) splitIdx1 = i;
+    if (nodes[i].progress <= 0.68) splitIdx2 = i;
+  }
+  splitIdx1 = Math.max(1, splitIdx1);
+  splitIdx2 = Math.max(splitIdx1 + 1, Math.min(totalNodes - 1, splitIdx2));
 
   interface BodyZone {
     start: number;
     end: number;
     color: string;
     glow: boolean;
-    isTailZone: boolean;
   }
 
   const zones: BodyZone[] = [
     // Zone 2: Posterior / Tail
-    { start: splitIdx2, end: totalNodes - 1, color: skin.bodyColors[2], glow: false, isTailZone: true },
+    { start: splitIdx2, end: totalNodes - 1, color: skin.bodyColors[2], glow: false },
     // Zone 1: Mid-body
-    { start: splitIdx1, end: splitIdx2, color: skin.bodyColors[1], glow: false, isTailZone: false },
+    { start: splitIdx1, end: splitIdx2, color: skin.bodyColors[1], glow: false },
     // Zone 0: Anterior / Neck
-    { start: 0, end: splitIdx1, color: skin.bodyColors[0], glow: allowGlow && isHeadChain, isTailZone: false },
+    { start: 0, end: splitIdx1, color: skin.bodyColors[0], glow: allowGlow && visualEffects === 'high' && isHeadChain },
   ];
 
   for (const zone of zones) {
@@ -1032,12 +1140,10 @@ export function drawContinuousSnakeBody(
     ctx.beginPath();
     ctx.moveTo(nodes[zone.start].leftX, nodes[zone.start].leftY);
 
-    // Left flank curved contour
     for (let i = zone.start + 1; i <= zone.end; i++) {
       ctx.lineTo(nodes[i].leftX, nodes[i].leftY);
     }
 
-    // Right flank curved contour (returning backwards)
     for (let i = zone.end; i >= zone.start; i--) {
       ctx.lineTo(nodes[i].rightX, nodes[i].rightY);
     }
@@ -1046,12 +1152,14 @@ export function drawContinuousSnakeBody(
     ctx.fill();
   }
 
-  // 3. Dedicated Natural Tapered Tail Tip Cap (only on true tail end of the snake)
+  // 3. Dedicated Natural Tapered Tail Tip Cap (only on true tail terminal of the snake)
+  // The tip extends OUTWARD (away from the body) along the terminal tangent vector
   if (isTailChain && totalNodes > 0) {
     const lastNode = nodes[totalNodes - 1];
     const tipDist = lastNode.radius * 1.5;
-    const tipX = lastNode.x - lastNode.tangentX * tipDist;
-    const tipY = lastNode.y - lastNode.tangentY * tipDist;
+    // PLUS sign ensures tip extends AWAY from body in the direction of heading
+    const tipX = lastNode.x + lastNode.tangentX * tipDist;
+    const tipY = lastNode.y + lastNode.tangentY * tipDist;
 
     ctx.fillStyle = skin.bodyColors[2];
     ctx.beginPath();
@@ -1062,22 +1170,20 @@ export function drawContinuousSnakeBody(
     ctx.fill();
   }
 
-  // 3. Volumetric 3D Shading Pass
-  // Flank shade for cylindrical body depth
+  // 4. Volumetric 3D Shading Pass (High and Performance modes)
   ctx.shadowBlur = 0;
   if (visualEffects !== 'reduced') {
     ctx.fillStyle = skin.bellyShade;
-    ctx.globalAlpha = 0.28;
+    ctx.globalAlpha = visualEffects === 'high' ? 0.28 : 0.18;
     ctx.beginPath();
     ctx.moveTo(nodes[0].rightX, nodes[0].rightY);
     for (let i = 1; i < totalNodes; i++) {
       ctx.lineTo(nodes[i].rightX, nodes[i].rightY);
     }
     for (let i = totalNodes - 1; i >= 0; i--) {
-      // Inward offset for flank shade
       ctx.lineTo(
-        nodes[i].x - nodes[i].normalX * (nodes[i].radius * 0.45),
-        nodes[i].y - nodes[i].normalY * (nodes[i].radius * 0.45)
+        nodes[i].x - nodes[i].normalX * (nodes[i].radius * 0.42),
+        nodes[i].y - nodes[i].normalY * (nodes[i].radius * 0.42)
       );
     }
     safeClosePath(ctx);
@@ -1085,7 +1191,7 @@ export function drawContinuousSnakeBody(
     ctx.globalAlpha = 1.0;
   }
 
-  // 4. Continuous Dorsal Ridge Highlight along the smooth centerline
+  // 5. Continuous Dorsal Ridge Highlight along the smooth centerline
   ctx.strokeStyle = skin.dorsalHighlight;
   ctx.lineWidth = Math.max(0.75, baseRadius * 0.08);
   ctx.lineCap = 'round';
@@ -1097,8 +1203,10 @@ export function drawContinuousSnakeBody(
   }
   ctx.stroke();
 
-  // 5. Stylized Scales along the curved spine
-  drawCurvedBodyScales(ctx, nodes, skin, visualEffects);
+  // 6. Stylized Scales along the curved spine (High and Performance modes)
+  if (visualEffects !== 'reduced') {
+    drawCurvedBodyScales(ctx, nodes, skin, visualEffects);
+  }
 
   ctx.restore();
 }
@@ -1116,7 +1224,8 @@ export function drawNaturalStylizedSnake(
   if (!ctx || !points || points.length === 0) return;
 
   const visualEffects = options.visualEffects ?? 'high';
-  const allowGlow = (options.allowGlow ?? true) && (visualEffects !== 'reduced');
+  // Glow is only allowed in High quality mode
+  const allowGlow = (options.allowGlow ?? true) && (visualEffects === 'high');
   const skinTheme = getSkinVisuals(options.skin);
 
   // Base radius determination
@@ -1173,7 +1282,8 @@ export function drawNaturalStylizedSnake(
     // 3. Active Shield Aura around head (if powerup is active)
     if (options.hasShield) {
       ctx.save();
-      const shieldPulse = Math.sin(Date.now() * 0.01) * 0.15 + 1;
+      const animTime = options.animationTimeMs ?? Date.now();
+      const shieldPulse = Math.sin(animTime * 0.008) * 0.15 + 1;
       const shieldR = baseRadius * 1.85 * shieldPulse;
       if (allowGlow) {
         ctx.shadowColor = '#9865FF';

@@ -204,7 +204,7 @@ export class NeonRenderer {
 
     // 3. Snake Body & Head (Smoothly Interpolated using selected skin)
     const skinConfig = SKINS[settings.skin || 'cyber_cyan'] || SKINS.cyber_cyan;
-    this.drawSnake(ctx, state, alpha, cellW, cellH, allowGlow, settings.visualEffects, skinConfig);
+    this.drawSnake(ctx, state, alpha, cellW, cellH, allowGlow, settings.visualEffects, skinConfig, now);
 
     // 4. Particles
     this.drawParticles(ctx, allowGlow);
@@ -421,7 +421,8 @@ export class NeonRenderer {
     cellH: number,
     allowGlow: boolean,
     visualEffects: string,
-    skin: SnakeSkin
+    skin: SnakeSkin,
+    now: number = Date.now()
   ): void {
     if (state.snake.length === 0) return;
 
@@ -452,7 +453,7 @@ export class NeonRenderer {
     }
 
     // 1. Draw Slow-Mo Trail if active
-    if (state.powerUps.slowMoUntil > Date.now() && visualEffects !== 'reduced') {
+    if (state.powerUps.slowMoUntil > now && visualEffects !== 'reduced') {
       ctx.save();
       ctx.strokeStyle = 'rgba(67, 245, 255, 0.2)';
       ctx.lineWidth = Math.min(cellW, cellH) * 0.9;
@@ -477,6 +478,7 @@ export class NeonRenderer {
       allowGlow,
       visualEffects: (visualEffects as 'high' | 'performance' | 'reduced') || 'high',
       hasShield: state.powerUps.hasShield,
+      animationTimeMs: now,
     });
   }
 

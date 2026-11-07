@@ -134,6 +134,7 @@ export function drawSkinPreview(
     baseRadius,
     allowGlow: glow > 0,
     visualEffects: glow > 0 ? 'high' : 'reduced',
+    animationTimeMs: timeMs,
   });
 
   ctx.restore();
