@@ -9,6 +9,7 @@
 import type { SnakeSkinId } from './types.ts';
 import { SKINS } from './constants.ts';
 import { getSkinDefinition, isValidSkinId } from './skins.ts';
+import { drawNaturalStylizedSnake } from './snake_renderer.ts';
 
 export interface SkinPreviewOptions {
   /** Width in logical CSS pixels */
@@ -126,91 +127,14 @@ export function drawSkinPreview(
 
   const baseRadius = Math.min(width, height) * 0.135;
 
-  // 3. Body Segments with theme skin gradient & white energy cores
-  // Rendered from tail (last index) down to segment 1 so head overlaps on top
-  for (let i = totalSegments - 1; i >= 1; i--) {
-    const pt = points[i];
-    const progress = i / (totalSegments - 1); // 0 at head, 1 at tail
-    const segRadius = baseRadius * (1 - progress * 0.28); // Taper towards tail
-
-    // Segment color selection using the authoritative skin bodyColors palette
-    let fill = skin.bodyColors[0];
-    if (progress > 0.6) {
-      fill = skin.bodyColors[2] || skin.bodyColors[0];
-    } else if (progress > 0.25) {
-      fill = skin.bodyColors[1] || skin.bodyColors[0];
-    }
-
-    if (glow > 0 && i <= 3) {
-      ctx.shadowColor = skin.headGlow;
-      ctx.shadowBlur = 8 * glow;
-    } else {
-      ctx.shadowBlur = 0;
-    }
-
-    // Outer segment body
-    ctx.fillStyle = fill;
-    ctx.beginPath();
-    ctx.arc(pt.x, pt.y, segRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Inner bright energy core
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.arc(pt.x, pt.y, segRadius * 0.35, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // 4. Snake Head
-  if (glow > 0) {
-    ctx.shadowColor = skin.headGlow;
-    ctx.shadowBlur = 14 * glow;
-  } else {
-    ctx.shadowBlur = 0;
-  }
-
-  // Head base circle
-  ctx.fillStyle = skin.headColor;
-  ctx.beginPath();
-  ctx.arc(headPt.x, headPt.y, baseRadius * 1.15, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Head inner bright core
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath();
-  ctx.arc(headPt.x, headPt.y, baseRadius * 0.65, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 5. Directional Optic Visor / Eyes
-  // Positioned symmetrically relative to the head heading angle
-  const forwardOffset = baseRadius * 0.44;
-  const sideOffset = baseRadius * 0.52;
-  const cos = Math.cos(headAngle);
-  const sin = Math.sin(headAngle);
-
-  // Eye 1 (left of heading)
-  const eye1X = headPt.x + cos * forwardOffset - sin * sideOffset;
-  const eye1Y = headPt.y + sin * forwardOffset + cos * sideOffset;
-
-  // Eye 2 (right of heading)
-  const eye2X = headPt.x + cos * forwardOffset + sin * sideOffset;
-  const eye2Y = headPt.y + sin * forwardOffset - cos * sideOffset;
-
-  // Dark eye socket housing
-  ctx.fillStyle = '#080A12';
-  ctx.beginPath();
-  ctx.arc(eye1X, eye1Y, baseRadius * 0.28, 0, Math.PI * 2);
-  ctx.arc(eye2X, eye2Y, baseRadius * 0.28, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Glowing neon pupil from skin.eyeColor
-  ctx.fillStyle = skin.eyeColor;
-  ctx.beginPath();
-  ctx.arc(eye1X, eye1Y, baseRadius * 0.16, 0, Math.PI * 2);
-  ctx.arc(eye2X, eye2Y, baseRadius * 0.16, 0, Math.PI * 2);
-  ctx.fill();
+  // 3. Draw Natural Stylized Snake using shared renderer
+  drawNaturalStylizedSnake(ctx, points, {
+    headingAngle: headAngle,
+    skin,
+    baseRadius,
+    allowGlow: glow > 0,
+    visualEffects: glow > 0 ? 'high' : 'reduced',
+  });
 
   ctx.restore();
 

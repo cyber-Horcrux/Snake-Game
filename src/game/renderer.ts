@@ -5,6 +5,7 @@
  */
 import type { GameEngineState, GridCoord, FoodItem, SnakeSkinId, SnakeSkin, Obstacle, WarpGate } from './types.ts';
 import { SKINS } from './constants.ts';
+import { drawNaturalStylizedSnake } from './snake_renderer.ts';
 
 export interface Particle {
   active: boolean;
@@ -467,127 +468,16 @@ export class NeonRenderer {
       ctx.restore();
     }
 
-    // 2. Body Segments with theme skin gradient (single save/restore pass for optimal 60fps)
-    const radius = (Math.min(cellW, cellH) / 2) * 0.78;
-    ctx.save();
-
-    for (let i = interpolatedPoints.length - 1; i >= 1; i--) {
-      const pt = interpolatedPoints[i];
-      const t = i / interpolatedPoints.length; // 0 near head, 1 near tail
-      const segRadius = radius * (1 - t * 0.25); // Gentle taper towards tail
-
-      if (allowGlow && i < 6) {
-        ctx.shadowColor = skin.headGlow;
-        ctx.shadowBlur = 8;
-      } else {
-        ctx.shadowBlur = 0;
-      }
-
-      // Segment color from skin palette
-      let fill = skin.bodyColors[0];
-      if (t > 0.6) {
-        fill = skin.bodyColors[2];
-      } else if (t > 0.25) {
-        fill = skin.bodyColors[1];
-      }
-
-      ctx.fillStyle = fill;
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, segRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Inner energy core
-      ctx.fillStyle = '#FFFFFF';
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, segRadius * 0.35, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-
-    // 3. Snake Head
-    const headPt = interpolatedPoints[0];
-    ctx.save();
-    if (allowGlow) {
-      ctx.shadowColor = skin.headGlow;
-      ctx.shadowBlur = 18;
-    }
-
-    // Head base circle
-    ctx.fillStyle = skin.headColor;
-    ctx.beginPath();
-    ctx.arc(headPt.x, headPt.y, radius * 1.1, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Inner bright center
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.arc(headPt.x, headPt.y, radius * 0.65, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Directional Optic Visor / Eyes
-    const eyeOffset = radius * 0.55;
-    let eye1: { x: number; y: number };
-    let eye2: { x: number; y: number };
-
-    switch (state.direction) {
-      case 'UP':
-        eye1 = { x: headPt.x - eyeOffset * 0.6, y: headPt.y - eyeOffset };
-        eye2 = { x: headPt.x + eyeOffset * 0.6, y: headPt.y - eyeOffset };
-        break;
-      case 'DOWN':
-        eye1 = { x: headPt.x - eyeOffset * 0.6, y: headPt.y + eyeOffset };
-        eye2 = { x: headPt.x + eyeOffset * 0.6, y: headPt.y + eyeOffset };
-        break;
-      case 'LEFT':
-        eye1 = { x: headPt.x - eyeOffset, y: headPt.y - eyeOffset * 0.6 };
-        eye2 = { x: headPt.x - eyeOffset, y: headPt.y + eyeOffset * 0.6 };
-        break;
-      case 'RIGHT':
-      default:
-        eye1 = { x: headPt.x + eyeOffset, y: headPt.y - eyeOffset * 0.6 };
-        eye2 = { x: headPt.x + eyeOffset, y: headPt.y + eyeOffset * 0.6 };
-        break;
-    }
-
-    ctx.fillStyle = '#080A12';
-    ctx.beginPath();
-    ctx.arc(eye1.x, eye1.y, radius * 0.28, 0, Math.PI * 2);
-    ctx.arc(eye2.x, eye2.y, radius * 0.28, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = skin.eyeColor;
-    ctx.beginPath();
-    ctx.arc(eye1.x, eye1.y, radius * 0.16, 0, Math.PI * 2);
-    ctx.arc(eye2.x, eye2.y, radius * 0.16, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 4. Active Shield Aura around head
-    if (state.powerUps.hasShield) {
-      const shieldPulse = Math.sin(Date.now() * 0.01) * 0.15 + 1;
-      const shieldR = radius * 1.85 * shieldPulse;
-      if (allowGlow) {
-        ctx.shadowColor = '#9865FF';
-        ctx.shadowBlur = 22;
-      }
-      ctx.strokeStyle = '#9865FF';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = (i * Math.PI) / 3;
-        const hx = headPt.x + Math.cos(a) * shieldR;
-        const hy = headPt.y + Math.sin(a) * shieldR;
-        if (i === 0) ctx.moveTo(hx, hy);
-        else ctx.lineTo(hx, hy);
-      }
-      ctx.closePath();
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(152, 101, 255, 0.18)';
-      ctx.fill();
-    }
-
-    ctx.restore();
+    // 2. Draw Natural Stylized Snake using shared renderer
+    drawNaturalStylizedSnake(ctx, interpolatedPoints, {
+      direction: state.direction,
+      skin,
+      cellW,
+      cellH,
+      allowGlow,
+      visualEffects: (visualEffects as 'high' | 'performance' | 'reduced') || 'high',
+      hasShield: state.powerUps.hasShield,
+    });
   }
 
   private drawStar(
