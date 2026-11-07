@@ -217,7 +217,22 @@ export function drawSnakeTrail(
 }
 
 /**
- * CYBER PULSE: Harmonic cyan electromagnetic waveform wake with rhythmic nodes.
+ * Smooth quadratic midpoint spline path connecting points.
+ */
+function traceSplinePath(ctx: CanvasRenderingContext2D, points: TrailPoint[]): void {
+  if (points.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length - 1; i++) {
+    const mx = (points[i].x + points[i + 1].x) / 2;
+    const my = (points[i].y + points[i + 1].y) / 2;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
+  }
+  ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+}
+
+/**
+ * CYBER PULSE: Coherent harmonic electromagnetic waveform wake with rhythmic standing nodes.
  */
 function drawPulseTrail(
   ctx: CanvasRenderingContext2D,
@@ -229,46 +244,99 @@ function drawPulseTrail(
   visualEffects: 'high' | 'performance' | 'reduced'
 ): void {
   const count = chain.length;
-  const pulseWave = Math.sin(now * 0.009) * 0.15 + 0.85;
+  if (count < 2) return;
+  const pulseWave = Math.sin(now * 0.007) * 0.12 + 0.88;
 
+  // 1. Ground Surface Optical Diffusion Pass (Subtle ambient floor wash)
+  if (visualEffects !== 'reduced') {
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < count - 1; i++) {
+      const p0 = chain[i];
+      const p1 = chain[i + 1];
+      const progress = 1 - i / count;
+      const groundAlpha = (progress ** 2.2) * 0.14 * pulseWave;
+      ctx.strokeStyle = def.secondaryColor;
+      ctx.globalAlpha = Math.max(0, Math.min(1, groundAlpha));
+      ctx.lineWidth = Math.max(2, baseR * 1.6 * (progress ** 0.8));
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+  }
+
+  // 2. Main Coherent Plasma Sheath with Cubic Energy Falloff
   if (allowGlow) {
     ctx.shadowColor = def.glowColor;
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 6;
   } else {
     ctx.shadowBlur = 0;
   }
 
-  // Segmented ribbon with alpha and width falloff from newest (index 0) to oldest
   for (let i = 0; i < count - 1; i++) {
     const p0 = chain[i];
     const p1 = chain[i + 1];
     const progress0 = 1 - i / count;
     const progress1 = 1 - (i + 1) / count;
-    const alpha = (progress0 * 0.55 + progress1 * 0.45) * 0.75 * pulseWave;
-    const width = Math.max(1.5, baseR * 0.85 * (progress0 ** 1.3));
+    const alpha = (progress0 * 0.55 + progress1 * 0.45) ** 1.8 * 0.72 * pulseWave;
+    const width = Math.max(1.2, baseR * 0.82 * (progress0 ** 1.25));
 
     ctx.strokeStyle = def.color;
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     ctx.lineWidth = width;
-
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
+  }
 
-    // Harmonic nodes on high quality
-    if (visualEffects === 'high' && i % 3 === 0 && i < count * 0.75) {
-      const nodeR = Math.max(1.5, width * 0.35);
+  // 3. Specular High-Coherence Core Filament
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
+    ctx.strokeStyle = '#E0FFFF';
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.4) * 0.85 * pulseWave));
+    ctx.lineWidth = Math.max(0.75, baseR * 0.18 * progress);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+
+  // 4. Acoustic Standing Wave Nodes (High Quality)
+  if (visualEffects === 'high') {
+    for (let i = 0; i < count - 1; i += 2) {
+      if (i > count * 0.7) break;
+      const pt = chain[i];
+      const progress = 1 - i / count;
+      const phase = now * 0.009 - i * 0.45;
+      const standingAmp = Math.sin(phase);
+      const normalAngle = pt.angle + Math.PI / 2;
+      const offsetDist = baseR * 0.28 * standingAmp * progress;
+      const nodeX = pt.x + Math.cos(normalAngle) * offsetDist;
+      const nodeY = pt.y + Math.sin(normalAngle) * offsetDist;
+      const nodeR = Math.max(1.0, baseR * 0.22 * progress);
+
       ctx.fillStyle = def.secondaryColor;
+      ctx.globalAlpha = Math.max(0, Math.min(1, progress * 0.8 * Math.abs(standingAmp)));
       ctx.beginPath();
-      ctx.arc(p0.x, p0.y, nodeR, 0, Math.PI * 2);
+      ctx.arc(nodeX, nodeY, nodeR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Specular apex highlight on nodes
+      ctx.fillStyle = '#FFFFFF';
+      ctx.globalAlpha = Math.max(0, Math.min(1, progress * 0.9 * Math.abs(standingAmp)));
+      ctx.beginPath();
+      ctx.arc(nodeX, nodeY, Math.max(0.6, nodeR * 0.4), 0, Math.PI * 2);
       ctx.fill();
     }
   }
 }
 
 /**
- * MATRIX STREAM: Digital phosphor binary cascade with discrete ticks.
+ * MATRIX STREAM: Physical cathode-ray phosphor persistence with sub-pixel raster tracking.
  */
 function drawMatrixTrail(
   ctx: CanvasRenderingContext2D,
@@ -280,42 +348,96 @@ function drawMatrixTrail(
   visualEffects: 'high' | 'performance' | 'reduced'
 ): void {
   const count = chain.length;
+  if (count < 2) return;
+
+  // 1. Deep Phosphor Ground Wash (Scattered luminescence on dark arena surface)
+  if (visualEffects !== 'reduced') {
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < count - 1; i++) {
+      const p0 = chain[i];
+      const p1 = chain[i + 1];
+      const progress = 1 - i / count;
+      const decay = Math.exp(-2.5 * (i / count));
+      ctx.strokeStyle = '#064E3B';
+      ctx.globalAlpha = Math.max(0, Math.min(1, decay * 0.22));
+      ctx.lineWidth = Math.max(2, baseR * 1.5 * progress);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+  }
+
+  // 2. Electron-Beam Streamer Ribbon
   if (allowGlow) {
     ctx.shadowColor = def.glowColor;
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 5;
   } else {
     ctx.shadowBlur = 0;
   }
 
-  // Core stream line
   for (let i = 0; i < count - 1; i++) {
     const p0 = chain[i];
     const p1 = chain[i + 1];
     const progress = 1 - i / count;
-    const alpha = (progress ** 1.2) * 0.7;
+    const decay = Math.exp(-2.0 * (i / count));
 
     ctx.strokeStyle = def.color;
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = Math.max(1, baseR * 0.65 * progress);
-
+    ctx.globalAlpha = Math.max(0, Math.min(1, decay * 0.75));
+    ctx.lineWidth = Math.max(1, baseR * 0.6 * progress);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
+  }
 
-    // Digital binary phosphor pips
-    if (visualEffects !== 'reduced' && i % 2 === 0) {
-      const flicker = Math.sin(now * 0.02 + i * 2) > 0 ? 1 : 0.4;
-      ctx.fillStyle = def.secondaryColor;
-      ctx.globalAlpha = alpha * flicker;
-      const pipSize = Math.max(1.5, baseR * 0.28 * progress);
-      ctx.fillRect(p0.x - pipSize / 2, p0.y - pipSize / 2, pipSize, pipSize);
+  // 3. Specular Green-Phosphor Core Spine
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
+    const decay = Math.exp(-2.2 * (i / count));
+
+    ctx.strokeStyle = '#D1FAE5';
+    ctx.globalAlpha = Math.max(0, Math.min(1, decay * 0.85));
+    ctx.lineWidth = Math.max(0.7, baseR * 0.16 * progress);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+
+  // 4. Tangent-Aligned Sub-Pixel Raster Glyphs (High / Performance)
+  if (visualEffects !== 'reduced') {
+    for (let i = 0; i < count; i += 2) {
+      const pt = chain[i];
+      const progress = 1 - i / count;
+      const decay = Math.exp(-2.4 * (i / count));
+      const flicker = Math.sin(now * 0.024 + i * 1.8) > -0.2 ? 1 : 0.45;
+      const glyphAlpha = decay * 0.8 * flicker;
+
+      if (glyphAlpha < 0.05) continue;
+
+      const halfLength = Math.max(1.5, baseR * 0.35 * progress);
+      const cosA = Math.cos(pt.angle);
+      const sinA = Math.sin(pt.angle);
+
+      ctx.strokeStyle = def.secondaryColor;
+      ctx.globalAlpha = Math.max(0, Math.min(1, glyphAlpha));
+      ctx.lineWidth = 1;
+
+      // Micro data pip oriented along trajectory tangent
+      ctx.beginPath();
+      ctx.moveTo(pt.x - cosA * halfLength, pt.y - sinA * halfLength);
+      ctx.lineTo(pt.x + cosA * halfLength, pt.y + sinA * halfLength);
+      ctx.stroke();
     }
   }
 }
 
 /**
- * PLASMA OVERDRIVE: Superheated thermal exhaust ribbon with heat sparks.
+ * PLASMA OVERDRIVE: Supersonic thermal exhaust plume with Mach shock diamonds.
  */
 function drawPlasmaTrail(
   ctx: CanvasRenderingContext2D,
@@ -327,71 +449,193 @@ function drawPlasmaTrail(
   visualEffects: 'high' | 'performance' | 'reduced'
 ): void {
   const count = chain.length;
+  if (count < 2) return;
+
+  // 1. Ground Thermal Radiation Wash
+  if (visualEffects !== 'reduced') {
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < count - 1; i++) {
+      const p0 = chain[i];
+      const p1 = chain[i + 1];
+      const progress = 1 - i / count;
+      ctx.strokeStyle = '#7F1D1D';
+      ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 2.2) * 0.18));
+      ctx.lineWidth = Math.max(2.5, baseR * 1.7 * progress);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+  }
+
+  // 2. Outer Ionized Thermal Boundary Layer
   if (allowGlow) {
     ctx.shadowColor = def.glowColor;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 7;
   } else {
     ctx.shadowBlur = 0;
   }
 
-  // Outer thermal ribbon
   for (let i = 0; i < count - 1; i++) {
     const p0 = chain[i];
     const p1 = chain[i + 1];
     const progress = 1 - i / count;
-    const alpha = (progress ** 1.1) * 0.65;
-
     ctx.strokeStyle = def.secondaryColor;
-    ctx.globalAlpha = alpha * 0.5;
-    ctx.lineWidth = Math.max(2, baseR * 1.1 * progress);
-
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.35) * 0.55));
+    ctx.lineWidth = Math.max(1.8, baseR * 1.05 * progress);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
+  }
 
-    // Inner fiery core
+  // 3. Inner Supersonic Thermal Core
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
     ctx.strokeStyle = def.color;
-    ctx.globalAlpha = alpha * 0.9;
-    ctx.lineWidth = Math.max(1.2, baseR * 0.5 * progress);
-
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.2) * 0.88));
+    ctx.lineWidth = Math.max(1.2, baseR * 0.48 * progress);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
+  }
 
-    // Heat distortion sparks
-    if (visualEffects === 'high' && i % 3 === 0 && i < count * 0.6) {
-      const jitterAngle = now * 0.015 + i;
-      const jitterDist = baseR * 0.45 * Math.sin(jitterAngle);
-      const sparkX = p0.x + Math.cos(p0.angle + Math.PI / 2) * jitterDist;
-      const sparkY = p0.y + Math.sin(p0.angle + Math.PI / 2) * jitterDist;
+  // 4. White-Hot Centerline Filament
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
+    ctx.strokeStyle = '#FFF7ED';
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.5) * 0.95));
+    ctx.lineWidth = Math.max(0.75, baseR * 0.16 * progress);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+
+  // 5. Supersonic Mach Shock Diamonds (High / Performance)
+  if (visualEffects !== 'reduced') {
+    for (let i = 0; i < count; i += 3) {
+      if (i > count * 0.65) break;
+      const pt = chain[i];
+      const progress = 1 - i / count;
+      const diamondW = Math.max(1.5, baseR * 0.38 * progress);
+      const diamondL = Math.max(2.0, baseR * 0.55 * progress);
+      const cosA = Math.cos(pt.angle);
+      const sinA = Math.sin(pt.angle);
+      const normX = -sinA;
+      const normY = cosA;
 
       ctx.fillStyle = '#FFFFFF';
-      ctx.globalAlpha = alpha * 0.85;
+      ctx.globalAlpha = Math.max(0, Math.min(1, progress * 0.9));
       ctx.beginPath();
-      ctx.arc(sparkX, sparkY, Math.max(1, baseR * 0.15), 0, Math.PI * 2);
+      ctx.moveTo(pt.x + cosA * diamondL, pt.y + sinA * diamondL);
+      ctx.lineTo(pt.x + normX * diamondW, pt.y + normY * diamondW);
+      ctx.lineTo(pt.x - cosA * diamondL * 0.6, pt.y - sinA * diamondL * 0.6);
+      ctx.lineTo(pt.x - normX * diamondW, pt.y - normY * diamondW);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // 6. Decelerating Thermal Micro-Embers (High Quality)
+  if (visualEffects === 'high') {
+    for (let i = 0; i < count; i += 3) {
+      if (i > count * 0.55) break;
+      const pt = chain[i];
+      const progress = 1 - i / count;
+      const seed = now * 0.012 + i * 2.3;
+      const normalAngle = pt.angle + Math.PI / 2;
+      const lateralShift = Math.sin(seed) * (baseR * 0.42 * progress);
+      const emberX = pt.x + Math.cos(normalAngle) * lateralShift;
+      const emberY = pt.y + Math.sin(normalAngle) * lateralShift;
+      const emberR = Math.max(0.8, baseR * 0.14 * progress);
+
+      ctx.fillStyle = '#FFFBEB';
+      ctx.globalAlpha = Math.max(0, Math.min(1, progress * 0.85));
+      ctx.beginPath();
+      ctx.arc(emberX, emberY, emberR, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 }
 
 /**
- * HYPER LIGHT ARC: High-frequency ultraviolet slipstream laser after-image.
+ * HYPER LIGHT ARC: Coherent laser caustics with prismatic chromatic dispersion.
  */
 function drawStreakTrail(
   ctx: CanvasRenderingContext2D,
   chain: TrailPoint[],
   def: TrailDefinition,
   baseR: number,
-  _now: number,
+  now: number,
   allowGlow: boolean,
   visualEffects: 'high' | 'performance' | 'reduced'
 ): void {
   const count = chain.length;
+  if (count < 2) return;
+
+  // 1. Narrow Ground Caustic Streak
+  if (visualEffects !== 'reduced') {
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < count - 1; i++) {
+      const p0 = chain[i];
+      const p1 = chain[i + 1];
+      const progress = 1 - i / count;
+      ctx.strokeStyle = '#2E1065';
+      ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 2.0) * 0.25));
+      ctx.lineWidth = Math.max(1.8, baseR * 1.1 * progress);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+  }
+
+  // 2. Collimated Twin Prismatic Guide Rails with Chromatic Separation
+  if (visualEffects !== 'reduced') {
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < count - 1; i++) {
+      const p0 = chain[i];
+      const p1 = chain[i + 1];
+      const progress = 1 - i / count;
+      const railDist = baseR * 0.36 * progress;
+      const nx0 = -Math.sin(p0.angle) * railDist;
+      const ny0 = Math.cos(p0.angle) * railDist;
+      const nx1 = -Math.sin(p1.angle) * railDist;
+      const ny1 = Math.cos(p1.angle) * railDist;
+      const railAlpha = (progress ** 1.6) * 0.6;
+      const railWidth = Math.max(0.7, baseR * 0.15 * progress);
+
+      // Cyan-tinted left caustic
+      ctx.strokeStyle = '#38E1FF';
+      ctx.globalAlpha = Math.max(0, Math.min(1, railAlpha * 0.75));
+      ctx.lineWidth = railWidth;
+      ctx.beginPath();
+      ctx.moveTo(p0.x + nx0, p0.y + ny0);
+      ctx.lineTo(p1.x + nx1, p1.y + ny1);
+      ctx.stroke();
+
+      // Magenta-tinted right caustic
+      ctx.strokeStyle = '#FF4FD8';
+      ctx.globalAlpha = Math.max(0, Math.min(1, railAlpha * 0.75));
+      ctx.lineWidth = railWidth;
+      ctx.beginPath();
+      ctx.moveTo(p0.x - nx0, p0.y - ny0);
+      ctx.lineTo(p1.x - nx1, p1.y - ny1);
+      ctx.stroke();
+    }
+  }
+
+  // 3. Razor-Thin Ultraviolet Center Beam
   if (allowGlow) {
     ctx.shadowColor = def.glowColor;
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 6;
   } else {
     ctx.shadowBlur = 0;
   }
@@ -400,40 +644,56 @@ function drawStreakTrail(
     const p0 = chain[i];
     const p1 = chain[i + 1];
     const progress = 1 - i / count;
-    const alpha = (progress ** 1.4) * 0.8;
-
-    // Razor center beam
     ctx.strokeStyle = def.color;
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = Math.max(1.2, baseR * 0.45 * progress);
-
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.3) * 0.85));
+    ctx.lineWidth = Math.max(1.2, baseR * 0.42 * progress);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
+  }
 
-    // Dual offset rail lines on High / Performance
-    if (visualEffects !== 'reduced' && i % 2 === 0) {
-      const railDist = baseR * 0.4 * progress;
-      const nx = -Math.sin(p0.angle) * railDist;
-      const ny = Math.cos(p0.angle) * railDist;
+  // 4. Ultra-Bright Violet-White Center Laser Core
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
+    ctx.strokeStyle = '#F5D0FE';
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.5) * 0.95));
+    ctx.lineWidth = Math.max(0.65, baseR * 0.14 * progress);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
 
-      ctx.strokeStyle = def.secondaryColor;
-      ctx.globalAlpha = alpha * 0.55;
-      ctx.lineWidth = Math.max(0.75, baseR * 0.16);
+  // 5. Transverse Optical Phase Wavefronts (High Quality)
+  if (visualEffects === 'high') {
+    for (let i = 0; i < count; i += 3) {
+      if (i > count * 0.65) break;
+      const pt = chain[i];
+      const progress = 1 - i / count;
+      const pulsePhase = Math.sin(now * 0.02 - i * 0.6);
+      if (pulsePhase < 0.2) continue;
 
+      const span = baseR * 0.38 * progress;
+      const nx = -Math.sin(pt.angle) * span;
+      const ny = Math.cos(pt.angle) * span;
+
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.globalAlpha = Math.max(0, Math.min(1, progress * 0.8 * pulsePhase));
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(p0.x + nx, p0.y + ny);
-      ctx.lineTo(p1.x + nx, p1.y + ny);
-      ctx.moveTo(p0.x - nx, p0.y - ny);
-      ctx.lineTo(p1.x - nx, p1.y - ny);
+      ctx.moveTo(pt.x - nx, pt.y - ny);
+      ctx.lineTo(pt.x + nx, pt.y + ny);
       ctx.stroke();
     }
   }
 }
 
 /**
- * CRYO VAPOR: Sub-zero nitrogen condensation plume that gently expands and fades.
+ * CRYO VAPOR: Sub-zero nitrogen condensation plume with fluid expansion & Rayleigh scattering.
  */
 function drawVaporTrail(
   ctx: CanvasRenderingContext2D,
@@ -445,51 +705,95 @@ function drawVaporTrail(
   visualEffects: 'high' | 'performance' | 'reduced'
 ): void {
   const count = chain.length;
-  if (allowGlow) {
-    ctx.shadowColor = def.glowColor;
-    ctx.shadowBlur = 8;
-  } else {
+  if (count < 2) return;
+
+  // 1. Soft Cryogenic Ground Chill (Cold ambient floor mist)
+  if (visualEffects !== 'reduced') {
     ctx.shadowBlur = 0;
+    for (let i = 0; i < count - 1; i++) {
+      const p0 = chain[i];
+      const p1 = chain[i + 1];
+      const progress = 1 - i / count;
+      ctx.strokeStyle = '#0C4A6E';
+      ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.8) * 0.16));
+      ctx.lineWidth = Math.max(3, baseR * 1.8 * (0.8 + (1 - progress) * 0.5));
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
   }
 
-  // Soft expanding vapor puffs
+  // 2. Expanding Fluid Vapor Vortices (Gaussian density falloff with fluid billow)
   const step = visualEffects === 'high' ? 2 : 3;
+  ctx.shadowBlur = 0;
   for (let i = 0; i < count; i += step) {
     const pt = chain[i];
     const ageProgress = i / count; // 0 near tail, 1 oldest
-    const alpha = Math.max(0, (1 - ageProgress) * 0.42);
+    const alpha = Math.max(0, (1 - ageProgress) ** 1.9 * 0.38);
 
-    // Vapor puffs expand slightly as they age behind the tail
-    const puffRadius = baseR * (0.65 + ageProgress * 0.65);
-    const wobble = Math.sin(now * 0.007 + i) * (baseR * 0.15);
+    // Fluid plume expands naturally as it decelerates and mixes with ambient air
+    const billowR = baseR * (0.55 + ageProgress * 0.85);
+    const wobble = Math.sin(now * 0.006 + i * 0.8) * (baseR * 0.12 * ageProgress);
 
+    // Realistic multi-tier scattering gradient
     ctx.fillStyle = ageProgress < 0.4 ? def.color : def.secondaryColor;
     ctx.globalAlpha = alpha;
-
     ctx.beginPath();
-    ctx.arc(pt.x + wobble, pt.y + wobble, puffRadius, 0, Math.PI * 2);
+    ctx.arc(pt.x + wobble, pt.y + wobble, billowR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dense inner core
+    ctx.fillStyle = '#FFFFFF';
+    ctx.globalAlpha = alpha * 0.45;
+    ctx.beginPath();
+    ctx.arc(pt.x + wobble, pt.y + wobble, billowR * 0.45, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Central stream connection
+  // 3. Central Cryogenic Streamer Filament
+  if (allowGlow) {
+    ctx.shadowColor = def.glowColor;
+    ctx.shadowBlur = 5;
+  }
   for (let i = 0; i < count - 1; i++) {
     const p0 = chain[i];
     const p1 = chain[i + 1];
     const progress = 1 - i / count;
-
     ctx.strokeStyle = def.color;
-    ctx.globalAlpha = progress * 0.5;
-    ctx.lineWidth = Math.max(1, baseR * 0.4 * progress);
-
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.4) * 0.5));
+    ctx.lineWidth = Math.max(1, baseR * 0.38 * progress);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
   }
+
+  // 4. Ice-Crystal Nucleation Sparkle (High Quality)
+  if (visualEffects === 'high') {
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < count; i += 3) {
+      if (i > count * 0.7) break;
+      const pt = chain[i];
+      const progress = 1 - i / count;
+      const glintPhase = Math.sin(now * 0.015 + i * 2.7);
+      if (glintPhase < 0.4) continue;
+
+      const glintX = pt.x + Math.sin(i * 1.5) * (baseR * 0.32 * progress);
+      const glintY = pt.y + Math.cos(i * 1.5) * (baseR * 0.32 * progress);
+      const glintR = Math.max(0.7, baseR * 0.1 * progress);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.globalAlpha = Math.max(0, Math.min(1, progress * 0.9 * glintPhase));
+      ctx.beginPath();
+      ctx.arc(glintX, glintY, glintR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 /**
- * SOLAR RADIANCE: Golden starlight wake with solar glints and coronal flares.
+ * SOLAR RADIANCE: Golden coronal plasma filament with Fraunhofer diffraction spikes.
  */
 function drawSolarTrail(
   ctx: CanvasRenderingContext2D,
@@ -501,54 +805,111 @@ function drawSolarTrail(
   visualEffects: 'high' | 'performance' | 'reduced'
 ): void {
   const count = chain.length;
+  if (count < 2) return;
+
+  // 1. Warm Coronal Ground Radiation
+  if (visualEffects !== 'reduced') {
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < count - 1; i++) {
+      const p0 = chain[i];
+      const p1 = chain[i + 1];
+      const progress = 1 - i / count;
+      ctx.strokeStyle = '#451A03';
+      ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 2.0) * 0.2));
+      ctx.lineWidth = Math.max(2.5, baseR * 1.6 * progress);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+  }
+
+  // 2. Coronal Sheath with Limb Darkening
   if (allowGlow) {
     ctx.shadowColor = def.glowColor;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 7;
   } else {
     ctx.shadowBlur = 0;
   }
 
-  // Golden filament
   for (let i = 0; i < count - 1; i++) {
     const p0 = chain[i];
     const p1 = chain[i + 1];
     const progress = 1 - i / count;
-    const alpha = (progress ** 1.2) * 0.75;
-
-    ctx.strokeStyle = def.color;
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = Math.max(1.2, baseR * 0.7 * progress);
-
+    ctx.strokeStyle = def.secondaryColor;
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.3) * 0.65));
+    ctx.lineWidth = Math.max(1.5, baseR * 0.95 * progress);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
+  }
 
-    // 4-point solar diamond glints at intervals
-    if (visualEffects === 'high' && i % 4 === 0 && i < count * 0.7) {
-      const glintR = Math.max(1.5, baseR * 0.35 * progress);
-      const rot = now * 0.005 + i;
+  // 3. Golden Core Filament
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
+    ctx.strokeStyle = def.color;
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.2) * 0.85));
+    ctx.lineWidth = Math.max(1.0, baseR * 0.5 * progress);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+
+  // 4. Stellar Solar White Spine
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
+    ctx.strokeStyle = '#FFFBEB';
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.4) * 0.95));
+    ctx.lineWidth = Math.max(0.7, baseR * 0.16 * progress);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+
+  // 5. Fraunhofer 4-Axis Lens Diffraction Spikes (High Quality)
+  if (visualEffects === 'high') {
+    for (let i = 0; i < count; i += 4) {
+      if (i > count * 0.65) break;
+      const pt = chain[i];
+      const progress = 1 - i / count;
+      const spikeL = Math.max(2.5, baseR * 0.45 * progress);
+      const rot = now * 0.003 + i * 0.7;
 
       ctx.fillStyle = '#FFFFFF';
-      ctx.globalAlpha = alpha * 0.9;
+      ctx.globalAlpha = Math.max(0, Math.min(1, progress * 0.9));
 
       ctx.save();
-      ctx.translate(p0.x, p0.y);
+      ctx.translate(pt.x, pt.y);
       ctx.rotate(rot);
+
+      // Realistic 4-axis lens diffraction star
       ctx.beginPath();
-      ctx.moveTo(0, -glintR);
-      ctx.lineTo(glintR * 0.35, 0);
-      ctx.lineTo(0, glintR);
-      ctx.lineTo(-glintR * 0.35, 0);
+      ctx.moveTo(0, -spikeL);
+      ctx.lineTo(spikeL * 0.18, -spikeL * 0.18);
+      ctx.lineTo(spikeL, 0);
+      ctx.lineTo(spikeL * 0.18, spikeL * 0.18);
+      ctx.moveTo(0, spikeL);
+      ctx.lineTo(-spikeL * 0.18, spikeL * 0.18);
+      ctx.lineTo(-spikeL, 0);
+      ctx.lineTo(-spikeL * 0.18, -spikeL * 0.18);
       ctx.closePath();
       ctx.fill();
+
       ctx.restore();
     }
   }
 }
 
 /**
- * VOID HORIZON: Quantum singularity gravitational distortion trace.
+ * VOID HORIZON: Gravitational lens distortion wake with event-horizon attenuation core.
  */
 function drawSingularityTrail(
   ctx: CanvasRenderingContext2D,
@@ -560,51 +921,77 @@ function drawSingularityTrail(
   visualEffects: 'high' | 'performance' | 'reduced'
 ): void {
   const count = chain.length;
-  if (allowGlow) {
-    ctx.shadowColor = def.glowColor;
-    ctx.shadowBlur = 10;
-  } else {
-    ctx.shadowBlur = 0;
-  }
+  if (count < 2) return;
 
-  // Deep indigo dark matter envelope
+  // 1. Event Horizon Light-Absorption Core (Physical darkening of the playfield beneath wake)
+  ctx.shadowBlur = 0;
   for (let i = 0; i < count - 1; i++) {
     const p0 = chain[i];
     const p1 = chain[i + 1];
     const progress = 1 - i / count;
-    const alpha = (progress ** 1.3) * 0.7;
+    ctx.strokeStyle = '#020617';
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.6) * 0.85));
+    ctx.lineWidth = Math.max(2.5, baseR * 1.35 * progress);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
 
+  // 2. Relativistic Frame-Dragging Caustics
+  if (allowGlow) {
+    ctx.shadowColor = def.glowColor;
+    ctx.shadowBlur = 6;
+  } else {
+    ctx.shadowBlur = 0;
+  }
+
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
     ctx.strokeStyle = def.color;
-    ctx.globalAlpha = alpha * 0.7;
-    ctx.lineWidth = Math.max(1.5, baseR * 0.9 * progress);
-
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.4) * 0.65));
+    ctx.lineWidth = Math.max(1.5, baseR * 0.85 * progress);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
+  }
 
-    // Center quantum blue thread
+  // 3. Accretion Boundary Filament (Quantum Cyan Spine)
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < count - 1; i++) {
+    const p0 = chain[i];
+    const p1 = chain[i + 1];
+    const progress = 1 - i / count;
     ctx.strokeStyle = def.secondaryColor;
-    ctx.globalAlpha = alpha * 0.95;
-    ctx.lineWidth = Math.max(0.8, baseR * 0.3 * progress);
-
+    ctx.globalAlpha = Math.max(0, Math.min(1, (progress ** 1.3) * 0.9));
+    ctx.lineWidth = Math.max(0.8, baseR * 0.28 * progress);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
+  }
 
-    // Orbiting quantum field specks
-    if (visualEffects === 'high' && i % 3 === 0 && i < count * 0.65) {
-      const orbitA = now * 0.012 + i * 1.5;
-      const orbitR = baseR * 0.5 * progress;
-      const sx = p0.x + Math.cos(orbitA) * orbitR;
-      const sy = p0.y + Math.sin(orbitA) * orbitR;
+  // 4. Inward-Drifting Hawking Radiation Specks (High Quality)
+  if (visualEffects === 'high') {
+    for (let i = 0; i < count; i += 3) {
+      if (i > count * 0.6) break;
+      const pt = chain[i];
+      const progress = 1 - i / count;
+      const orbitA = now * 0.01 + i * 1.7;
+      const orbitDist = baseR * 0.42 * progress * (0.4 + 0.6 * Math.sin(orbitA * 0.5));
+      const sx = pt.x + Math.cos(orbitA) * orbitDist;
+      const sy = pt.y + Math.sin(orbitA) * orbitDist;
+      const speckR = Math.max(0.7, baseR * 0.11 * progress);
 
-      ctx.fillStyle = def.secondaryColor;
-      ctx.globalAlpha = alpha * 0.85;
+      ctx.fillStyle = '#A5F3FC';
+      ctx.globalAlpha = Math.max(0, Math.min(1, progress * 0.85));
       ctx.beginPath();
-      ctx.arc(sx, sy, Math.max(1, baseR * 0.12), 0, Math.PI * 2);
+      ctx.arc(sx, sy, speckR, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 }
+

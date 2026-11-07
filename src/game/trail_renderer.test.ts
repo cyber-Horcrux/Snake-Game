@@ -9,6 +9,8 @@ import {
 } from './trail_renderer.ts';
 import { drawTrailPreview } from './trail_preview.ts';
 import { ALL_TRAIL_IDS, getTrailDefinition } from './trails.ts';
+import { NeonRenderer } from './renderer.ts';
+import { createInitialState } from './engine.ts';
 
 function createMockContext() {
   const operations: string[] = [];
@@ -197,16 +199,100 @@ test('drawTrailPreview 1: Generates trail previews deterministically for all 8 t
   const ctx = createMockContext();
 
   for (const trailId of ALL_TRAIL_IDS) {
-    const def = getTrailDefinition(trailId);
     assert.doesNotThrow(() => {
       drawTrailPreview(
-        ctx,
-        def,
-        320, // width
-        160, // height
-        0.5, // timeSec
-        'high' // quality
+        ctx as unknown as CanvasRenderingContext2D,
+        trailId,
+        {
+          width: 320,
+          height: 160,
+          timeMs: 500,
+          background: 'glow',
+        }
       );
     }, `drawTrailPreview threw on trail: ${trailId}`);
   }
 });
+
+// -----------------------------------------------------------------------------
+// 4. NeonRenderer Trail Lifecycle & Pause / Resume Integration
+// -----------------------------------------------------------------------------
+
+test('NeonRenderer Trail 1: Collects tail positions while playing with active trail', () => {
+  const renderer = new NeonRenderer();
+  const ctx = createMockContext();
+  const state = createInitialState('classic', 24, 24);
+  state.gameTimeMs = 100;
+
+  // Render when playing
+  renderer.render(ctx, 480, 480, state, 0.5, {
+    visualEffects: 'high',
+    trail: 'cyber_pulse',
+    isPlaying: true,
+  });
+
+  assert.ok(renderer.trailHistory.getPointCount() > 0, 'Trail points must be recorded when playing');
+});
+
+test('NeonRenderer Trail 2: Freezes trail and prevents point flood/aging when paused', () => {
+  const renderer = new NeonRenderer();
+  const ctx = createMockContext();
+  const state = createInitialState('classic', 24, 24);
+  state.gameTimeMs = 200;
+
+  // 1. Play run to record points
+  renderer.render(ctx, 480, 480, state, 1.0, {
+    visualEffects: 'high',
+    trail: 'cyber_pulse',
+    isPlaying: true,
+  });
+  const countWhilePlaying = renderer.trailHistory.getPointCount();
+  assert.ok(countWhilePlaying > 0);
+
+  // 2. Pause game and render multiple frames with advancing wall clock
+  for (let i = 0; i < 5; i++) {
+    renderer.render(ctx, 480, 480, state, 1.0, {
+      visualEffects: 'high',
+      trail: 'cyber_pulse',
+      isPlaying: false,
+    }, 1000 + i * 200);
+  }
+
+  // Count must not increase because game is paused
+  assert.equal(renderer.trailHistory.getPointCount(), countWhilePlaying);
+
+  // Points must NOT expire while paused even after wall-clock time passes
+  const chains = renderer.trailHistory.getChains(state.gameTimeMs);
+  assert.ok(chains.length > 0, 'Trail points must remain preserved while paused');
+});
+
+test('NeonRenderer Trail 3: Preserves trail on death and cleans up on reset', () => {
+  const renderer = new NeonRenderer();
+  const ctx = createMockContext();
+  const state = createInitialState('classic', 24, 24);
+  state.gameTimeMs = 500;
+
+  // Record points while alive
+  renderer.render(ctx, 480, 480, state, 0.5, {
+    visualEffects: 'high',
+    trail: 'plasma_fire',
+    isPlaying: true,
+  });
+  assert.ok(renderer.trailHistory.getPointCount() > 0);
+
+  // Transition to dead state
+  state.isAlive = false;
+  renderer.render(ctx, 480, 480, state, 1.0, {
+    visualEffects: 'high',
+    trail: 'plasma_fire',
+    isPlaying: false,
+  });
+
+  // Points still intact for gameover screen
+  assert.ok(renderer.trailHistory.getPointCount() > 0);
+
+  // Reset clears history
+  renderer.reset();
+  assert.equal(renderer.trailHistory.getPointCount(), 0);
+});
+

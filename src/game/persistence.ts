@@ -863,7 +863,7 @@ export function reconcileAndMigratePlayerTrails(
   contextOverride?: Partial<TrailUnlockContext> & {
     progression?: { level: number };
     stats?: { wallsWrapped?: number; totalFoodEaten?: number; longestSnake?: number; zenScreenWraps?: number; foodEaten?: number };
-    mazeProgress?: { highestStageUnlocked?: number; highestCompletedStage?: number };
+    mazeProgress?: Partial<MazeProgress> & { highestStageUnlocked?: number; highestCompletedStage?: number; [key: string]: unknown };
     playerLevel?: number;
     zenScreenWraps?: number;
     mazeStagesCleared?: number;

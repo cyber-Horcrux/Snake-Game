@@ -11,6 +11,7 @@ import type {
   PlayerTrailsState,
   SnakeTrailId,
   TrailDefinition,
+  TrailUnlockCondition,
   TrailUnlockContext,
 } from './types.ts';
 

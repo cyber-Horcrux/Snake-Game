@@ -655,6 +655,7 @@ export default function App() {
   const returnToMainMenu = useCallback(() => {
     screenRef.current = 'title';
     recordedClearRef.current = null;
+    rendererRef.current.reset();
     setScreen('title');
     soundEngine.play('click');
   }, []);
@@ -1055,6 +1056,7 @@ export default function App() {
           visualEffects: settingsRef.current.visualEffects,
           skin: activeSkinId,
           trail: activeTrailId,
+          isPlaying: screenRef.current === 'playing',
         }
       );
 
