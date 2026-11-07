@@ -84,6 +84,36 @@ export function safeClip(ctx: CanvasRenderingContext2D): void {
   }
 }
 
+export function safeBezierCurveTo(
+  ctx: CanvasRenderingContext2D,
+  cp1x: number,
+  cp1y: number,
+  cp2x: number,
+  cp2y: number,
+  x: number,
+  y: number
+): void {
+  if (typeof ctx.bezierCurveTo === 'function') {
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
+  } else {
+    ctx.lineTo(x, y);
+  }
+}
+
+export function safeQuadraticCurveTo(
+  ctx: CanvasRenderingContext2D,
+  cpx: number,
+  cpy: number,
+  x: number,
+  y: number
+): void {
+  if (typeof ctx.quadraticCurveTo === 'function') {
+    ctx.quadraticCurveTo(cpx, cpy, x, y);
+  } else {
+    ctx.lineTo(x, y);
+  }
+}
+
 /**
  * Fast RGB color interpolation for seamless multi-zone transitions.
  */
@@ -532,13 +562,11 @@ export function generateSmoothSpine(
         continue;
       }
 
-      // Reversal handling: exact 180° or near-180° turnaround (dot < -0.90)
-      if (dot < -0.90) {
+      // Reversal handling: exact 180° turnaround (dot <= -0.999)
+      if (dot <= -0.999) {
         const filletDist = Math.min(inLen * 0.44, outLen * 0.44, safeBaseR * 1.5);
         const turnStartX = pCurr.x - inUx * filletDist;
         const turnStartY = pCurr.y - inUy * filletDist;
-        const turnEndX = pCurr.x + outUx * filletDist;
-        const turnEndY = pCurr.y + outUy * filletDist;
 
         // Emit incoming straight lead-in
         emitStraight(currentStart.x, currentStart.y, turnStartX, turnStartY, stepDist);
@@ -582,14 +610,17 @@ export function generateSmoothSpine(
           addSample(px, py, dPx, dPy);
         }
 
-        const endPx = cx + latUx * turnR;
-        const endPy = cy + latUy * turnR;
+        const endPx = turnStartX + latUx * (2 * turnR);
+        const endPy = turnStartY + latUy * (2 * turnR);
         currentStart = { x: endPx, y: endPy };
         continue;
       }
 
-      // Standard corner: adaptive Bezier fillet around corner control point pCurr
-      const filletDist = Math.min(inLen * 0.44, outLen * 0.44);
+      // Non-parallel turns: analytical circular arc fillet connecting A to B
+      // with analytical center C from the normal line intersection.
+      // Guarantees zero positional error at A and B, zero tangent error,
+      // and uniform constant curvature without spikes or kinks across all angles.
+      const filletDist = Math.min(inLen * 0.44, outLen * 0.44, safeBaseR * 1.5);
       const cornerStartX = pCurr.x - inUx * filletDist;
       const cornerStartY = pCurr.y - inUy * filletDist;
       const cornerEndX = pCurr.x + outUx * filletDist;
@@ -597,19 +628,48 @@ export function generateSmoothSpine(
 
       emitStraight(currentStart.x, currentStart.y, cornerStartX, cornerStartY, stepDist);
 
-      const cornerChord = Math.hypot(cornerEndX - cornerStartX, cornerEndY - cornerStartY);
-      const steps = Math.max(5, Math.min(10, Math.round(cornerChord / (safeBaseR * 0.35))));
+      const sign = cross >= 0 ? 1 : -1;
+      const nAx = -inUy * sign;
+      const nAy = inUx * sign;
+      const nBx = -outUy * sign;
+      const nBy = outUx * sign;
 
-      for (let s = 1; s <= steps; s++) {
-        const t = s / steps;
-        const mt = 1 - t;
-        const x = mt * mt * cornerStartX + 2 * mt * t * pCurr.x + t * t * cornerEndX;
-        const y = mt * mt * cornerStartY + 2 * mt * t * pCurr.y + t * t * cornerEndY;
+      const dx = cornerEndX - cornerStartX;
+      const dy = cornerEndY - cornerStartY;
+      const det = -nAx * nBy + nAy * nBx;
 
-        const dX = 2 * mt * (pCurr.x - cornerStartX) + 2 * t * (cornerEndX - pCurr.x);
-        const dY = 2 * mt * (pCurr.y - cornerStartY) + 2 * t * (cornerEndY - pCurr.y);
+      if (Math.abs(det) > 1e-6) {
+        const r = (dx * (-nBy) - dy * (-nBx)) / det;
+        const cx = cornerStartX + nAx * r;
+        const cy = cornerStartY + nAy * r;
+        const R = Math.hypot(cornerStartX - cx, cornerStartY - cy);
 
-        addSample(x, y, dX, dY);
+        const thetaA = Math.atan2(cornerStartY - cy, cornerStartX - cx);
+        const thetaB = Math.atan2(cornerEndY - cy, cornerEndX - cx);
+
+        let dTheta = thetaB - thetaA;
+        if (sign > 0) {
+          while (dTheta < 0) dTheta += 2 * Math.PI;
+          while (dTheta >= 2 * Math.PI) dTheta -= 2 * Math.PI;
+        } else {
+          while (dTheta > 0) dTheta -= 2 * Math.PI;
+          while (dTheta <= -2 * Math.PI) dTheta += 2 * Math.PI;
+        }
+
+        const arcLen = R * Math.abs(dTheta);
+        const steps = Math.max(5, Math.min(16, Math.round(arcLen / (safeBaseR * 0.35))));
+
+        for (let s = 1; s <= steps; s++) {
+          const t = s / steps;
+          const th = thetaA + t * dTheta;
+          const px = cx + R * Math.cos(th);
+          const py = cy + R * Math.sin(th);
+          const tx = -Math.sin(th) * sign;
+          const ty = Math.cos(th) * sign;
+          addSample(px, py, tx, ty);
+        }
+      } else {
+        addSample(cornerEndX, cornerEndY, outUx, outUy);
       }
 
       currentStart = { x: cornerEndX, y: cornerEndY };
@@ -772,43 +832,35 @@ export function drawStylizedSnakeHead(
   }
 
   // 2. Smooth Anatomical Head Silhouette
-  // Sampled curved path representing rounded snout, muscular temporal jowls, and neck transition
-  const contourLocal: [number, number][] = [
-    // Snout apex (rounded rostral tip)
-    [headLength * 1.16, 0],
-    [headLength * 1.10, snoutWidth * 0.38],
-    [headLength * 0.95, snoutWidth * 0.65],
-    // Canthus rostralis and upper jaw
-    [headLength * 0.65, jowlWidth * 0.58],
-    [headLength * 0.35, jowlWidth * 0.86],
-    // Temporal muscular jowls
-    [-headLength * 0.05, jowlWidth * 1.05],
-    [-headLength * 0.35, jowlWidth * 0.98],
-    // Occipital neck constriction
-    [-headLength * 0.70, neckWidth * 1.05],
-    [-headLength * 0.95, neckWidth],
-    [-headLength * 1.08, 0],
-    [-headLength * 0.95, -neckWidth],
-    [-headLength * 0.70, -neckWidth * 1.05],
-    // Left temporal jowl
-    [-headLength * 0.35, -jowlWidth * 0.98],
-    [-headLength * 0.05, -jowlWidth * 1.05],
-    // Left upper jaw and canthus
-    [headLength * 0.35, -jowlWidth * 0.86],
-    [headLength * 0.65, -jowlWidth * 0.58],
-    [headLength * 0.95, -snoutWidth * 0.65],
-    [headLength * 1.10, -snoutWidth * 0.38],
-  ];
-
+  // Curved anatomical viper/colubrid head silhouette with rounded snout, temporal jowls, and smooth neck taper
   ctx.fillStyle = skin.headColor;
   ctx.beginPath();
-  const firstPt = toWorld(headPt.x, headPt.y, cos, sin, contourLocal[0][0], contourLocal[0][1]);
-  ctx.moveTo(firstPt.x, firstPt.y);
 
-  for (let i = 1; i < contourLocal.length; i++) {
-    const wp = toWorld(headPt.x, headPt.y, cos, sin, contourLocal[i][0], contourLocal[i][1]);
-    ctx.lineTo(wp.x, wp.y);
-  }
+  const snoutApex = toWorld(headPt.x, headPt.y, cos, sin, headLength * 1.16, 0);
+  const rightSnout = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.90, snoutWidth * 0.90);
+  const rightUpperJaw = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.40, jowlWidth * 1.05);
+  const rightJowl = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.10, jowlWidth * 1.05);
+  const rightJowlLower = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.55, jowlWidth * 0.85);
+  const rightNeck = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.95, neckWidth);
+  const neckBase = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 1.15, 0);
+  const leftNeck = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.95, -neckWidth);
+  const leftJowlLower = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.55, -jowlWidth * 0.85);
+  const leftJowl = toWorld(headPt.x, headPt.y, cos, sin, -headLength * 0.10, -jowlWidth * 1.05);
+  const leftUpperJaw = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.40, -jowlWidth * 1.05);
+  const leftSnout = toWorld(headPt.x, headPt.y, cos, sin, headLength * 0.90, -snoutWidth * 0.90);
+
+  ctx.moveTo(snoutApex.x, snoutApex.y);
+  // Curve down along right canthus rostralis to right temporal jowl
+  safeBezierCurveTo(ctx, rightSnout.x, rightSnout.y, rightUpperJaw.x, rightUpperJaw.y, rightJowl.x, rightJowl.y);
+  // Curve from right temporal jowl into occipital neck
+  safeQuadraticCurveTo(ctx, rightJowlLower.x, rightJowlLower.y, rightNeck.x, rightNeck.y);
+  // Curved occipital neck base across midline
+  safeQuadraticCurveTo(ctx, neckBase.x, neckBase.y, leftNeck.x, leftNeck.y);
+  // Curve from left occipital neck to left temporal jowl
+  safeQuadraticCurveTo(ctx, leftJowlLower.x, leftJowlLower.y, leftJowl.x, leftJowl.y);
+  // Curve along left canthus rostralis back to rounded snout apex
+  safeBezierCurveTo(ctx, leftUpperJaw.x, leftUpperJaw.y, leftSnout.x, leftSnout.y, snoutApex.x, snoutApex.y);
+
   safeClosePath(ctx);
   ctx.fill();
 

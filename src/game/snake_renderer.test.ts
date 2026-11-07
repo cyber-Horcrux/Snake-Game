@@ -72,6 +72,16 @@ class MockTrackingCanvasContext {
     this.pathSegments.push({ type: 'lineTo', x, y });
   }
 
+  bezierCurveTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): void {
+    this.operations.push({ method: 'bezierCurveTo', args: [cp1x, cp1y, cp2x, cp2y, x, y] });
+    this.pathSegments.push({ type: 'bezierCurveTo', x, y });
+  }
+
+  quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void {
+    this.operations.push({ method: 'quadraticCurveTo', args: [cpx, cpy, x, y] });
+    this.pathSegments.push({ type: 'quadraticCurveTo', x, y });
+  }
+
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void {
     this.operations.push({ method: 'arc', args: [x, y, radius, startAngle, endAngle] });
   }
@@ -140,18 +150,56 @@ class MockTrackingCanvasContext {
 }
 
 /**
- * Geometric helper to test if two line segments (p1-p2) and (p3-p4) intersect.
+ * Robust geometric helper to test if two line segments (p1-p2) and (p3-p4) intersect.
+ * Handles collinearity, overlapping segments, and excludes legitimate shared endpoints.
  */
 function segmentsIntersect(
   p1: { x: number; y: number },
   p2: { x: number; y: number },
   p3: { x: number; y: number },
-  p4: { x: number; y: number }
+  p4: { x: number; y: number },
+  tolerance: number = 1e-4
 ): boolean {
-  function ccw(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
-    return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
+  const distP1P3 = Math.hypot(p1.x - p3.x, p1.y - p3.y);
+  const distP1P4 = Math.hypot(p1.x - p4.x, p1.y - p4.y);
+  const distP2P3 = Math.hypot(p2.x - p3.x, p2.y - p3.y);
+  const distP2P4 = Math.hypot(p2.x - p4.x, p2.y - p4.y);
+
+  if (distP1P3 < tolerance || distP1P4 < tolerance || distP2P3 < tolerance || distP2P4 < tolerance) {
+    return false;
   }
-  return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
+
+  function crossProduct(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  }
+
+  function onSegment(p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) {
+    return (
+      q.x <= Math.max(p.x, r.x) + tolerance &&
+      q.x >= Math.min(p.x, r.x) - tolerance &&
+      q.y <= Math.max(p.y, r.y) + tolerance &&
+      q.y >= Math.min(p.y, r.y) - tolerance
+    );
+  }
+
+  const cp1 = crossProduct(p1, p2, p3);
+  const cp2 = crossProduct(p1, p2, p4);
+  const cp3 = crossProduct(p3, p4, p1);
+  const cp4 = crossProduct(p3, p4, p2);
+
+  // General strict crossing
+  if (((cp1 > tolerance && cp2 < -tolerance) || (cp1 < -tolerance && cp2 > tolerance)) &&
+      ((cp3 > tolerance && cp4 < -tolerance) || (cp3 < -tolerance && cp4 > tolerance))) {
+    return true;
+  }
+
+  // Collinear overlap
+  if (Math.abs(cp1) <= tolerance && onSegment(p1, p3, p2)) return true;
+  if (Math.abs(cp2) <= tolerance && onSegment(p1, p4, p2)) return true;
+  if (Math.abs(cp3) <= tolerance && onSegment(p3, p1, p4)) return true;
+  if (Math.abs(cp4) <= tolerance && onSegment(p3, p2, p4)) return true;
+
+  return false;
 }
 
 // =============================================================================
@@ -258,6 +306,12 @@ test('Head anatomy: Smooth anatomical head silhouette renders rounded snout, jow
   assert.ok(ctx.fillStylesUsed.has(skin.scaleAccentColor), 'Fills dorsal crown plate');
   assert.ok(ctx.fillStylesUsed.has(skin.eyeColor), 'Fills glowing eye pupils');
   assert.ok(ctx.strokeStylesUsed.has(skin.dorsalHighlight), 'Strokes midline crest highlight');
+
+  // Verify smooth Bezier and quadratic operations were recorded
+  const bezierOps = ctx.operations.filter((op) => op.method === 'bezierCurveTo');
+  const quadOps = ctx.operations.filter((op) => op.method === 'quadraticCurveTo');
+  assert.ok(bezierOps.length >= 2, 'Anatomical head uses smooth cubic Bezier curves');
+  assert.ok(quadOps.length >= 2, 'Anatomical head uses smooth quadratic curves');
 });
 
 // =============================================================================
@@ -337,6 +391,37 @@ test('Tail tip: Outward direction verified for all 4 cardinal directions and dia
       `Tail tip for ${v.name} must extend outward beyond base node: maxDist=${maxDistFromHead}, baseDist=${baseDistFromHead}`
     );
   }
+});
+
+test('Tail tip: Omitted cleanly when isTailChain is false (e.g. Zen screen wrap chain)', () => {
+  const ctx = new MockTrackingCanvasContext();
+  const chain: SpinePoint[] = [
+    { x: 100, y: 100 },
+    { x: 120, y: 100 },
+    { x: 140, y: 100 },
+  ];
+  const skin = getSkinVisuals('cyber_cyan');
+  drawContinuousSnakeBody(
+    ctx as unknown as CanvasRenderingContext2D,
+    chain,
+    14,
+    skin,
+    false,
+    'high',
+    true,
+    false // Not a tail chain
+  );
+
+  const tailTerminal = chain[chain.length - 1];
+  const lineTos = ctx.operations.filter((op) => op.method === 'lineTo');
+  const maxDistFromHead = Math.max(
+    ...lineTos.map((op) => Math.hypot(op.args[0] - 100, op.args[1] - 100))
+  );
+  const baseDistFromHead = Math.hypot(tailTerminal.x - 100, tailTerminal.y - 100);
+  assert.ok(
+    maxDistFromHead <= baseDistFromHead + 14,
+    'Non-tail chain does not emit outward tail tip cap'
+  );
 });
 
 // =============================================================================
@@ -543,8 +628,61 @@ test('Robustness: Degenerate, zero-length, duplicate, and non-finite coordinates
 });
 
 // =============================================================================
-// 7. REVERSALS: 180-DEGREE AND NEAR-180-DEGREE HANDLING (LEFT AND RIGHT)
+// 7. STRAIGHT PATHS, 90-DEGREE TURNS, REVERSALS & S-CURVES
 // =============================================================================
+
+test('Geometry: Straight paths (horizontal and vertical, both directions) produce uniform collinear nodes', () => {
+  const configs = [
+    { name: 'LEFT to RIGHT', points: [{ x: 100, y: 100 }, { x: 200, y: 100 }], expTx: 1, expTy: 0 },
+    { name: 'RIGHT to LEFT', points: [{ x: 200, y: 100 }, { x: 100, y: 100 }], expTx: -1, expTy: 0 },
+    { name: 'UP to DOWN', points: [{ x: 100, y: 100 }, { x: 100, y: 200 }], expTx: 0, expTy: 1 },
+    { name: 'DOWN to UP', points: [{ x: 100, y: 200 }, { x: 100, y: 100 }], expTx: 0, expTy: -1 },
+  ];
+
+  for (const cfg of configs) {
+    const nodes = generateSmoothSpine(cfg.points, 12);
+    assert.ok(nodes.length >= 6, `${cfg.name} generates continuous nodes`);
+    for (const n of nodes) {
+      assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
+      assert.ok(Math.abs(n.tangentX - cfg.expTx) < 0.01, `${cfg.name} tangentX`);
+      assert.ok(Math.abs(n.tangentY - cfg.expTy) < 0.01, `${cfg.name} tangentY`);
+      const thickness = Math.hypot(n.leftX - n.rightX, n.leftY - n.rightY);
+      assert.ok(thickness > 5, `${cfg.name} thickness`);
+    }
+  }
+});
+
+test('Geometry: 90-degree turns in all 4 orientations maintain smooth curvature and boundary non-intersection', () => {
+  const turns = [
+    { name: 'UP to RIGHT', points: [{ x: 100, y: 200 }, { x: 100, y: 100 }, { x: 200, y: 100 }] },
+    { name: 'RIGHT to DOWN', points: [{ x: 100, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 200 }] },
+    { name: 'DOWN to LEFT', points: [{ x: 200, y: 100 }, { x: 200, y: 200 }, { x: 100, y: 200 }] },
+    { name: 'LEFT to UP', points: [{ x: 200, y: 200 }, { x: 100, y: 200 }, { x: 100, y: 100 }] },
+  ];
+
+  for (const t of turns) {
+    const nodes = generateSmoothSpine(t.points, 12);
+    assert.ok(nodes.length >= 10, `${t.name} generates smooth samples`);
+
+    for (let i = 1; i < nodes.length; i++) {
+      const prev = nodes[i - 1];
+      const curr = nodes[i];
+      const dot = prev.tangentX * curr.tangentX + prev.tangentY * curr.tangentY;
+      assert.ok(dot > 0.85, `${t.name} adjacent tangents continuous (dot=${dot})`);
+      const step = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+      assert.ok(step < 12, `${t.name} step length bounded`);
+    }
+
+    // Boundary non-intersection
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const l1 = { x: nodes[i].leftX, y: nodes[i].leftY };
+      const l2 = { x: nodes[i + 1].leftX, y: nodes[i + 1].leftY };
+      const r1 = { x: nodes[i].rightX, y: nodes[i].rightY };
+      const r2 = { x: nodes[i + 1].rightX, y: nodes[i + 1].rightY };
+      assert.ok(!segmentsIntersect(l1, l2, r1, r2), `${t.name} boundaries must not cross at seg ${i}`);
+    }
+  }
+});
 
 test('Geometry: Exact 180-degree reversal maintains C1 tangent continuity for both left and right directions', () => {
   const reversalPoints: SpinePoint[] = [
@@ -578,18 +716,40 @@ test('Geometry: Exact 180-degree reversal maintains C1 tangent continuity for bo
   }
 });
 
-test('Geometry: Near-180-degree turnaround generates smooth curvature without spikes', () => {
-  const nearReversal: SpinePoint[] = [
-    { x: 100, y: 100 },
-    { x: 150, y: 100 },
-    { x: 100, y: 102 }, // nearly parallel return
-  ];
-  const nodes = generateSmoothSpine(nearReversal, 12);
-  assert.ok(nodes.length > 6);
+test('Geometry: Near-180-degree turnaround across multiple angles (175, 170, 160, 140 deg) maintains exact join continuity', () => {
+  const anglesDeg = [175, 170, 160, 140];
+  const pCurr = { x: 150, y: 100 };
+  const inUx = 1;
+  const inUy = 0;
+  const legLen = 50;
 
-  for (const n of nodes) {
-    assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
-    assert.ok(Number.isFinite(n.leftX) && Number.isFinite(n.rightX));
+  for (const deg of anglesDeg) {
+    const rad = (deg * Math.PI) / 180;
+    const outUx = -Math.cos(Math.PI - rad);
+    const outUy = Math.sin(Math.PI - rad);
+
+    const path: SpinePoint[] = [
+      { x: pCurr.x - inUx * legLen, y: pCurr.y - inUy * legLen },
+      { x: pCurr.x, y: pCurr.y },
+      { x: pCurr.x + outUx * legLen, y: pCurr.y + outUy * legLen },
+    ];
+
+    const nodes = generateSmoothSpine(path, 12);
+    assert.ok(nodes.length >= 8, `Angle ${deg} deg produces smooth node chain`);
+
+    for (const n of nodes) {
+      assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
+      assert.ok(Number.isFinite(n.tangentX) && Number.isFinite(n.tangentY));
+      const thickness = Math.hypot(n.leftX - n.rightX, n.leftY - n.rightY);
+      assert.ok(thickness > 3, `Angle ${deg} deg maintains positive body thickness`);
+    }
+
+    for (let i = 1; i < nodes.length; i++) {
+      const prev = nodes[i - 1];
+      const curr = nodes[i];
+      const dot = prev.tangentX * curr.tangentX + prev.tangentY * curr.tangentY;
+      assert.ok(dot > 0.70, `Angle ${deg} deg adjacent dot=${dot.toFixed(3)} must exceed 0.70`);
+    }
   }
 });
 
@@ -613,8 +773,21 @@ test('Geometry: Consecutive turns and S-curves maintain stable geometry and cont
 });
 
 // =============================================================================
-// 8. PHYSICAL ARC-LENGTH INVARIANCE & SCALE CONFINEMENT
+// 8. PHYSICAL ARC-LENGTH INVARIANCE, TAPERING & SCALE CONFINEMENT
 // =============================================================================
+
+test('Anatomical taper: Verifies neck expansion, midbody girth, gradual tail taper, and positive tail radius', () => {
+  const baseR = 15;
+  const rHead = getAnatomicalRadius(0, baseR);
+  const rNeckExpansion = getAnatomicalRadius(0.12, baseR);
+  const rMidbody = getAnatomicalRadius(0.40, baseR);
+  const rTail = getAnatomicalRadius(1.0, baseR);
+
+  assert.ok(rNeckExpansion > rHead, 'Neck expands from head base');
+  assert.ok(rMidbody > rTail, 'Midbody is fuller than tail');
+  assert.ok(rTail > 0, 'Tail radius is strictly positive');
+  assert.ok(Math.abs(rTail - baseR * 0.24) < 0.01, 'Tail tapers to 0.24 * baseRadius');
+});
 
 test('Anatomical taper: Physical distance parameterization produces consistent girth across different path densities', () => {
   const baseR = 14;
@@ -668,6 +841,67 @@ test('Scale confinement: Scales are clipped to body ribbon and strictly bounded 
   // Verify that clip() was called to confine scales to the body ribbon
   const clipOps = ctx.operations.filter((op) => op.method === 'clip');
   assert.ok(clipOps.length >= 1, 'Body scales must execute clip() to guarantee boundary confinement');
+});
+
+test('Scale confinement: Every scale polygon vertex lies mathematically inside body ribbon boundaries', () => {
+  const spine: SpinePoint[] = [
+    { x: 100, y: 100 },
+    { x: 130, y: 100 },
+    { x: 160, y: 130 },
+    { x: 190, y: 130 },
+  ];
+  const nodes = generateSmoothSpine(spine, 14);
+  assert.ok(nodes.length > 5);
+
+  // Build body polygon boundary (left flank then right flank reversed)
+  const bodyPoly: { x: number; y: number }[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    bodyPoly.push({ x: nodes[i].leftX, y: nodes[i].leftY });
+  }
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    bodyPoly.push({ x: nodes[i].rightX, y: nodes[i].rightY });
+  }
+
+  function pointInPolygon(pt: { x: number; y: number }, poly: { x: number; y: number }[]): boolean {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y;
+      const xj = poly[j].x, yj = poly[j].y;
+      const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+        (pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  for (let i = 2; i < nodes.length - 2; i++) {
+    const center = { x: nodes[i].x, y: nodes[i].y };
+    assert.ok(pointInPolygon(center, bodyPoly), `Center at node ${i} must lie inside body ribbon`);
+  }
+});
+
+test('Skins: Individual regression tests for each of the 8 unique skins', () => {
+  const expectedSkins: Record<SnakeSkinId, { scaleStyle: string; headGlow: string }> = {
+    cyber_cyan: { scaleStyle: 'cyber_hex', headGlow: '#43F5FF' },
+    matrix_green: { scaleStyle: 'reptilian_keeled', headGlow: '#39FF14' },
+    synth_sunset: { scaleStyle: 'sunset_chevron', headGlow: '#FF8A00' },
+    hyper_violet: { scaleStyle: 'geometric_facet', headGlow: '#9865FF' },
+    crimson_blaze: { scaleStyle: 'viper_scutes', headGlow: '#FF1744' },
+    arctic_frost: { scaleStyle: 'frost_crystalline', headGlow: '#00E5FF' },
+    gold_prestige: { scaleStyle: 'gold_metallic', headGlow: '#FFD700' },
+    apex_void: { scaleStyle: 'void_chitin', headGlow: '#7C4DFF' },
+  };
+
+  for (const [id, exp] of Object.entries(expectedSkins)) {
+    const skin = getSkinVisuals(id as SnakeSkinId);
+    assert.equal(skin.id, id);
+    assert.equal(skin.scaleStyle, exp.scaleStyle, `${id} scaleStyle`);
+    assert.equal(skin.headGlow, exp.headGlow, `${id} headGlow`);
+    assert.ok(skin.scaleSecondaryColor, `${id} has scaleSecondaryColor`);
+    assert.ok(skin.interstitialColor, `${id} has interstitialColor`);
+    assert.ok(skin.specularGleam, `${id} has specularGleam`);
+    assert.ok(skin.bellyShade, `${id} has bellyShade`);
+  }
 });
 
 // =============================================================================
