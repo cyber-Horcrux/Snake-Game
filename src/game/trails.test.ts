@@ -30,7 +30,8 @@ import {
   unlockTrail,
 } from './persistence.ts';
 import { createDefaultPlayerProgression } from './levels.ts';
-import { DEFAULT_STATS } from './stats.ts';
+import { DEFAULT_STATS, recordRunCompletion, loadStats } from './stats.ts';
+import { createInitialState } from './engine.ts';
 
 class MemoryStorage implements StorageLike {
   private data = new Map<string, string>();
@@ -358,4 +359,142 @@ test('Trail Persistence 5: reconcileAndMigratePlayerTrails checks full player pr
   assert.ok(reconciled.trailsState.unlockedTrailIds.includes('frost_vapor'));
   assert.ok(reconciled.trailsState.unlockedTrailIds.includes('solar_radiance'));
   assert.ok(reconciled.trailsState.unlockedTrailIds.includes('void_singularity'));
+});
+
+// =============================================================================
+// AUDIT REGRESSION TESTS: Findings 1, 6, and 7
+// =============================================================================
+
+test('Finding 1 Regression: 25 food across multiple separate runs does NOT unlock hyper_streak', () => {
+  const storage = new MemoryStorage();
+
+  // Simulate player having played 5 runs, eating 5 food each (total 25 lifetime food)
+  // But their maximum food in any single run is only 5.
+  const progression = createDefaultPlayerProgression();
+  progression.level = 5; // Well below Level 12
+
+  const stats = {
+    ...DEFAULT_STATS,
+    runsPlayed: 5,
+    totalFoodEaten: 25,
+    maxFoodInRun: 5, // Single run max is only 5
+  };
+
+  const reconciled = reconcileAndMigratePlayerTrails(storage, {
+    progression,
+    stats,
+  });
+
+  // hyper_streak MUST NOT be unlocked because 25 food was not achieved in a SINGLE run
+  assert.equal(
+    reconciled.trailsState.unlockedTrailIds.includes('hyper_streak'),
+    false,
+    'hyper_streak must remain locked when 25 food is spread across multiple separate runs'
+  );
+
+  // Directly verify checkTrailUnlockEligibility ignores lifetimeFoodEaten
+  const isEligible = checkTrailUnlockEligibility('hyper_streak', {
+    playerLevel: 5,
+    lifetimeFoodEaten: 100, // Large lifetime food count
+    maxFoodInRun: 15, // Below 25
+  });
+  assert.equal(isEligible, false, 'lifetimeFoodEaten must never satisfy food_single_run requirement');
+});
+
+test('Finding 1 Regression: 25 food within one single run DOES unlock hyper_streak', () => {
+  const storage = new MemoryStorage();
+
+  const progression = createDefaultPlayerProgression();
+  progression.level = 5; // Below Level 12
+
+  const stats = {
+    ...DEFAULT_STATS,
+    runsPlayed: 1,
+    totalFoodEaten: 25,
+    maxFoodInRun: 25, // Exactly 25 food in one single run!
+  };
+
+  const reconciled = reconcileAndMigratePlayerTrails(storage, {
+    progression,
+    stats,
+  });
+
+  assert.equal(
+    reconciled.trailsState.unlockedTrailIds.includes('hyper_streak'),
+    true,
+    'hyper_streak must unlock when 25 food is achieved in a single run'
+  );
+  assert.ok(reconciled.newlyUnlocked.includes('hyper_streak'));
+});
+
+test('Finding 1 Regression: recordRunCompletion tracks maxFoodInRun in LifetimeStats', () => {
+  const storage = new MemoryStorage();
+
+  const run1 = createInitialState('classic', 20, 20);
+  run1.score = 100;
+  run1.foodEaten = 12;
+
+  const res1 = recordRunCompletion(run1, storage);
+  assert.equal(res1.stats.maxFoodInRun, 12);
+  assert.equal(loadStats(storage).maxFoodInRun, 12);
+
+  // A subsequent run with less food does not reduce maxFoodInRun
+  const run2 = createInitialState('classic', 20, 20);
+  run2.score = 50;
+  run2.foodEaten = 8;
+
+  const res2 = recordRunCompletion(run2, storage);
+  assert.equal(res2.stats.maxFoodInRun, 12);
+  assert.equal(res2.stats.totalFoodEaten, 20);
+
+  // A run that beats the record updates maxFoodInRun
+  const run3 = createInitialState('classic', 20, 20);
+  run3.score = 300;
+  run3.foodEaten = 27;
+
+  const res3 = recordRunCompletion(run3, storage);
+  assert.equal(res3.stats.maxFoodInRun, 27);
+  assert.equal(res3.stats.totalFoodEaten, 47);
+});
+
+test('Finding 6 Regression: Trails with alternative unlock conditions expose both primary and alt requirements', () => {
+  const hyperStreak = getTrailDefinition('hyper_streak');
+  assert.equal(hyperStreak.unlock.type, 'level');
+  assert.equal(hyperStreak.unlock.requiredLevel, 12);
+  assert.ok(hyperStreak.altUnlock);
+  assert.equal(hyperStreak.altUnlock?.type, 'food_single_run');
+  assert.equal(hyperStreak.altUnlock?.requiredFoodSingleRun, 25);
+
+  const frostVapor = getTrailDefinition('frost_vapor');
+  assert.equal(frostVapor.unlock.type, 'zen_wraps');
+  assert.equal(frostVapor.unlock.requiredZenWraps, 30);
+  assert.ok(frostVapor.altUnlock);
+  assert.equal(frostVapor.altUnlock?.type, 'level');
+  assert.equal(frostVapor.altUnlock?.requiredLevel, 18);
+
+  const voidSingularity = getTrailDefinition('void_singularity');
+  assert.equal(voidSingularity.unlock.type, 'maze_stage');
+  assert.equal(voidSingularity.unlock.requiredMazeStage, 3);
+  assert.ok(voidSingularity.altUnlock);
+  assert.equal(voidSingularity.altUnlock?.type, 'level');
+  assert.equal(voidSingularity.altUnlock?.requiredLevel, 35);
+});
+
+test('Finding 7 Regression: reconcilePlayerTrails reports newlyUnlocked and is idempotent', () => {
+  const initial = { ...DEFAULT_PLAYER_TRAILS_STATE };
+  const context: TrailUnlockContext = {
+    level: 1,
+    zenWallsWrapped: 0,
+    highestMazeStage: 1,
+    maxFoodInRun: 25, // Unlocks hyper_streak
+  };
+
+  const { state: updated1, newlyUnlocked: unlocks1 } = reconcilePlayerTrails(initial, context);
+  assert.deepEqual(unlocks1, ['hyper_streak']);
+  assert.ok(updated1.unlockedTrailIds.includes('hyper_streak'));
+
+  // Repeating reconciliation with the updated state must yield 0 newlyUnlocked (idempotent)
+  const { state: updated2, newlyUnlocked: unlocks2 } = reconcilePlayerTrails(updated1, context);
+  assert.deepEqual(unlocks2, [], 'Subsequent reconciliations must not produce duplicate unlock notifications');
+  assert.deepEqual(updated2.unlockedTrailIds, updated1.unlockedTrailIds);
 });

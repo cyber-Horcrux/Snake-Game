@@ -47,12 +47,14 @@ import {
   saveSettings,
   updateBestScore,
 } from './game/persistence.ts';
+import { Sparkles, X } from 'lucide-react';
 import {
   DEFAULT_PLAYER_SKINS_STATE,
   isSkinUnlocked,
 } from './game/skins.ts';
 import {
   DEFAULT_PLAYER_TRAILS_STATE,
+  getTrailDefinition,
   isTrailUnlocked,
 } from './game/trails.ts';
 import { TitleScreen } from './components/TitleScreen.tsx';
@@ -120,6 +122,8 @@ export default function App() {
   }));
   const playerTrailsRef = useRef<PlayerTrailsState>(playerTrails);
   const [customizationTab, setCustomizationTab] = useState<'skins' | 'trails'>('skins');
+  const [unlockedTrailAlert, setUnlockedTrailAlert] = useState<{ id: SnakeTrailId; name: string } | null>(null);
+  const notifiedTrailsRef = useRef<Set<SnakeTrailId>>(new Set(DEFAULT_PLAYER_TRAILS_STATE.unlockedTrailIds));
 
   const [lastXpResult, setLastXpResult] = useState<XpEarnResult | null>(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
@@ -208,6 +212,41 @@ export default function App() {
     setPlayerTrails(reconTrails.trailsState);
     if (reconTrails.mirrorRepaired) {
       setSettings(loadSettings());
+    }
+    // Register existing unlocked trails so player is never notified about historical unlocks
+    for (const id of reconTrails.trailsState.unlockedTrailIds) {
+      notifiedTrailsRef.current.add(id);
+    }
+  }, []);
+
+  // Auto-dismiss unlocked trail notification after 7 seconds
+  useEffect(() => {
+    if (!unlockedTrailAlert) return;
+    const timer = setTimeout(() => {
+      setUnlockedTrailAlert(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [unlockedTrailAlert]);
+
+  // Helper to trigger trail unlock notifications cleanly without duplicate alerts or repeated sounds
+  const notifyNewlyUnlockedTrails = useCallback((newlyUnlockedIds: SnakeTrailId[], soundAlreadyPlayed: boolean = false) => {
+    if (!newlyUnlockedIds || newlyUnlockedIds.length === 0) return;
+    const genuinelyNew = newlyUnlockedIds.filter(id => !notifiedTrailsRef.current.has(id));
+    if (genuinelyNew.length === 0) return;
+
+    for (const id of genuinelyNew) {
+      notifiedTrailsRef.current.add(id);
+    }
+
+    const firstId = genuinelyNew[0];
+    const def = getTrailDefinition(firstId);
+    setUnlockedTrailAlert({
+      id: firstId,
+      name: genuinelyNew.length > 1 ? `${def.name} (+${genuinelyNew.length - 1} more)` : def.name,
+    });
+
+    if (!soundAlreadyPlayed) {
+      soundEngine.play('achievement');
     }
   }, []);
 
@@ -332,7 +371,8 @@ export default function App() {
 
     setDailyState(challengeEval.state);
 
-    if (newlyUnlocked.length > 0 || challengeEval.starsAwarded > 0) {
+    const soundAlreadyPlayed = newlyUnlocked.length > 0 || challengeEval.starsAwarded > 0;
+    if (soundAlreadyPlayed) {
       soundEngine.play('achievement');
     }
 
@@ -341,6 +381,7 @@ export default function App() {
     setPlayerSkins(reconSkins.skinsState);
     const reconTrails = reconcileAndMigratePlayerTrails();
     setPlayerTrails(reconTrails.trailsState);
+    notifyNewlyUnlockedTrails(reconTrails.newlyUnlocked, soundAlreadyPlayed);
 
     setScreen('gameover');
   }, []);
@@ -411,6 +452,7 @@ export default function App() {
       setPlayerSkins(reconSkins.skinsState);
       const reconTrails = reconcileAndMigratePlayerTrails();
       setPlayerTrails(reconTrails.trailsState);
+      notifyNewlyUnlockedTrails(reconTrails.newlyUnlocked, challengeEval.starsAwarded > 0);
     }
     setScreen('stage_clear');
   }, []);
@@ -485,6 +527,7 @@ export default function App() {
       setPlayerSkins(reconSkins.skinsState);
       const reconTrails = reconcileAndMigratePlayerTrails();
       setPlayerTrails(reconTrails.trailsState);
+      notifyNewlyUnlockedTrails(reconTrails.newlyUnlocked, true);
     }
     setScreen('campaign_victory');
   }, []);
@@ -1345,6 +1388,51 @@ export default function App() {
       )}
 
 
+
+      {/* Newly Unlocked Trail Notification Toast/Banner */}
+      {unlockedTrailAlert && (
+        <div
+          data-testid="trail-unlock-banner"
+          className="fixed top-3 sm:top-5 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[92%] sm:w-auto min-w-[280px] bg-[#0B0E1A]/95 border border-[#9865FF] rounded-2xl p-2.5 sm:p-3 shadow-[0_0_30px_rgba(152,101,255,0.45)] backdrop-blur-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-[#9865FF]/20 border border-[#9865FF]/40 text-[#9865FF] shrink-0">
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-[#FFD700]" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[9px] sm:text-[10px] font-black font-display tracking-widest text-[#9865FF] uppercase">
+                NEW TRAIL UNLOCKED!
+              </div>
+              <div className="text-xs sm:text-sm font-black font-display text-[#F0F6FC] truncate">
+                {unlockedTrailAlert.name}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setUnlockedTrailAlert(null);
+                setCustomizationTab('trails');
+                setShowSkinCollection(true);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-[#9865FF] hover:bg-[#B794FF] text-[#05070E] font-display font-bold text-[10px] sm:text-xs tracking-wider transition-all cursor-pointer active:scale-95 shadow-sm"
+            >
+              VIEW
+            </button>
+            <button
+              type="button"
+              onClick={() => setUnlockedTrailAlert(null)}
+              aria-label="Dismiss unlock notification"
+              className="p-1 rounded-lg text-[#79869C] hover:text-[#F0F6FC] transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Desktop Keyboard Controls Hint */}
       {screen === 'playing' && (

@@ -22,6 +22,7 @@ export const DEFAULT_STATS: LifetimeStats = {
   wallsWrapped: 0,
   shieldsUsed: 0,
   maxCombo: 1,
+  maxFoodInRun: 0,
 };
 
 export const INITIAL_ACHIEVEMENTS: Achievement[] = [
@@ -129,6 +130,7 @@ export function loadStats(storage: StorageLike | null = getBrowserStorage()): Li
       wallsWrapped: sanitizeNum(parsed.wallsWrapped, DEFAULT_STATS.wallsWrapped),
       shieldsUsed: sanitizeNum(parsed.shieldsUsed, DEFAULT_STATS.shieldsUsed),
       maxCombo: Math.max(1, sanitizeNum(parsed.maxCombo, DEFAULT_STATS.maxCombo)),
+      maxFoodInRun: sanitizeNum(parsed.maxFoodInRun, 0),
     };
   } catch {
     return { ...DEFAULT_STATS };
@@ -213,6 +215,7 @@ export function recordRunCompletion(
     wallsWrapped: currentStats.wallsWrapped + (finalState.wallsWrapped || 0),
     shieldsUsed: currentStats.shieldsUsed + (finalState.shieldsUsed || 0),
     maxCombo: Math.max(currentStats.maxCombo, finalState.maxCombo ?? 1, finalState.combo ?? 1),
+    maxFoodInRun: Math.max(currentStats.maxFoodInRun ?? 0, finalState.foodEaten ?? 0),
   };
 
   saveStats(updatedStats, storage);

@@ -48,6 +48,8 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
   initialTab = 'skins',
 }) => {
   const [activeTab, setActiveTab] = useState<'skins' | 'trails'>(initialTab);
+  const [selectedSkinId, setSelectedSkinId] = useState<SnakeSkinId>(playerSkins.equippedSkinId);
+  const [selectedTrailId, setSelectedTrailId] = useState<SnakeTrailId>(playerTrails.equippedTrailId);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -71,6 +73,48 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
   const currentLevel = progression?.level ?? 1;
   const currentZenWraps = lifetimeStats?.wallsWrapped ?? 0;
   const currentStage = mazeProgress?.highestStageUnlocked ?? 1;
+  const currentMaxFoodInRun = lifetimeStats?.maxFoodInRun ?? 0;
+
+  const renderConditionBadge = (
+    cond: {
+      type: string;
+      requiredLevel?: number;
+      requiredZenWraps?: number;
+      requiredMazeStage?: number;
+      requiredFoodSingleRun?: number;
+    },
+    isAlt: boolean = false
+  ) => {
+    const prefix = isAlt ? 'ALT: ' : '';
+    switch (cond.type) {
+      case 'level':
+        return cond.requiredLevel ? (
+          <div className="text-[9px] font-mono text-[#9865FF] font-bold">
+            {prefix}LVL {currentLevel} / {cond.requiredLevel}
+          </div>
+        ) : null;
+      case 'zen_wraps':
+        return cond.requiredZenWraps ? (
+          <div className="text-[9px] font-mono text-[#10FFA0] font-bold">
+            {prefix}WRAPS {currentZenWraps} / {cond.requiredZenWraps}
+          </div>
+        ) : null;
+      case 'maze_stage':
+        return cond.requiredMazeStage ? (
+          <div className="text-[9px] font-mono text-[#00F5FF] font-bold">
+            {prefix}STAGE {currentStage} / {cond.requiredMazeStage}
+          </div>
+        ) : null;
+      case 'food_single_run':
+        return cond.requiredFoodSingleRun ? (
+          <div className="text-[9px] font-mono text-[#FF8A00] font-bold">
+            {prefix}BEST RUN {currentMaxFoodInRun} / {cond.requiredFoodSingleRun} FOOD
+          </div>
+        ) : null;
+      default:
+        return null;
+    }
+  };
 
   const handleEquipSkin = (skinId: SnakeSkinId) => {
     if (isSubmitting) return;
@@ -79,7 +123,9 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
 
     try {
       const result = onEquipSkin(skinId);
-      if (!result.success) {
+      if (result.success) {
+        setSelectedSkinId(skinId);
+      } else {
         setErrorMessage(result.error || 'Failed to equip skin. Please try again.');
       }
     } catch {
@@ -96,7 +142,9 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
 
     try {
       const result = onEquipTrail(trailId);
-      if (!result.success) {
+      if (result.success) {
+        setSelectedTrailId(trailId);
+      } else {
         setErrorMessage(result.error || 'Failed to equip trail. Please try again.');
       }
     } catch {
@@ -220,9 +268,12 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
                 return (
                   <div
                     key={skin.id}
-                    className={`flex flex-col justify-between p-3 rounded-xl border transition-all relative ${
+                    onClick={() => setSelectedSkinId(skin.id)}
+                    className={`flex flex-col justify-between p-3 rounded-xl border transition-all relative cursor-pointer ${
                       isEquipped
                         ? 'bg-[#00F5FF]/10 border-[#00F5FF] shadow-[0_0_18px_rgba(0,245,255,0.22)]'
+                        : selectedSkinId === skin.id
+                        ? 'bg-[#05070E] border-[#00F5FF]/60 shadow-[0_0_12px_rgba(0,245,255,0.15)]'
                         : unlocked
                         ? 'bg-[#05070E] border-[#161B2E] hover:border-[#00F5FF]/40'
                         : 'bg-[#05070E]/60 border-[#161B2E]/60 opacity-85'
@@ -240,7 +291,7 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
                         skinId={skin.id}
                         width={180}
                         height={90}
-                        animated={unlocked && visualEffects !== 'reduced'}
+                        animated={activeTab === 'skins' && selectedSkinId === skin.id && unlocked && visualEffects !== 'reduced'}
                         reducedMotion={visualEffects === 'reduced'}
                         background="glow"
                         className="w-full max-w-[200px] aspect-[2/1] border border-[#161B2E] rounded-lg"
@@ -314,9 +365,12 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
                 return (
                   <div
                     key={trail.id}
-                    className={`flex flex-col justify-between p-3 rounded-xl border transition-all relative ${
+                    onClick={() => setSelectedTrailId(trail.id)}
+                    className={`flex flex-col justify-between p-3 rounded-xl border transition-all relative cursor-pointer ${
                       isEquipped
                         ? 'bg-[#9865FF]/10 border-[#9865FF] shadow-[0_0_18px_rgba(152,101,255,0.22)]'
+                        : selectedTrailId === trail.id
+                        ? 'bg-[#05070E] border-[#9865FF]/60 shadow-[0_0_12px_rgba(152,101,255,0.15)]'
                         : unlocked
                         ? 'bg-[#05070E] border-[#161B2E] hover:border-[#9865FF]/40'
                         : 'bg-[#05070E]/60 border-[#161B2E]/60 opacity-85'
@@ -336,7 +390,7 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
                         skinId={playerSkins.equippedSkinId}
                         width={180}
                         height={90}
-                        animated={unlocked && visualEffects !== 'reduced'}
+                        animated={activeTab === 'trails' && selectedTrailId === trail.id && unlocked && visualEffects !== 'reduced'}
                         reducedMotion={visualEffects === 'reduced'}
                         background="glow"
                         className="w-full max-w-[200px] aspect-[2/1] border border-[#161B2E] rounded-lg"
@@ -387,21 +441,15 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
                           <p className="text-[9px] text-[#79869C] mt-1 leading-snug font-medium">
                             {unlockDesc}
                           </p>
-                          {trail.unlock.type === 'level' && trail.unlock.requiredLevel && (
-                            <div className="mt-1 text-[9px] font-mono text-[#9865FF] font-bold">
-                              LVL {currentLevel} / {trail.unlock.requiredLevel}
-                            </div>
-                          )}
-                          {trail.unlock.type === 'zen_wraps' && trail.unlock.requiredZenWraps && (
-                            <div className="mt-1 text-[9px] font-mono text-[#10FFA0] font-bold">
-                              WRAPS {currentZenWraps} / {trail.unlock.requiredZenWraps}
-                            </div>
-                          )}
-                          {trail.unlock.type === 'maze_stage' && trail.unlock.requiredMazeStage && (
-                            <div className="mt-1 text-[9px] font-mono text-[#9865FF] font-bold">
-                              STAGE {currentStage} / {trail.unlock.requiredMazeStage}
-                            </div>
-                          )}
+                          <div className="mt-1 flex flex-col gap-0.5">
+                            {renderConditionBadge(trail.unlock, false)}
+                            {trail.altUnlock && (
+                              <>
+                                <div className="text-[8px] text-[#79869C] font-mono font-bold tracking-wider uppercase">— OR —</div>
+                                {renderConditionBadge(trail.altUnlock, true)}
+                              </>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -97,10 +97,17 @@ export class TrailHistoryManager {
   }
 
   /**
+  /**
    * Prunes expired points and extracts active chains separated by discontinuities.
    * Returns chains in chronological order (newest point at index 0 of the first chain).
+   * 
+   * Discontinuity handling:
+   * - Authoritative `discontinuity` flag (e.g. Zen mode wrap supplied by renderer) is primary.
+   * - An optional `maxLinkDistance` may be supplied by the caller (appropriate to current coordinate system/cell size).
+   * - If no `maxLinkDistance` is provided, a safe coordinate fallback is used so normal continuous movement
+   *   is never fragmented across large canvases.
    */
-  public getChains(currentTimeMs: number): TrailPoint[][] {
+  public getChains(currentTimeMs: number, maxLinkDistance?: number): TrailPoint[][] {
     if (this.count === 0) return [];
 
     const activePoints: TrailPoint[] = [];
@@ -119,9 +126,13 @@ export class TrailHistoryManager {
 
     if (activePoints.length === 0) return [];
 
-    // Split into continuous chains on discontinuity flags
+    // Split into continuous chains on authoritative discontinuity flags or genuine spatial jumps
     const chains: TrailPoint[][] = [];
     let currentChain: TrailPoint[] = [activePoints[0]];
+
+    const maxDistSq = maxLinkDistance !== undefined && maxLinkDistance > 0
+      ? maxLinkDistance * maxLinkDistance
+      : undefined;
 
     for (let i = 1; i < activePoints.length; i++) {
       const prev = activePoints[i - 1];
@@ -130,7 +141,9 @@ export class TrailHistoryManager {
       // Since activePoints is newest-to-oldest, if prev was flagged discontinuous upon insertion,
       // it marks the boundary between the wrapped point and its older predecessor.
       const distSq = (curr.x - prev.x) ** 2 + (curr.y - prev.y) ** 2;
-      if (prev.discontinuity || distSq > 3000) {
+      const isDiscontinuous = prev.discontinuity || (maxDistSq !== undefined ? distSq > maxDistSq : distSq > 250000);
+
+      if (isDiscontinuous) {
         if (currentChain.length > 0) {
           chains.push(currentChain);
         }
@@ -336,7 +349,7 @@ function drawPulseTrail(
 }
 
 /**
- * MATRIX STREAM: Physical cathode-ray phosphor persistence with sub-pixel raster tracking.
+ * MATRIX STREAM: Procedural digital phosphor afterglow with decaying green trail stroke and binary bit accents.
  */
 function drawMatrixTrail(
   ctx: CanvasRenderingContext2D,
@@ -437,7 +450,7 @@ function drawMatrixTrail(
 }
 
 /**
- * PLASMA OVERDRIVE: Supersonic thermal exhaust plume with Mach shock diamonds.
+ * PLASMA OVERDRIVE: Stylized high-energy exhaust plume with repeating diamond-shaped accent bursts.
  */
 function drawPlasmaTrail(
   ctx: CanvasRenderingContext2D,
@@ -518,7 +531,7 @@ function drawPlasmaTrail(
     ctx.stroke();
   }
 
-  // 5. Supersonic Mach Shock Diamonds (High / Performance)
+  // 5. Procedural diamond-shaped exhaust pulses along the plume axis (High / Performance)
   if (visualEffects !== 'reduced') {
     for (let i = 0; i < count; i += 3) {
       if (i > count * 0.65) break;
@@ -693,7 +706,7 @@ function drawStreakTrail(
 }
 
 /**
- * CRYO VAPOR: Sub-zero nitrogen condensation plume with fluid expansion & Rayleigh scattering.
+ * CRYO VAPOR: Expanding procedural mist plume with billowed circular gradient clusters.
  */
 function drawVaporTrail(
   ctx: CanvasRenderingContext2D,
@@ -724,7 +737,7 @@ function drawVaporTrail(
     }
   }
 
-  // 2. Expanding Fluid Vapor Vortices (Gaussian density falloff with fluid billow)
+  // 2. Procedural expanding circular mist puffs along the trail (High / Performance)
   const step = visualEffects === 'high' ? 2 : 3;
   ctx.shadowBlur = 0;
   for (let i = 0; i < count; i += step) {
@@ -732,11 +745,11 @@ function drawVaporTrail(
     const ageProgress = i / count; // 0 near tail, 1 oldest
     const alpha = Math.max(0, (1 - ageProgress) ** 1.9 * 0.38);
 
-    // Fluid plume expands naturally as it decelerates and mixes with ambient air
+    // Mist puffs expand and fade as they age along the trail
     const billowR = baseR * (0.55 + ageProgress * 0.85);
     const wobble = Math.sin(now * 0.006 + i * 0.8) * (baseR * 0.12 * ageProgress);
 
-    // Realistic multi-tier scattering gradient
+    // Multi-tier color gradient fading from icy white to cyan
     ctx.fillStyle = ageProgress < 0.4 ? def.color : def.secondaryColor;
     ctx.globalAlpha = alpha;
     ctx.beginPath();
@@ -793,7 +806,7 @@ function drawVaporTrail(
 }
 
 /**
- * SOLAR RADIANCE: Golden coronal plasma filament with Fraunhofer diffraction spikes.
+ * SOLAR RADIANCE: Golden stellar slipstream with rotating four-point sparkle glints.
  */
 function drawSolarTrail(
   ctx: CanvasRenderingContext2D,
@@ -874,7 +887,7 @@ function drawSolarTrail(
     ctx.stroke();
   }
 
-  // 5. Fraunhofer 4-Axis Lens Diffraction Spikes (High Quality)
+  // 5. Four-point diamond star glints along the slipstream (High Quality)
   if (visualEffects === 'high') {
     for (let i = 0; i < count; i += 4) {
       if (i > count * 0.65) break;
@@ -890,7 +903,7 @@ function drawSolarTrail(
       ctx.translate(pt.x, pt.y);
       ctx.rotate(rot);
 
-      // Realistic 4-axis lens diffraction star
+      // Procedural 4-point star glint geometry
       ctx.beginPath();
       ctx.moveTo(0, -spikeL);
       ctx.lineTo(spikeL * 0.18, -spikeL * 0.18);
@@ -909,7 +922,7 @@ function drawSolarTrail(
 }
 
 /**
- * VOID HORIZON: Gravitational lens distortion wake with event-horizon attenuation core.
+ * VOID HORIZON: Dark purple cosmic wake with inverted contrast core and orbiting energy specks.
  */
 function drawSingularityTrail(
   ctx: CanvasRenderingContext2D,
@@ -923,7 +936,7 @@ function drawSingularityTrail(
   const count = chain.length;
   if (count < 2) return;
 
-  // 1. Event Horizon Light-Absorption Core (Physical darkening of the playfield beneath wake)
+  // 1. Dark Contrast Baseline (Dark stroke beneath the energetic wake)
   ctx.shadowBlur = 0;
   for (let i = 0; i < count - 1; i++) {
     const p0 = chain[i];
@@ -938,7 +951,7 @@ function drawSingularityTrail(
     ctx.stroke();
   }
 
-  // 2. Relativistic Frame-Dragging Caustics
+  // 2. Purple Violet Ambient Edge Stroke
   if (allowGlow) {
     ctx.shadowColor = def.glowColor;
     ctx.shadowBlur = 6;
@@ -959,7 +972,7 @@ function drawSingularityTrail(
     ctx.stroke();
   }
 
-  // 3. Accretion Boundary Filament (Quantum Cyan Spine)
+  // 3. Bright Cyan Center Spine Stroke
   ctx.shadowBlur = 0;
   for (let i = 0; i < count - 1; i++) {
     const p0 = chain[i];
@@ -974,7 +987,7 @@ function drawSingularityTrail(
     ctx.stroke();
   }
 
-  // 4. Inward-Drifting Hawking Radiation Specks (High Quality)
+  // 4. Orbiting energy specks drifting along the wake (High Quality)
   if (visualEffects === 'high') {
     for (let i = 0; i < count; i += 3) {
       if (i > count * 0.6) break;

@@ -48,7 +48,7 @@ function createMockContext() {
     lineCap: 'butt',
     lineJoin: 'miter',
     globalAlpha: 1,
-  } as unknown as CanvasRenderingContext2D;
+  } as unknown as CanvasRenderingContext2D & { operations: string[] };
 }
 
 // -----------------------------------------------------------------------------
@@ -294,5 +294,108 @@ test('NeonRenderer Trail 3: Preserves trail on death and cleans up on reset', ()
   // Reset clears history
   renderer.reset();
   assert.equal(renderer.trailHistory.getPointCount(), 0);
+});
+
+// =============================================================================
+// AUDIT REGRESSION TESTS: Findings 2 and 4
+// =============================================================================
+
+test('Finding 2 Regression: Large canvas and large grid cells do NOT fragment continuous trail movement', () => {
+  const manager = new TrailHistoryManager(2000);
+
+  // On a 1080p or 1440p screen, a 20-cell grid has cell sizes of 60px to 80px.
+  // Each step moves ~70px.
+  // Previously distSq > 3000 (threshold ~54.77px) fragmented these valid steps!
+  const cellSize = 70;
+  for (let i = 0; i < 6; i++) {
+    manager.addPoint(100 + i * cellSize, 200, 1000 + i * 50, 0, false);
+  }
+
+  // Caller specifies coordinate-appropriate maxLinkDistance (e.g. 4 * cellSize = 280)
+  const maxAllowedDistance = cellSize * 4;
+  const chains = manager.getChains(1300, maxAllowedDistance);
+
+  assert.equal(chains.length, 1, 'Normal movement on large canvas must NOT be split into multiple chains');
+  assert.equal(chains[0].length, 6, 'All 6 sample points must be in a single continuous chain');
+
+  // Even without maxLinkDistance specified, safe coordinate fallback must not fragment 70px steps
+  const fallbackChains = manager.getChains(1300);
+  assert.equal(fallbackChains.length, 1, 'Fallback threshold must not fragment valid continuous steps');
+});
+
+test('Finding 2 Regression: Zen mode screen wraparounds are cleanly split into separate chains', () => {
+  const manager = new TrailHistoryManager(2000);
+
+  // 1. Authoritative renderer-supplied discontinuity flag on Zen wrap
+  manager.addPoint(800, 300, 1000, 0, false);
+  manager.addPoint(850, 300, 1050, 0, false);
+  // Snake wraps right wall and re-enters from left wall (x=20)
+  manager.addPoint(20, 300, 1100, 0, true);
+  manager.addPoint(70, 300, 1150, 0, false);
+
+  const chains = manager.getChains(1200, 200);
+  assert.equal(chains.length, 2, 'Zen wraparound with authoritative flag must split into 2 chains');
+  assert.equal(chains[0].length, 2);
+  assert.equal(chains[1].length, 2);
+
+  // 2. Wrap without explicit flag across a wide board (distance fallback)
+  const manager2 = new TrailHistoryManager(2000);
+  manager2.addPoint(900, 300, 1000, 0, false);
+  manager2.addPoint(30, 300, 1050, 0, false); // Massive jump across 870px
+
+  const fallbackChains = manager2.getChains(1100, 200);
+  assert.equal(fallbackChains.length, 2, 'Massive spatial jump exceeding link distance must split chains');
+});
+
+test('Finding 2 Regression: High-speed interpolated movement remains unbroken', () => {
+  const manager = new TrailHistoryManager(2000);
+  // High-frequency sub-tick interpolated samples
+  for (let i = 0; i < 15; i++) {
+    manager.addPoint(50 + i * 15, 100 + Math.sin(i * 0.5) * 10, 1000 + i * 16, 0, false);
+  }
+
+  const chains = manager.getChains(1250, 150);
+  assert.equal(chains.length, 1, 'High-speed interpolated samples must remain a single smooth chain');
+  assert.equal(chains[0].length, 15);
+});
+
+test('Finding 4 Regression: drawTrailPreview clears canvas on transparent background to prevent frame accumulation', () => {
+  const ctx = createMockContext();
+
+  const result = drawTrailPreview(ctx as unknown as CanvasRenderingContext2D, 'cyber_pulse', {
+    width: 200,
+    height: 100,
+    timeMs: 200,
+    background: 'transparent',
+  });
+
+  assert.equal(result.success, true);
+  // Must call clearRect first to clean up previous frame pixels
+  const hasClearRect = ctx.operations.some(op => op.startsWith('clearRect(0,0,200,100)'));
+  assert.ok(hasClearRect, 'clearRect must be called to purge previous frame in transparent mode');
+
+  // Must NOT draw the opaque background rect in transparent mode
+  const hasBackgroundFill = ctx.operations.some(op => op.startsWith('fillRect(0,0,200,100)'));
+  assert.equal(hasBackgroundFill, false, 'Opaque background fillRect must not be called in transparent mode');
+});
+
+test('Finding 4 Regression: drawTrailPreview draws background fill and clearRect in non-transparent mode', () => {
+  const ctx = createMockContext();
+
+  const result = drawTrailPreview(ctx as unknown as CanvasRenderingContext2D, 'cyber_pulse', {
+    width: 200,
+    height: 100,
+    timeMs: 200,
+    background: 'glow',
+  });
+
+  assert.equal(result.success, true);
+  // Must call clearRect before drawing
+  const hasClearRect = ctx.operations.some(op => op.startsWith('clearRect(0,0,200,100)'));
+  assert.ok(hasClearRect, 'clearRect must be called first');
+
+  // Must draw the background fill in glow mode
+  const hasBackgroundFill = ctx.operations.some(op => op.startsWith('fillRect(0,0,200,100)'));
+  assert.ok(hasBackgroundFill, 'fillRect must be called for background in glow mode');
 });
 

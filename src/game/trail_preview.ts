@@ -57,6 +57,9 @@ export function drawTrailPreview(
   const prevAlpha = ctx.globalAlpha;
 
   try {
+    // Always clear the canvas bounding box first to prevent accumulation of previous frames
+    ctx.clearRect(0, 0, width, height);
+
     // 1. Background Pass
     if (backgroundMode !== 'transparent') {
       ctx.fillStyle = '#080A12';

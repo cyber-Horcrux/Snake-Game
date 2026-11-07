@@ -765,7 +765,8 @@ export class NeonRenderer {
 
     // 1. Draw Cosmetic Snake Trail if equipped
     if (trail && trail !== 'none') {
-      const trailChains = this.trailHistory.getChains(trailTimeMs);
+      const maxAllowedGap = Math.max(cellW, cellH) * 3.5;
+      const trailChains = this.trailHistory.getChains(trailTimeMs, maxAllowedGap);
       drawSnakeTrail(ctx, trailChains, trail, {
         visualEffects: (visualEffects as any) || 'high',
         allowGlow,

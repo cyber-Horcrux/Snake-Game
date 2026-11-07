@@ -208,7 +208,7 @@ export function checkTrailUnlockEligibility(
     playerLevel?: number;
     zenScreenWraps?: number;
     mazeStagesCleared?: number;
-    lifetimeFoodEaten?: number;
+    lifetimeFoodEaten?: number; // Kept in interface for backward compatibility, strictly ignored for single-run food requirement
   }
 ): boolean {
   const trail = typeof trailOrId === 'string' ? getTrailDefinition(trailOrId) : trailOrId;
@@ -217,7 +217,8 @@ export function checkTrailUnlockEligibility(
   const safeLevel = Math.max(1, Math.floor(context.playerLevel ?? context.level ?? 1));
   const safeZenWraps = Math.max(0, Math.floor(context.zenScreenWraps ?? context.zenWallsWrapped ?? 0));
   const safeMazeStage = Math.max(0, Math.floor(context.mazeStagesCleared ?? context.highestMazeStage ?? 0));
-  const safeMaxFood = Math.max(0, Math.floor(context.lifetimeFoodEaten ?? context.maxFoodInRun ?? 0));
+  // Authoritative single-run food counter: never substitute cumulative lifetime food statistics
+  const safeMaxFood = Math.max(0, Math.floor(context.maxFoodInRun ?? 0));
 
   const checkCondition = (cond?: TrailUnlockCondition): boolean => {
     if (!cond) return false;

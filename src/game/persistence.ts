@@ -862,7 +862,7 @@ export function reconcileAndMigratePlayerTrails(
   storage: StorageLike | null = getBrowserStorage(),
   contextOverride?: Partial<TrailUnlockContext> & {
     progression?: { level: number };
-    stats?: { wallsWrapped?: number; totalFoodEaten?: number; longestSnake?: number; zenScreenWraps?: number; foodEaten?: number };
+    stats?: { wallsWrapped?: number; totalFoodEaten?: number; longestSnake?: number; zenScreenWraps?: number; foodEaten?: number; maxFoodInRun?: number };
     mazeProgress?: Partial<MazeProgress> & { highestStageUnlocked?: number; highestCompletedStage?: number; [key: string]: unknown };
     playerLevel?: number;
     zenScreenWraps?: number;
@@ -896,7 +896,9 @@ export function reconcileAndMigratePlayerTrails(
     const level = contextOverride?.level ?? contextOverride?.playerLevel ?? contextOverride?.progression?.level ?? (progression?.level ?? 1);
     const zenWallsWrapped = contextOverride?.zenWallsWrapped ?? contextOverride?.zenScreenWraps ?? contextOverride?.stats?.wallsWrapped ?? contextOverride?.stats?.zenScreenWraps ?? (stats?.wallsWrapped ?? 0);
     const highestMazeStage = contextOverride?.highestMazeStage ?? contextOverride?.mazeStagesCleared ?? contextOverride?.mazeProgress?.highestStageUnlocked ?? contextOverride?.mazeProgress?.highestCompletedStage ?? (maze?.highestStageUnlocked ?? 1);
-    const maxFoodInRun = contextOverride?.maxFoodInRun ?? contextOverride?.lifetimeFoodEaten ?? contextOverride?.stats?.totalFoodEaten ?? contextOverride?.stats?.foodEaten ?? contextOverride?.stats?.longestSnake ?? (stats?.longestSnake ?? 0);
+    // Authoritative single-run food count: use explicit contextOverride, contextOverride.stats.maxFoodInRun, or stats.maxFoodInRun;
+    // never substitute cumulative lifetime food statistics (totalFoodEaten) or unrelated stats.
+    const maxFoodInRun = contextOverride?.maxFoodInRun ?? contextOverride?.stats?.maxFoodInRun ?? (stats?.maxFoodInRun ?? 0);
 
     const context: TrailUnlockContext = {
       level,

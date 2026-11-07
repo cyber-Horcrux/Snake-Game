@@ -247,6 +247,7 @@ export interface LifetimeStats {
   wallsWrapped: number;
   shieldsUsed: number;
   maxCombo: number;
+  maxFoodInRun?: number;
 }
 
 export type AppScreen =
