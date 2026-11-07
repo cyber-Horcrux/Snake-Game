@@ -160,44 +160,53 @@ function segmentsIntersect(
   p4: { x: number; y: number },
   tolerance: number = 1e-4
 ): boolean {
-  const distP1P3 = Math.hypot(p1.x - p3.x, p1.y - p3.y);
-  const distP1P4 = Math.hypot(p1.x - p4.x, p1.y - p4.y);
-  const distP2P3 = Math.hypot(p2.x - p3.x, p2.y - p3.y);
-  const distP2P4 = Math.hypot(p2.x - p4.x, p2.y - p4.y);
-
-  if (distP1P3 < tolerance || distP1P4 < tolerance || distP2P3 < tolerance || distP2P4 < tolerance) {
-    return false;
-  }
-
-  function crossProduct(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+  function cross(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   }
-
-  function onSegment(p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) {
-    return (
-      q.x <= Math.max(p.x, r.x) + tolerance &&
-      q.x >= Math.min(p.x, r.x) - tolerance &&
-      q.y <= Math.max(p.y, r.y) + tolerance &&
-      q.y >= Math.min(p.y, r.y) - tolerance
-    );
+  function distSq(a: { x: number; y: number }, b: { x: number; y: number }) {
+    return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+  }
+  function onSegmentStrict(p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) {
+    const dPr = distSq(p, r);
+    if (dPr < tolerance * tolerance) return false;
+    const dPq = distSq(p, q);
+    const dQr = distSq(q, r);
+    if (dPq < tolerance * tolerance || dQr < tolerance * tolerance) return false;
+    const proj = (q.x - p.x) * (r.x - p.x) + (q.y - p.y) * (r.y - p.y);
+    return proj > tolerance && proj < dPr - tolerance;
   }
 
-  const cp1 = crossProduct(p1, p2, p3);
-  const cp2 = crossProduct(p1, p2, p4);
-  const cp3 = crossProduct(p3, p4, p1);
-  const cp4 = crossProduct(p3, p4, p2);
+  const cp1 = cross(p1, p2, p3);
+  const cp2 = cross(p1, p2, p4);
+  const cp3 = cross(p3, p4, p1);
+  const cp4 = cross(p3, p4, p2);
 
   // General strict crossing
-  if (((cp1 > tolerance && cp2 < -tolerance) || (cp1 < -tolerance && cp2 > tolerance)) &&
-      ((cp3 > tolerance && cp4 < -tolerance) || (cp3 < -tolerance && cp4 > tolerance))) {
+  if (
+    ((cp1 > tolerance && cp2 < -tolerance) || (cp1 < -tolerance && cp2 > tolerance)) &&
+    ((cp3 > tolerance && cp4 < -tolerance) || (cp3 < -tolerance && cp4 > tolerance))
+  ) {
     return true;
   }
 
-  // Collinear overlap
-  if (Math.abs(cp1) <= tolerance && onSegment(p1, p3, p2)) return true;
-  if (Math.abs(cp2) <= tolerance && onSegment(p1, p4, p2)) return true;
-  if (Math.abs(cp3) <= tolerance && onSegment(p3, p1, p4)) return true;
-  if (Math.abs(cp4) <= tolerance && onSegment(p3, p2, p4)) return true;
+  // Collinear interior overlap
+  if (Math.abs(cp1) <= tolerance && onSegmentStrict(p1, p3, p2)) return true;
+  if (Math.abs(cp2) <= tolerance && onSegmentStrict(p1, p4, p2)) return true;
+  if (Math.abs(cp3) <= tolerance && onSegmentStrict(p3, p1, p4)) return true;
+  if (Math.abs(cp4) <= tolerance && onSegmentStrict(p3, p2, p4)) return true;
+
+  // Shared endpoint backtracking check (e.g. p2 == p3 doubling back on p1-p2)
+  const d23 = distSq(p2, p3);
+  if (d23 < tolerance * tolerance) {
+    const v12 = { x: p2.x - p1.x, y: p2.y - p1.y };
+    const v34 = { x: p4.x - p3.x, y: p4.y - p3.y };
+    const l1 = Math.hypot(v12.x, v12.y);
+    const l2 = Math.hypot(v34.x, v34.y);
+    if (l1 > tolerance && l2 > tolerance) {
+      const cosA = (v12.x * v34.x + v12.y * v34.y) / (l1 * l2);
+      if (cosA < -0.999) return true;
+    }
+  }
 
   return false;
 }

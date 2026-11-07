@@ -562,8 +562,8 @@ export function generateSmoothSpine(
         continue;
       }
 
-      // Reversal handling: exact 180° turnaround (dot <= -0.999)
-      if (dot <= -0.999) {
+      // Reversal and sharp-turn handling (dot <= -0.98, deflection >= 168.5° up to exact 180° reversal)
+      if (dot <= -0.98) {
         const filletDist = Math.min(inLen * 0.44, outLen * 0.44, safeBaseR * 1.5);
         const turnStartX = pCurr.x - inUx * filletDist;
         const turnStartY = pCurr.y - inUy * filletDist;
@@ -584,12 +584,7 @@ export function generateSmoothSpine(
         const turnR = Math.max(safeBaseR * 0.95, 10);
         const fwdDist = Math.max(safeBaseR * 0.85, filletDist * 0.8);
 
-        // Semicircular / elliptical C1 turnaround:
-        // Center C = A + latU * turnR
-        // P(theta) = C + inU * (fwdDist * sin(theta)) - latU * (turnR * cos(theta))
-        // At theta = 0: P = A, P' = inU * fwdDist (strictly aligned with inU).
-        // At theta = pi/2: P = C + inU * fwdDist, P' = latU * turnR (strictly aligned with latU).
-        // At theta = pi: P = A + latU * (2 * turnR), P' = outU * fwdDist (strictly aligned with outU).
+        // Semicircular / elliptical C1 turnaround loop around corner pCurr
         const approxChord = Math.PI * Math.sqrt((fwdDist * fwdDist + turnR * turnR) / 2);
         const turnSteps = Math.max(8, Math.min(14, Math.round(approxChord / (safeBaseR * 0.35))));
 
@@ -610,9 +605,36 @@ export function generateSmoothSpine(
           addSample(px, py, dPx, dPy);
         }
 
-        const endPx = turnStartX + latUx * (2 * turnR);
-        const endPy = turnStartY + latUy * (2 * turnR);
-        currentStart = { x: endPx, y: endPy };
+        // Smooth quintic Hermite transition from turnaround apex back onto the actual outgoing path line:
+        // Guarantees zero lateral displacement from the outgoing line, zero angular kink, and strict C1 continuity.
+        const transDist = Math.min(outLen * 0.45, turnR * 2.0);
+        const transSteps = 6;
+        const latOutX = -outUy * sign;
+        const latOutY = outUx * sign;
+        const apexLatDisp = 2 * turnR;
+
+        for (let s = 1; s <= transSteps; s++) {
+          const u = s / transSteps;
+          // Quintic smoothstep with zero 1st and 2nd derivatives at u=0 and u=1
+          const w = u * u * u * (u * (u * 6 - 15) + 10);
+          const currentLat = apexLatDisp * (1 - w);
+
+          const baseDist = filletDist + transDist * u;
+          const px = pCurr.x + outUx * baseDist + latOutX * currentLat;
+          const py = pCurr.y + outUy * baseDist + latOutY * currentLat;
+
+          const dw_du = 30 * u * u * (1 - u) * (1 - u);
+          const dLat = -apexLatDisp * dw_du / Math.max(1, transDist);
+          const tx = outUx + latOutX * dLat;
+          const ty = outUy + latOutY * dLat;
+
+          addSample(px, py, tx, ty);
+        }
+
+        // Continue straight along the actual outgoing line with zero lateral offset and zero angular kink
+        const currentStartX = pCurr.x + outUx * (filletDist + transDist);
+        const currentStartY = pCurr.y + outUy * (filletDist + transDist);
+        currentStart = { x: currentStartX, y: currentStartY };
         continue;
       }
 
@@ -711,18 +733,20 @@ export function generateSmoothSpine(
     if (i > 0 && i < sampleCount - 1) {
       const pPrev = rawSamples[i - 1];
       const pNext = rawSamples[i + 1];
-      const crossCurv = s.tx * pNext.ty - s.ty * pNext.tx;
+      const dTx = pNext.tx - pPrev.tx;
+      const dTy = pNext.ty - pPrev.ty;
       const segArc = Math.max(0.1, cumDistances[i + 1] - cumDistances[i - 1]);
-      const kappa = crossCurv / segArc;
+      // Mathematically centered curvature with consistent sign convention
+      const kappa = (s.tx * dTy - s.ty * dTx) / segArc;
 
       if (kappa > 0.01) {
         // Curve to the left: left flank is inner
         const rho = 1 / kappa;
-        rLeft = Math.min(r, Math.max(r * 0.40, rho * 0.85));
+        rLeft = Math.min(r, Math.max(r * 0.45, rho * 0.85));
       } else if (kappa < -0.01) {
         // Curve to the right: right flank is inner
         const rho = 1 / Math.abs(kappa);
-        rRight = Math.min(r, Math.max(r * 0.40, rho * 0.85));
+        rRight = Math.min(r, Math.max(r * 0.45, rho * 0.85));
       }
     }
 
@@ -743,40 +767,44 @@ export function generateSmoothSpine(
     };
   }
 
-  // 4. Robust boundary smoothing: guarantee forward progression and non-inversion
-  for (let i = 1; i < sampleCount - 1; i++) {
-    const prev = nodes[i - 1];
-    const curr = nodes[i];
+  // 4. Robust boundary smoothing: guarantee forward progression and non-inversion without width kinks
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 1; i < sampleCount - 1; i++) {
+      const prev = nodes[i - 1];
+      const curr = nodes[i];
+      const next = nodes[i + 1];
 
-    // Left flank forward progression
-    const leftDx = curr.leftX - prev.leftX;
-    const leftDy = curr.leftY - prev.leftY;
-    const leftDot = leftDx * curr.tangentX + leftDy * curr.tangentY;
-    if (leftDot <= 0) {
-      curr.leftX = curr.x + curr.normalX * (curr.radius * 0.42);
-      curr.leftY = curr.y + curr.normalY * (curr.radius * 0.42);
-    }
+      // Left flank forward progression check
+      const leftDx = curr.leftX - prev.leftX;
+      const leftDy = curr.leftY - prev.leftY;
+      const leftDot = leftDx * curr.tangentX + leftDy * curr.tangentY;
+      if (leftDot <= 0) {
+        curr.leftX = 0.5 * (prev.leftX + next.leftX);
+        curr.leftY = 0.5 * (prev.leftY + next.leftY);
+      }
 
-    // Right flank forward progression
-    const rightDx = curr.rightX - prev.rightX;
-    const rightDy = curr.rightY - prev.rightY;
-    const rightDot = rightDx * curr.tangentX + rightDy * curr.tangentY;
-    if (rightDot <= 0) {
-      curr.rightX = curr.x - curr.normalX * (curr.radius * 0.42);
-      curr.rightY = curr.y - curr.normalY * (curr.radius * 0.42);
-    }
+      // Right flank forward progression check
+      const rightDx = curr.rightX - prev.rightX;
+      const rightDy = curr.rightY - prev.rightY;
+      const rightDot = rightDx * curr.tangentX + rightDy * curr.tangentY;
+      if (rightDot <= 0) {
+        curr.rightX = 0.5 * (prev.rightX + next.rightX);
+        curr.rightY = 0.5 * (prev.rightY + next.rightY);
+      }
 
-    // Enforce left boundary is strictly on left and right on right
-    const leftCheck = (curr.leftX - curr.x) * curr.normalX + (curr.leftY - curr.y) * curr.normalY;
-    if (leftCheck < curr.radius * 0.35) {
-      curr.leftX = curr.x + curr.normalX * (curr.radius * 0.42);
-      curr.leftY = curr.y + curr.normalY * (curr.radius * 0.42);
-    }
+      // Enforce left boundary is strictly on left and right on right with smooth minimum clearance
+      const minClearance = curr.radius * 0.40;
+      const leftCheck = (curr.leftX - curr.x) * curr.normalX + (curr.leftY - curr.y) * curr.normalY;
+      if (leftCheck < minClearance) {
+        curr.leftX = curr.x + curr.normalX * minClearance;
+        curr.leftY = curr.y + curr.normalY * minClearance;
+      }
 
-    const rightCheck = (curr.rightX - curr.x) * (-curr.normalX) + (curr.rightY - curr.y) * (-curr.normalY);
-    if (rightCheck < curr.radius * 0.35) {
-      curr.rightX = curr.x - curr.normalX * (curr.radius * 0.42);
-      curr.rightY = curr.y - curr.normalY * (curr.radius * 0.42);
+      const rightCheck = (curr.rightX - curr.x) * (-curr.normalX) + (curr.rightY - curr.y) * (-curr.normalY);
+      if (rightCheck < minClearance) {
+        curr.rightX = curr.x - curr.normalX * minClearance;
+        curr.rightY = curr.y - curr.normalY * minClearance;
+      }
     }
   }
 
@@ -801,6 +829,7 @@ export function drawStylizedSnakeHead(
   visualEffects: 'high' | 'performance' | 'reduced' = 'high'
 ): void {
   ctx.save();
+  try {
 
   let angle = 0;
   if (typeof heading === 'number') {
@@ -937,7 +966,9 @@ export function drawStylizedSnakeHead(
     ctx.fill();
   }
 
-  ctx.restore();
+  } finally {
+    ctx.restore();
+  }
 }
 
 /**
@@ -964,7 +995,8 @@ function drawCurvedBodyScales(
   if (totalLength < 10) return;
 
   ctx.save();
-  ctx.shadowBlur = 0;
+  try {
+    ctx.shadowBlur = 0;
 
   // 1. Clip scales strictly to the body ribbon polygon
   ctx.beginPath();
@@ -1219,18 +1251,51 @@ function drawCurvedBodyScales(
       }
     }
 
-    // High quality mode: add lateral flank scales on left and right flanks
+    // High quality mode: add lateral flank scales styled to match the skin's anatomy
     if (visualEffects === 'high') {
-      const latDist = r * 0.55;
+      const latDist = r * 0.58;
+      const flankR = r * 0.16;
       ctx.fillStyle = skin.scaleSecondaryColor;
-      ctx.beginPath();
-      ctx.arc(posX + normNx * latDist, posY + normNy * latDist, r * 0.14, 0, Math.PI * 2);
-      ctx.arc(posX - normNx * latDist, posY - normNy * latDist, r * 0.14, 0, Math.PI * 2);
-      ctx.fill();
+
+      for (const flankSign of [1, -1] as const) {
+        const fx = posX + normNx * (latDist * flankSign);
+        const fy = posY + normNy * (latDist * flankSign);
+
+        ctx.beginPath();
+        if (skin.scaleStyle === 'cyber_hex') {
+          // Hexagonal chip
+          for (let k = 0; k < 6; k++) {
+            const ha = (k * Math.PI) / 3;
+            const hx = fx + Math.cos(ha) * flankR;
+            const hy = fy + Math.sin(ha) * flankR;
+            if (k === 0) ctx.moveTo(hx, hy);
+            else ctx.lineTo(hx, hy);
+          }
+          safeClosePath(ctx);
+        } else if (skin.scaleStyle === 'reptilian_keeled' || skin.scaleStyle === 'sunset_chevron') {
+          // Small elongated rhomboid scute
+          ctx.moveTo(fx + normTx * flankR, fy + normTy * flankR);
+          ctx.lineTo(fx + normNx * (flankR * 0.6 * flankSign), fy + normNy * (flankR * 0.6 * flankSign));
+          ctx.lineTo(fx - normTx * flankR, fy - normTy * flankR);
+          ctx.lineTo(fx - normNx * (flankR * 0.6 * flankSign), fy - normNy * (flankR * 0.6 * flankSign));
+          safeClosePath(ctx);
+        } else if (skin.scaleStyle === 'frost_crystalline' || skin.scaleStyle === 'geometric_facet') {
+          // Angular facet
+          ctx.moveTo(fx + normTx * flankR, fy + normTy * flankR);
+          ctx.lineTo(fx + normNx * (flankR * 0.7 * flankSign), fy + normNy * (flankR * 0.7 * flankSign));
+          ctx.lineTo(fx - normTx * (flankR * 0.5), fy - normTy * (flankR * 0.5));
+          safeClosePath(ctx);
+        } else {
+          // Smooth lateral circular scute
+          ctx.arc(fx, fy, flankR, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
     }
   }
-
-  ctx.restore();
+  } finally {
+    ctx.restore();
+  }
 }
 
 /**
@@ -1261,6 +1326,8 @@ export function drawContinuousSnakeBody(
   if (totalNodes < 2) return;
 
   ctx.save();
+  const prevAlpha = ctx.globalAlpha;
+  try {
 
   // 2. Render seamless multi-zone curved ribbon from head to tail
   // Fill the complete base ribbon first so there are zero subpixel hairline cracks
@@ -1280,9 +1347,23 @@ export function drawContinuousSnakeBody(
   if (isTailChain) {
     const last = nodes[totalNodes - 1];
     const tipDist = last.radius * 1.5;
-    ctx.lineTo(last.x + last.tangentX * tipDist, last.y + last.tangentY * tipDist);
+    const tipX = last.x + last.tangentX * tipDist;
+    const tipY = last.y + last.tangentY * tipDist;
+    // Naturally tapered, smoothly rounded tail dome
+    ctx.quadraticCurveTo(
+      last.leftX + last.tangentX * (tipDist * 0.75),
+      last.leftY + last.tangentY * (tipDist * 0.75),
+      tipX,
+      tipY
+    );
+    ctx.quadraticCurveTo(
+      last.rightX + last.tangentX * (tipDist * 0.75),
+      last.rightY + last.tangentY * (tipDist * 0.75),
+      last.rightX,
+      last.rightY
+    );
   }
-  for (let i = totalNodes - 1; i >= 0; i--) {
+  for (let i = totalNodes - (isTailChain ? 2 : 1); i >= 0; i--) {
     ctx.lineTo(nodes[i].rightX, nodes[i].rightY);
   }
   safeClosePath(ctx);
@@ -1314,19 +1395,28 @@ export function drawContinuousSnakeBody(
   }
 
   // 3. Dedicated Natural Tapered Tail Tip Cap (only on true tail terminal of the snake)
-  // The tip extends OUTWARD (away from the body) along the terminal tangent vector
+  // The tip extends OUTWARD (away from the body) along the terminal tangent vector with a smooth curved finish
   if (isTailChain && totalNodes > 0) {
     const lastNode = nodes[totalNodes - 1];
     const tipDist = lastNode.radius * 1.5;
-    // PLUS sign ensures tip extends OUTWARD away from body along tangent
     const tipX = lastNode.x + lastNode.tangentX * tipDist;
     const tipY = lastNode.y + lastNode.tangentY * tipDist;
 
     ctx.fillStyle = skin.bodyColors[2];
     ctx.beginPath();
     ctx.moveTo(lastNode.leftX, lastNode.leftY);
-    ctx.lineTo(tipX, tipY);
-    ctx.lineTo(lastNode.rightX, lastNode.rightY);
+    ctx.quadraticCurveTo(
+      lastNode.leftX + lastNode.tangentX * (tipDist * 0.75),
+      lastNode.leftY + lastNode.tangentY * (tipDist * 0.75),
+      tipX,
+      tipY
+    );
+    ctx.quadraticCurveTo(
+      lastNode.rightX + lastNode.tangentX * (tipDist * 0.75),
+      lastNode.rightY + lastNode.tangentY * (tipDist * 0.75),
+      lastNode.rightX,
+      lastNode.rightY
+    );
     safeClosePath(ctx);
     ctx.fill();
   }
@@ -1334,7 +1424,7 @@ export function drawContinuousSnakeBody(
   // 4. Volumetric 3D Shading Pass (High and Performance modes)
   if (visualEffects !== 'reduced') {
     ctx.fillStyle = skin.bellyShade;
-    ctx.globalAlpha = visualEffects === 'high' ? 0.28 : 0.18;
+    ctx.globalAlpha = (visualEffects === 'high' ? 0.28 : 0.18) * prevAlpha;
     ctx.beginPath();
     ctx.moveTo(nodes[0].rightX, nodes[0].rightY);
     for (let i = 1; i < totalNodes; i++) {
@@ -1348,7 +1438,7 @@ export function drawContinuousSnakeBody(
     }
     safeClosePath(ctx);
     ctx.fill();
-    ctx.globalAlpha = 1.0;
+    ctx.globalAlpha = prevAlpha;
   }
 
   // 5. Continuous Dorsal Ridge Carina Highlight along the smooth centerline
@@ -1368,7 +1458,10 @@ export function drawContinuousSnakeBody(
     drawCurvedBodyScales(ctx, nodes, skin, visualEffects, isTailChain);
   }
 
-  ctx.restore();
+  } finally {
+    ctx.globalAlpha = prevAlpha;
+    ctx.restore();
+  }
 }
 
 /**
@@ -1441,29 +1534,32 @@ export function drawNaturalStylizedSnake(
     // 3. Active Shield Aura around head (if powerup is active)
     if (options.hasShield) {
       ctx.save();
-      const animTime = Number.isFinite(options.animationTimeMs) ? (options.animationTimeMs as number) : 0;
-      const shieldPulse = Math.sin(animTime * 0.008) * 0.15 + 1;
-      const shieldR = baseRadius * 1.85 * shieldPulse;
-      if (allowGlow) {
-        ctx.shadowColor = '#9865FF';
-        ctx.shadowBlur = 22;
-      }
-      ctx.strokeStyle = '#9865FF';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = (i * Math.PI) / 3;
-        const hx = headPt.x + Math.cos(a) * shieldR;
-        const hy = headPt.y + Math.sin(a) * shieldR;
-        if (i === 0) ctx.moveTo(hx, hy);
-        else ctx.lineTo(hx, hy);
-      }
-      safeClosePath(ctx);
-      ctx.stroke();
+      try {
+        const animTime = Number.isFinite(options.animationTimeMs) ? (options.animationTimeMs as number) : 0;
+        const shieldPulse = Math.sin(animTime * 0.008) * 0.15 + 1;
+        const shieldR = baseRadius * 1.85 * shieldPulse;
+        if (allowGlow) {
+          ctx.shadowColor = '#9865FF';
+          ctx.shadowBlur = 22;
+        }
+        ctx.strokeStyle = '#9865FF';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          const hx = headPt.x + Math.cos(a) * shieldR;
+          const hy = headPt.y + Math.sin(a) * shieldR;
+          if (i === 0) ctx.moveTo(hx, hy);
+          else ctx.lineTo(hx, hy);
+        }
+        safeClosePath(ctx);
+        ctx.stroke();
 
-      ctx.fillStyle = 'rgba(152, 101, 255, 0.18)';
-      ctx.fill();
-      ctx.restore();
+        ctx.fillStyle = 'rgba(152, 101, 255, 0.18)';
+        ctx.fill();
+      } finally {
+        ctx.restore();
+      }
     }
   }
 }
