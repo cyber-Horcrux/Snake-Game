@@ -866,4 +866,196 @@ test('Correction C8: High-frequency chronological input remains unbroken', () =>
   assert.equal(chains[0].length, 15);
 });
 
+// =============================================================================
+// ADAPTIVE ESTIMATOR MULTI-JUMP INTEGRITY TESTS
+// =============================================================================
+
+test('Adaptive Multi-Jump 1: One normal stride followed by two 800px jumps over 300ms splits both jumps', () => {
+  const manager = new TrailHistoryManager(3000);
+  // Stride 1: 20px over 50ms (0.4 px/ms)
+  // Jump 1: 800px over 300ms (2.67 px/ms <= 3.5 px/ms velocity limit)
+  // Jump 2: 800px over 300ms (2.67 px/ms <= 3.5 px/ms velocity limit)
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+  manager.addPoint(920, 100, 1350, 0, false);
+  manager.addPoint(1720, 100, 1650, 0, false);
+
+  const chains = manager.getChains(1700);
+  assert.equal(chains.length, 3, 'Must split into 3 chains: normal stride and 2 isolated jump points');
+  // Newest point (1720) in chain 0 (length 1)
+  assert.equal(chains[0].length, 1);
+  assert.equal(chains[0][0].x, 1720);
+  // Middle point (920) in chain 1 (length 1)
+  assert.equal(chains[1].length, 1);
+  assert.equal(chains[1][0].x, 920);
+  // Normal stride points (120, 100) in chain 2 (length 2)
+  assert.equal(chains[2].length, 2);
+  assert.equal(chains[2][0].x, 120);
+  assert.equal(chains[2][1].x, 100);
+});
+
+test('Adaptive Multi-Jump 2: One normal stride followed by three consecutive large jumps splits all jumps', () => {
+  const manager = new TrailHistoryManager(3000);
+  // Normal: 20px over 50ms
+  // Three consecutive jumps: 750px over 250ms each (3.0 px/ms <= 3.5 px/ms)
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+  manager.addPoint(870, 100, 1300, 0, false);
+  manager.addPoint(1620, 100, 1550, 0, false);
+  manager.addPoint(2370, 100, 1800, 0, false);
+
+  const chains = manager.getChains(1900);
+  assert.equal(chains.length, 4, 'All three consecutive jumps must be separated into isolated chains');
+  assert.equal(chains[0].length, 1);
+  assert.equal(chains[0][0].x, 2370);
+  assert.equal(chains[1].length, 1);
+  assert.equal(chains[1][0].x, 1620);
+  assert.equal(chains[2].length, 1);
+  assert.equal(chains[2][0].x, 870);
+  assert.equal(chains[3].length, 2);
+  assert.equal(chains[3][0].x, 120);
+  assert.equal(chains[3][1].x, 100);
+});
+
+test('Adaptive Multi-Jump 3: Reversed ordering with abnormal jumps first followed by normal movement', () => {
+  const manager = new TrailHistoryManager(3000);
+  // Two large jumps first: 800px over 300ms each (velocity 2.67 px/ms <= 3.5 px/ms)
+  // Followed by two normal strides: 20px over 50ms each
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(900, 100, 1300, 0, false);  // 800px jump
+  manager.addPoint(1700, 100, 1600, 0, false); // 800px jump
+  manager.addPoint(1720, 100, 1650, 0, false); // 20px normal
+  manager.addPoint(1740, 100, 1700, 0, false); // 20px normal
+
+  const chains = manager.getChains(1750);
+  assert.equal(chains.length, 3, 'Abnormal jumps must not link to each other, and normal movement must link');
+  // Newest chain contains the normal movement (1740, 1720, 1700)
+  assert.equal(chains[0].length, 3);
+  assert.equal(chains[0][0].x, 1740);
+  assert.equal(chains[0][1].x, 1720);
+  assert.equal(chains[0][2].x, 1700);
+  // Older jumps are isolated
+  assert.equal(chains[1].length, 1);
+  assert.equal(chains[1][0].x, 900);
+  assert.equal(chains[2].length, 1);
+  assert.equal(chains[2][0].x, 100);
+});
+
+test('Adaptive Multi-Jump 4: A rejected jump does not influence the threshold for the next candidate', () => {
+  const manager = new TrailHistoryManager(3000);
+  // Normal stride: 20px over 50ms
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+  // Rejected jump: 800px over 300ms (2.67 px/ms)
+  manager.addPoint(920, 100, 1350, 0, false);
+  // Candidate stride: 150px over 50ms (3.0 px/ms <= 3.5 px/ms).
+  // If the 800px jump had inflated the threshold (800 * 4.5 = 3600px), 150px would be accepted!
+  // With baseline 20px, maxAllowed is 90px, so 150px must be rejected.
+  manager.addPoint(1070, 100, 1400, 0, false);
+
+  const chains = manager.getChains(1450);
+  assert.equal(chains.length, 3, 'The rejected jump must not inflate threshold to accept the 150px step');
+  assert.equal(chains[0].length, 1);
+  assert.equal(chains[0][0].x, 1070);
+  assert.equal(chains[1].length, 1);
+  assert.equal(chains[1][0].x, 920);
+  assert.equal(chains[2].length, 2);
+  assert.equal(chains[2][0].x, 120);
+  assert.equal(chains[2][1].x, 100);
+});
+
+test('Adaptive Multi-Jump 5: Normal consistent movement remains connected', () => {
+  const manager = new TrailHistoryManager(3000);
+  for (let i = 0; i < 12; i++) {
+    manager.addPoint(100 + i * 22, 200, 1000 + i * 50, 0, false);
+  }
+  const chains = manager.getChains(1650);
+  assert.equal(chains.length, 1, 'Consistent normal strides must form 1 unbroken chain');
+  assert.equal(chains[0].length, 12);
+});
+
+test('Adaptive Multi-Jump 6: Gradual acceleration remains connected across multiple speed tiers', () => {
+  const manager = new TrailHistoryManager(3000);
+  // Strides accelerating from 16px to 56px
+  const strides = [16, 20, 26, 34, 44, 56];
+  let currentX = 100;
+  let currentTime = 1000;
+  manager.addPoint(currentX, 200, currentTime, 0, false);
+
+  for (const s of strides) {
+    currentX += s;
+    currentTime += 45;
+    manager.addPoint(currentX, 200, currentTime, 0, false);
+  }
+
+  const chains = manager.getChains(currentTime + 50);
+  assert.equal(chains.length, 1, 'Gradual acceleration must not fragment into multiple chains');
+  assert.equal(chains[0].length, strides.length + 1);
+});
+
+test('Adaptive Multi-Jump 7: Existing short-history behavior remains sensible', () => {
+  // A. Single normal stride remains 1 chain of 2 points
+  const manager1 = new TrailHistoryManager(2000);
+  manager1.addPoint(100, 100, 1000, 0, false);
+  manager1.addPoint(120, 100, 1050, 0, false);
+  const chains1 = manager1.getChains(1100);
+  assert.equal(chains1.length, 1);
+  assert.equal(chains1[0].length, 2);
+
+  // B. Single extreme velocity jump splits
+  const managerJump = new TrailHistoryManager(2000);
+  managerJump.addPoint(100, 100, 1000, 0, false);
+  managerJump.addPoint(900, 100, 1050, 0, false); // 800px in 50ms = 16 px/ms
+  const chainsJump = managerJump.getChains(1100);
+  assert.equal(chainsJump.length, 2);
+
+  // C. Two normal strides remain 1 chain of 3 points
+  const manager2 = new TrailHistoryManager(2000);
+  manager2.addPoint(100, 100, 1000, 0, false);
+  manager2.addPoint(120, 100, 1050, 0, false);
+  manager2.addPoint(142, 100, 1100, 0, false);
+  const chains2 = manager2.getChains(1150);
+  assert.equal(chains2.length, 1);
+  assert.equal(chains2[0].length, 3);
+});
+
+test('Adaptive Multi-Jump 8: Velocity protection independently splits excessive speed even with small strides', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  // 50px displacement in 5ms = 10 px/ms > 3.5 px/ms
+  manager.addPoint(150, 100, 1005, 0, false);
+  const chains = manager.getChains(1050);
+  assert.equal(chains.length, 2, 'Velocity exceeding 3.5 px/ms must split as physical impossibility');
+});
+
+test('Adaptive Multi-Jump 9: Explicit caller thresholds still take absolute priority', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false); // 20px stride
+
+  // Stricter explicit threshold of 15px splits 20px stride
+  const strictChains = manager.getChains(1100, 15);
+  assert.equal(strictChains.length, 2, 'Explicit 15px threshold must split 20px stride');
+
+  // Generous explicit threshold of 1000px connects large stride
+  manager.addPoint(400, 100, 1100, 0, false); // 280px step
+  const generousChains = manager.getChains(1150, 1000);
+  assert.equal(generousChains.length, 1, 'Explicit 1000px threshold must connect points within threshold');
+});
+
+test('Adaptive Multi-Jump 10: Explicit discontinuity markers still split chains regardless of adaptive baseline', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+  // Small 15px stride explicitly marked discontinuous (e.g. wrapped boundary)
+  manager.addPoint(135, 100, 1100, 0, true);
+  manager.addPoint(155, 100, 1150, 0, false);
+
+  const chains = manager.getChains(1200);
+  assert.equal(chains.length, 2, 'Discontinuity marker must split chains despite small strides');
+  assert.equal(chains[0].length, 2);
+  assert.equal(chains[1].length, 2);
+});
+
+
 

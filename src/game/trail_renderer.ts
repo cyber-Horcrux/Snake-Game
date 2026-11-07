@@ -158,11 +158,11 @@ export class TrailHistoryManager {
    * 4. Instantaneous jumps and chronology:
    *    - Non-zero displacement with zero elapsed time (dt <= 0 with dist >= 0.25) always splits.
    * 5. Safe fallback strategy when no valid distance threshold is supplied:
-   *    - When at least 2 strides exist, the manager adaptively determines the local movement stride
-   *      using the lower-median of observed strides to prevent extreme outlier jumps from inflating
-   *      the threshold. Outlier jumps exceeding 4.5x the median observed stride are split.
-   *    - In addition, velocity-safety analysis splits movements exceeding plausible continuous
-   *      motion (velocity > 3.5 px/ms).
+   *    - Evaluates movement chronologically using verified accepted movement history.
+   *    - The initial baseline is anchored to the minimum verified physical stride in the window,
+   *      preventing candidate large jumps from voting to inflate their own acceptance threshold.
+   *    - A rejected spatial jump is never admitted into the trusted movement baseline.
+   *    - Threshold dynamically adapts (4.5x running accepted baseline) while bounding velocity (<= 3.5 px/ms).
    */
   public getChains(currentTimeMs: number, maxLinkDistance?: number): TrailPoint[][] {
     if (!Number.isFinite(currentTimeMs) || this.count === 0) return [];
@@ -199,46 +199,53 @@ export class TrailHistoryManager {
       explicitMaxDistance = this.defaultMaxLinkDistance;
     }
 
-    let adaptiveMaxDistance: number | undefined = undefined;
+    // Order points chronologically (oldest to newest) to evaluate candidate movement
+    // against previously accepted movement history.
+    const chronologicalPoints: TrailPoint[] = activePoints.slice().reverse();
+
+    let initialBaseline: number | undefined = undefined;
     if (explicitMaxDistance === undefined) {
-      const strides: number[] = [];
-      for (let i = 1; i < activePoints.length; i++) {
-        const p1 = activePoints[i - 1]; // newer
-        const p2 = activePoints[i];     // older
+      // Scan for valid non-discontinuous strides in chronological order.
+      // Only strides with plausible physical velocity (<= 3.5 px/ms) can seed a baseline.
+      const validStrides: number[] = [];
+      for (let i = 1; i < chronologicalPoints.length; i++) {
+        const pPrev = chronologicalPoints[i - 1];
+        const pCurr = chronologicalPoints[i];
         if (
-          Number.isFinite(p1.x) && Number.isFinite(p1.y) &&
-          Number.isFinite(p2.x) && Number.isFinite(p2.y) &&
-          !p1.discontinuity && !p2.discontinuity
+          Number.isFinite(pPrev.x) && Number.isFinite(pPrev.y) &&
+          Number.isFinite(pCurr.x) && Number.isFinite(pCurr.y) &&
+          !pPrev.discontinuity
         ) {
-          const s = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-          if (Number.isFinite(s) && s > 0.1) {
-            strides.push(s);
+          const s = Math.hypot(pCurr.x - pPrev.x, pCurr.y - pPrev.y);
+          const dt = pCurr.timeMs - pPrev.timeMs;
+          if (Number.isFinite(s) && s > 0.1 && dt > 0 && (s / dt) <= 3.5) {
+            validStrides.push(s);
           }
         }
       }
-      if (strides.length >= 2) {
-        strides.sort((a, b) => a - b);
-        // Using lower-median: Math.floor((length - 1) / 2)
-        // With length 2, this chooses index 0 (the smaller stride), ensuring that a single
-        // extreme stride (e.g. 800px vs 20px) cannot inflate the threshold and accept itself.
-        const medianStride = strides[Math.floor((strides.length - 1) / 2)];
-        const adaptiveMax = medianStride * 4.5;
-        if (Number.isFinite(adaptiveMax) && adaptiveMax > 0) {
-          adaptiveMaxDistance = adaptiveMax;
-        }
+
+      if (validStrides.length > 0) {
+        // Anchor initial baseline to the smallest verified stride in the window.
+        // A spatial jump is an outlier leap and is never smaller than normal movement.
+        // Anchoring to min(validStrides) guarantees that candidate jumps (even multiple consecutive
+        // jumps) cannot outvote normal movement to inflate the threshold.
+        const minStride = Math.min(...validStrides);
+        initialBaseline = Math.max(10, minStride);
       }
     }
 
-    const chains: TrailPoint[][] = [];
+    const chronologicalChains: TrailPoint[][] = [];
     let currentChain: TrailPoint[] = [];
+    let currentBaseline = initialBaseline;
+    const acceptedStrides: number[] = [];
 
-    for (let i = 0; i < activePoints.length; i++) {
-      const curr = activePoints[i]; // older or equal in time
+    for (let i = 0; i < chronologicalPoints.length; i++) {
+      const curr = chronologicalPoints[i]; // newer in time
 
       // Defensive check: reject non-finite coordinates
       if (!Number.isFinite(curr.x) || !Number.isFinite(curr.y)) {
         if (currentChain.length > 0) {
-          chains.push(currentChain);
+          chronologicalChains.push(currentChain);
           currentChain = [];
         }
         continue;
@@ -249,18 +256,18 @@ export class TrailHistoryManager {
         continue;
       }
 
-      const prev = currentChain[currentChain.length - 1]; // newer in time
+      const prev = currentChain[currentChain.length - 1]; // older in time
 
-      // 1. Authoritative discontinuity flag
-      const isExplicitBoundary = prev.discontinuity;
+      // 1. Authoritative discontinuity flag: curr marks a break from prev (e.g. wrapped arrival)
+      const isExplicitBoundary = curr.discontinuity;
 
       // 2. Spatial distance check with numerical overflow safety
       const dx = curr.x - prev.x;
       const dy = curr.y - prev.y;
       const dist = Math.hypot(dx, dy);
 
-      // Chronological time delta from older (curr) to newer (prev)
-      const dt = prev.timeMs - curr.timeMs;
+      // Chronological time delta from older (prev) to newer (curr)
+      const dt = curr.timeMs - prev.timeMs;
 
       let isSpatialJump = false;
       if (!Number.isFinite(dist)) {
@@ -272,24 +279,46 @@ export class TrailHistoryManager {
       } else if (explicitMaxDistance !== undefined) {
         // Direct linear comparison against validated finite threshold
         isSpatialJump = dist > explicitMaxDistance;
-      } else if (adaptiveMaxDistance !== undefined) {
-        // Adaptive threshold with velocity safety limit
-        isSpatialJump = dist > adaptiveMaxDistance || (dt > 0 && (dist / dt) > 3.5);
       } else {
-        // Insufficient history for adaptive stride: velocity safety check
-        isSpatialJump = dt > 0 && (dist / dt) > 3.5;
+        // Adaptive evaluation:
+        // Velocity safeguard: velocity > 3.5 px/ms is always a spatial jump
+        const isVelocityExceeded = dt > 0 && (dist / dt) > 3.5;
+
+        // Baseline stride check: threshold is 4.5x the currently accepted baseline
+        const maxAllowed = currentBaseline !== undefined ? currentBaseline * 4.5 : undefined;
+        const isStrideExceeded = maxAllowed !== undefined && dist > maxAllowed;
+
+        isSpatialJump = isVelocityExceeded || isStrideExceeded;
       }
 
       if (isExplicitBoundary || isSpatialJump) {
-        chains.push(currentChain);
+        chronologicalChains.push(currentChain);
         currentChain = [curr];
+        // CRITICAL: A rejected spatial jump NEVER becomes trusted baseline movement!
+        // currentBaseline is not updated with the rejected candidate stride.
       } else {
         currentChain.push(curr);
+        // Candidate stride accepted! Update running baseline smoothly
+        if (dist > 0.1 && explicitMaxDistance === undefined) {
+          acceptedStrides.push(dist);
+          if (acceptedStrides.length > 8) {
+            acceptedStrides.shift();
+          }
+          const sorted = [...acceptedStrides].sort((a, b) => a - b);
+          const median = sorted[Math.floor((sorted.length - 1) / 2)];
+          currentBaseline = Math.max(10, median);
+        }
       }
     }
 
     if (currentChain.length > 0) {
-      chains.push(currentChain);
+      chronologicalChains.push(currentChain);
+    }
+
+    // Return chains in reverse chronological order (newest point at index 0 of the first chain)
+    const chains: TrailPoint[][] = [];
+    for (let i = chronologicalChains.length - 1; i >= 0; i--) {
+      chains.push(chronologicalChains[i].reverse());
     }
 
     return chains;
