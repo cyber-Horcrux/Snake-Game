@@ -80,6 +80,17 @@ export class TrailHistoryManager {
 
   /**
    * Adds a new tail sample point.
+   * 
+   * Timestamp & History Integrity Policy:
+   * 1. Rejects non-finite values (x, y, timeMs must be finite numbers).
+   * 2. Chronological Monotonicity: Samples must arrive in forward chronological order.
+   *    Any sample with timeMs < newest.timeMs is rejected to protect history integrity
+   *    and prevent out-of-order samples from corrupting the ring buffer or pruning valid points.
+   * 3. Deterministic Equal-Timestamp Handling:
+   *    - Equal timestamp with negligible displacement (dist < 0.25): deduplicated and ignored.
+   *    - Equal timestamp with non-zero displacement (dist >= 0.25): accepted as an instantaneous
+   *      sample, which is subsequently isolated into a new chain during getChains().
+   * 4. Deduplication: Near-identical high-frequency samples (dist < 0.25px and dt < 14ms) are skipped.
    */
   public addPoint(
     x: number,
@@ -95,10 +106,25 @@ export class TrailHistoryManager {
 
     if (this.count > 0) {
       const newest = this.buffer[this.head];
-      // Skip redundant samples if very close in position and time
-      const distSq = (x - newest.x) ** 2 + (y - newest.y) ** 2;
-      if (distSq < 0.25 && timeMs - newest.timeMs < 14) {
+
+      // Reject backward timestamps to preserve chronological ring buffer invariants
+      if (timeMs < newest.timeMs) {
         return;
+      }
+
+      // Numerically safe displacement check
+      const dist = Math.hypot(x - newest.x, y - newest.y);
+
+      if (timeMs === newest.timeMs) {
+        // Equal timestamps: deduplicate negligible/zero displacement
+        if (dist < 0.25) {
+          return;
+        }
+      } else {
+        // Forward time: skip redundant high-frequency samples if very close in position and time
+        if (dist < 0.25 && (timeMs - newest.timeMs) < 14) {
+          return;
+        }
       }
     }
 
@@ -117,23 +143,26 @@ export class TrailHistoryManager {
 
   /**
    * Prunes expired points and extracts active chains separated by discontinuities.
-   * Returns chains in chronological order (newest point at index 0 of the first chain).
+   * Returns chains in reverse chronological order (newest point at index 0 of the first chain).
    * 
    * Discontinuity and Link Safety:
    * 1. Authoritative `discontinuity` flags (e.g. Zen mode wrap or teleport marked upon insertion)
    *    are the primary boundary signal and always split chains.
-   * 2. Non-finite coordinates (NaN, Infinity, -Infinity) are defensively rejected: invalid points
-   *    are never included in any chain and act as chain boundaries so corrupted data cannot
-   *    contaminate valid trail rendering.
+   * 2. Non-finite coordinates and overflow:
+   *    - Non-finite coordinates (NaN, Infinity, -Infinity) are defensively rejected from chains.
+   *    - Non-finite computed distances (overflowing Math.hypot) are always treated as spatial jumps.
    * 3. Explicit distance threshold:
    *    - When caller provides a valid positive finite `maxLinkDistance` (or an instance-level
    *      `defaultMaxLinkDistance` is configured), points separated by greater distance are split.
-   * 4. Safe fallback strategy when no valid distance threshold is supplied:
-   *    - The manager adaptively determines the local movement stride from valid active points.
-   *      Outlier jumps exceeding 4.5x the median observed stride are split as spatial discontinuities.
-   *    - When insufficient history exists to establish an empirical stride (e.g. single sample pair),
-   *      velocity-safety analysis splits instantaneous jumps (dt <= 0 with displacement) or
-   *      extreme displacements exceeding plausible continuous motion (velocity > 3.5 px/ms).
+   *      Uses linear distance comparison without squaring to prevent numerical overflow.
+   * 4. Instantaneous jumps and chronology:
+   *    - Non-zero displacement with zero elapsed time (dt <= 0 with dist >= 0.25) always splits.
+   * 5. Safe fallback strategy when no valid distance threshold is supplied:
+   *    - When at least 2 strides exist, the manager adaptively determines the local movement stride
+   *      using the lower-median of observed strides to prevent extreme outlier jumps from inflating
+   *      the threshold. Outlier jumps exceeding 4.5x the median observed stride are split.
+   *    - In addition, velocity-safety analysis splits movements exceeding plausible continuous
+   *      motion (velocity > 3.5 px/ms).
    */
   public getChains(currentTimeMs: number, maxLinkDistance?: number): TrailPoint[][] {
     if (!Number.isFinite(currentTimeMs) || this.count === 0) return [];
@@ -163,35 +192,40 @@ export class TrailHistoryManager {
       Number.isFinite(this.defaultMaxLinkDistance) &&
       this.defaultMaxLinkDistance > 0;
 
-    let explicitMaxDistSq: number | undefined = undefined;
+    let explicitMaxDistance: number | undefined = undefined;
     if (hasExplicitThreshold) {
-      explicitMaxDistSq = maxLinkDistance! * maxLinkDistance!;
+      explicitMaxDistance = maxLinkDistance;
     } else if (hasDefaultThreshold) {
-      explicitMaxDistSq = this.defaultMaxLinkDistance! * this.defaultMaxLinkDistance!;
+      explicitMaxDistance = this.defaultMaxLinkDistance;
     }
 
-    let adaptiveMaxDistSq: number | undefined = undefined;
-    if (explicitMaxDistSq === undefined) {
+    let adaptiveMaxDistance: number | undefined = undefined;
+    if (explicitMaxDistance === undefined) {
       const strides: number[] = [];
       for (let i = 1; i < activePoints.length; i++) {
-        const p1 = activePoints[i - 1];
-        const p2 = activePoints[i];
+        const p1 = activePoints[i - 1]; // newer
+        const p2 = activePoints[i];     // older
         if (
           Number.isFinite(p1.x) && Number.isFinite(p1.y) &&
           Number.isFinite(p2.x) && Number.isFinite(p2.y) &&
           !p1.discontinuity && !p2.discontinuity
         ) {
           const s = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-          if (s > 0.1) {
+          if (Number.isFinite(s) && s > 0.1) {
             strides.push(s);
           }
         }
       }
       if (strides.length >= 2) {
         strides.sort((a, b) => a - b);
-        const medianStride = strides[Math.floor(strides.length / 2)];
+        // Using lower-median: Math.floor((length - 1) / 2)
+        // With length 2, this chooses index 0 (the smaller stride), ensuring that a single
+        // extreme stride (e.g. 800px vs 20px) cannot inflate the threshold and accept itself.
+        const medianStride = strides[Math.floor((strides.length - 1) / 2)];
         const adaptiveMax = medianStride * 4.5;
-        adaptiveMaxDistSq = adaptiveMax * adaptiveMax;
+        if (Number.isFinite(adaptiveMax) && adaptiveMax > 0) {
+          adaptiveMaxDistance = adaptiveMax;
+        }
       }
     }
 
@@ -199,7 +233,7 @@ export class TrailHistoryManager {
     let currentChain: TrailPoint[] = [];
 
     for (let i = 0; i < activePoints.length; i++) {
-      const curr = activePoints[i];
+      const curr = activePoints[i]; // older or equal in time
 
       // Defensive check: reject non-finite coordinates
       if (!Number.isFinite(curr.x) || !Number.isFinite(curr.y)) {
@@ -215,25 +249,35 @@ export class TrailHistoryManager {
         continue;
       }
 
-      const prev = currentChain[currentChain.length - 1];
+      const prev = currentChain[currentChain.length - 1]; // newer in time
 
       // 1. Authoritative discontinuity flag
       const isExplicitBoundary = prev.discontinuity;
 
-      // 2. Spatial distance check
+      // 2. Spatial distance check with numerical overflow safety
       const dx = curr.x - prev.x;
       const dy = curr.y - prev.y;
-      const distSq = dx * dx + dy * dy;
+      const dist = Math.hypot(dx, dy);
+
+      // Chronological time delta from older (curr) to newer (prev)
+      const dt = prev.timeMs - curr.timeMs;
 
       let isSpatialJump = false;
-      if (explicitMaxDistSq !== undefined) {
-        isSpatialJump = distSq > explicitMaxDistSq;
-      } else if (adaptiveMaxDistSq !== undefined) {
-        isSpatialJump = distSq > adaptiveMaxDistSq;
+      if (!Number.isFinite(dist)) {
+        // Overflow or non-finite computed distance is always treated as a discontinuity
+        isSpatialJump = true;
+      } else if (dt <= 0 && dist >= 0.25) {
+        // Instantaneous jump (zero dt with displacement) or backwards time
+        isSpatialJump = true;
+      } else if (explicitMaxDistance !== undefined) {
+        // Direct linear comparison against validated finite threshold
+        isSpatialJump = dist > explicitMaxDistance;
+      } else if (adaptiveMaxDistance !== undefined) {
+        // Adaptive threshold with velocity safety limit
+        isSpatialJump = dist > adaptiveMaxDistance || (dt > 0 && (dist / dt) > 3.5);
       } else {
-        const dt = Math.abs(curr.timeMs - prev.timeMs);
-        const dist = Math.sqrt(distSq);
-        isSpatialJump = (dt <= 0 && dist > 0.5) || (dt > 0 && (dist / dt) > 3.5);
+        // Insufficient history for adaptive stride: velocity safety check
+        isSpatialJump = dt > 0 && (dist / dt) > 3.5;
       }
 
       if (isExplicitBoundary || isSpatialJump) {

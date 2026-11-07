@@ -518,3 +518,352 @@ test('Finding 4 Regression: drawTrailPreview draws background fill and clearRect
   assert.ok(hasBackgroundFill, 'fillRect must be called for background in glow mode');
 });
 
+// =============================================================================
+// CORRECTION A: Adaptive Distance Estimator Edge Cases
+// =============================================================================
+
+test('Correction A1: Two observed strides with one normal and one extreme jump splits the jump', () => {
+  const manager = new TrailHistoryManager(2000);
+  // A = 100, B = 120, C = 920. Strides: 20px and 800px.
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+  manager.addPoint(920, 100, 1100, 0, false);
+
+  const chains = manager.getChains(1150);
+  // Must NOT select 800px as median and connect! Jump must be split.
+  assert.equal(chains.length, 2, 'Two strides with an extreme outlier must split into 2 chains');
+  // Newest point C(920) is in chain 0 (length 1), B(120) and A(100) are in chain 1 (length 2)
+  assert.equal(chains[0].length, 1);
+  assert.equal(chains[0][0].x, 920);
+  assert.equal(chains[1].length, 2);
+  assert.equal(chains[1][0].x, 120);
+  assert.equal(chains[1][1].x, 100);
+
+  // Also verify reversed stride order: extreme jump first, then normal stride
+  const manager2 = new TrailHistoryManager(2000);
+  manager2.addPoint(100, 100, 1000, 0, false);
+  manager2.addPoint(900, 100, 1050, 0, false); // 800px jump
+  manager2.addPoint(920, 100, 1100, 0, false); // 20px normal stride
+
+  const chains2 = manager2.getChains(1150);
+  assert.equal(chains2.length, 2, 'Jump followed by normal stride must split into 2 chains');
+  assert.equal(chains2[0].length, 2, 'Recent 20px stride remains connected');
+  assert.equal(chains2[1].length, 1, 'Older point before jump is isolated');
+});
+
+test('Correction A2: Three normal strides followed by a teleport splits the teleport', () => {
+  const manager = new TrailHistoryManager(2000);
+  // P0, P1, P2, P3 have 20px normal strides, P4 is an 800px teleport
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+  manager.addPoint(140, 100, 1100, 0, false);
+  manager.addPoint(160, 100, 1150, 0, false);
+  manager.addPoint(960, 100, 1200, 0, false); // teleport
+
+  const chains = manager.getChains(1250);
+  assert.equal(chains.length, 2, 'Teleport after three normal strides must split');
+  assert.equal(chains[0].length, 1, 'Teleported point is isolated');
+  assert.equal(chains[0][0].x, 960);
+  assert.equal(chains[1].length, 4, 'Four normal points remain connected');
+  assert.equal(chains[1][0].x, 160);
+  assert.equal(chains[1][3].x, 100);
+});
+
+test('Correction A3: Very short histories with one, two, or three usable strides behave safely', () => {
+  // A. One stride normal: 20px in 50ms (0.4 px/ms)
+  const manager1Normal = new TrailHistoryManager(2000);
+  manager1Normal.addPoint(100, 100, 1000, 0, false);
+  manager1Normal.addPoint(120, 100, 1050, 0, false);
+  const chains1Normal = manager1Normal.getChains(1100);
+  assert.equal(chains1Normal.length, 1, 'Single normal stride remains connected');
+  assert.equal(chains1Normal[0].length, 2);
+
+  // B. One stride teleport: 800px in 50ms (16 px/ms)
+  const manager1Jump = new TrailHistoryManager(2000);
+  manager1Jump.addPoint(100, 100, 1000, 0, false);
+  manager1Jump.addPoint(900, 100, 1050, 0, false);
+  const chains1Jump = manager1Jump.getChains(1100);
+  assert.equal(chains1Jump.length, 2, 'Single extreme jump is split');
+
+  // C. Two strides normal: 20px and 22px
+  const manager2Normal = new TrailHistoryManager(2000);
+  manager2Normal.addPoint(100, 100, 1000, 0, false);
+  manager2Normal.addPoint(120, 100, 1050, 0, false);
+  manager2Normal.addPoint(142, 100, 1100, 0, false);
+  const chains2Normal = manager2Normal.getChains(1150);
+  assert.equal(chains2Normal.length, 1, 'Two normal strides remain connected');
+  assert.equal(chains2Normal[0].length, 3);
+
+  // D. Three strides normal: 20px, 20px, 20px
+  const manager3Normal = new TrailHistoryManager(2000);
+  manager3Normal.addPoint(100, 100, 1000, 0, false);
+  manager3Normal.addPoint(120, 100, 1050, 0, false);
+  manager3Normal.addPoint(140, 100, 1100, 0, false);
+  manager3Normal.addPoint(160, 100, 1150, 0, false);
+  const chains3Normal = manager3Normal.getChains(1200);
+  assert.equal(chains3Normal.length, 1, 'Three normal strides remain connected');
+  assert.equal(chains3Normal[0].length, 4);
+});
+
+test('Correction A4: Consistent normal movement remains fully connected', () => {
+  const manager = new TrailHistoryManager(2000);
+  for (let i = 0; i < 10; i++) {
+    manager.addPoint(100 + i * 20, 200, 1000 + i * 50, 0, false);
+  }
+  const chains = manager.getChains(1600);
+  assert.equal(chains.length, 1, 'Ten normal strides must produce a single continuous chain');
+  assert.equal(chains[0].length, 10);
+});
+
+test('Correction A5: Legitimate gradual speed increases remain connected without trail fragmentation', () => {
+  const manager = new TrailHistoryManager(2000);
+  // Strides increasing from 18px to 42px (e.g. speed boost or rush acceleration)
+  const strides = [18, 22, 27, 34, 42];
+  let currentX = 100;
+  let currentTime = 1000;
+  manager.addPoint(currentX, 200, currentTime, 0, false);
+
+  for (const s of strides) {
+    currentX += s;
+    currentTime += 45;
+    manager.addPoint(currentX, 200, currentTime, 0, false);
+  }
+
+  const chains = manager.getChains(currentTime + 50);
+  assert.equal(chains.length, 1, 'Gradual speed increases must not fragment into multiple chains');
+  assert.equal(chains[0].length, 6);
+});
+
+test('Correction A6: Explicit caller-provided threshold takes priority over adaptive estimator', () => {
+  const manager = new TrailHistoryManager(2000);
+  // Normal strides around 20px
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+  manager.addPoint(140, 100, 1100, 0, false);
+
+  // Caller specifies an artificially strict threshold of 15px (smaller than 20px stride)
+  const strictChains = manager.getChains(1150, 15);
+  assert.equal(strictChains.length, 3, 'Caller threshold of 15px must split 20px steps');
+
+  // Caller specifies generous threshold of 50px
+  const generousChains = manager.getChains(1150, 50);
+  assert.equal(generousChains.length, 1, 'Caller threshold of 50px must connect 20px steps');
+});
+
+test('Correction A7: Discontinuity markers always split chains even with small strides', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(110, 100, 1050, 0, true); // marked discontinuous with 10px step
+  manager.addPoint(120, 100, 1100, 0, false);
+
+  const chains = manager.getChains(1150);
+  assert.equal(chains.length, 2, 'Explicit discontinuity flag must split chains');
+  assert.equal(chains[0].length, 2);
+  assert.equal(chains[1].length, 1);
+});
+
+// =============================================================================
+// CORRECTION B: Distance Overflow & Numerical Safety
+// =============================================================================
+
+test('Correction B1: Very large finite coordinates calculate distance accurately without overflow', () => {
+  const manager = new TrailHistoryManager(2000);
+  const largeBase = 1e12;
+  manager.addPoint(largeBase, largeBase, 1000, 0, false);
+  manager.addPoint(largeBase + 25, largeBase, 1050, 0, false);
+  manager.addPoint(largeBase + 50, largeBase, 1100, 0, false);
+
+  const chains = manager.getChains(1150, 100);
+  assert.equal(chains.length, 1, 'Large finite coordinates with small displacement must stay connected');
+  assert.equal(chains[0].length, 3);
+});
+
+test('Correction B2: Coordinates whose subtraction overflows to Infinity are treated as discontinuities', () => {
+  const manager = new TrailHistoryManager(2000);
+  // dx = 1e308 - (-1e308) = Infinity
+  manager.addPoint(1e308, 0, 1000, 0, false);
+  manager.addPoint(-1e308, 0, 1050, 0, false);
+
+  const chains = manager.getChains(1100, 1000);
+  assert.equal(chains.length, 2, 'Overflow to Infinity must split into separate chains');
+  assert.equal(chains[0].length, 1);
+  assert.equal(chains[1].length, 1);
+});
+
+test('Correction B3: Very large finite distance thresholds do not mask infinite distance jumps', () => {
+  const manager = new TrailHistoryManager(2000);
+  // Normal points connected with large threshold 1e308
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(200, 100, 1050, 0, false);
+  const normalChains = manager.getChains(1100, 1e308);
+  assert.equal(normalChains.length, 1, 'Finite distance connects under large finite threshold');
+
+  // Infinite distance jump with 1e308 threshold
+  const managerOverflow = new TrailHistoryManager(2000);
+  managerOverflow.addPoint(1e308, 0, 1000, 0, false);
+  managerOverflow.addPoint(-1e308, 0, 1050, 0, false);
+  const overflowChains = managerOverflow.getChains(1100, 1e308);
+  assert.equal(overflowChains.length, 2, 'Infinite distance must split even if threshold is 1e308');
+});
+
+test('Correction B4: Invalid thresholds are handled safely and fall back without throwing', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+
+  const invalidThresholds = [NaN, Infinity, -Infinity, 0, -50];
+  for (const t of invalidThresholds) {
+    assert.doesNotThrow(() => {
+      const chains = manager.getChains(1100, t);
+      assert.equal(chains.length, 1, `Invalid threshold ${t} must safely fall back and connect normal points`);
+    }, `getChains threw on invalid threshold: ${t}`);
+  }
+
+  // setDefaultMaxLinkDistance validation
+  for (const t of invalidThresholds) {
+    manager.setDefaultMaxLinkDistance(t);
+    assert.equal(manager.getDefaultMaxLinkDistance(), undefined, `Invalid default threshold ${t} must reset to undefined`);
+  }
+});
+
+test('Correction B5: Normal gameplay-scale distances compute without distortion', () => {
+  const manager = new TrailHistoryManager(2000);
+  // Typical cell step (32px) and diagonal step (Math.hypot(32, 32) ~= 45.25px)
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(132, 100, 1050, 0, false);
+  manager.addPoint(164, 132, 1100, 0, false);
+
+  const chains = manager.getChains(1150, 60);
+  assert.equal(chains.length, 1, 'Standard gameplay distances must connect cleanly');
+  assert.equal(chains[0].length, 3);
+});
+
+// =============================================================================
+// CORRECTION C: Timestamp Ordering & History Integrity
+// =============================================================================
+
+test('Correction C1: Equal timestamps with negligible displacement are deduplicated', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  assert.equal(manager.getPointCount(), 1);
+
+  // Duplicate sample at exact same timestamp and position
+  manager.addPoint(100, 100, 1000, 0, false);
+  assert.equal(manager.getPointCount(), 1, 'Identical sample at same timestamp must be deduplicated');
+
+  // Sub-pixel displacement (< 0.25px) at same timestamp
+  manager.addPoint(100.1, 100.1, 1000, 0, false);
+  assert.equal(manager.getPointCount(), 1, 'Negligible displacement at same timestamp must be deduplicated');
+});
+
+test('Correction C2: Equal timestamps with non-zero displacement are split into separate chains', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  // Displacement of 80px at exact same millisecond
+  manager.addPoint(180, 100, 1000, 0, false);
+  assert.equal(manager.getPointCount(), 2, 'Non-zero displacement at same timestamp is recorded');
+
+  const chains = manager.getChains(1050);
+  assert.equal(chains.length, 2, 'Points at same timestamp with displacement must split (never link)');
+  assert.equal(chains[0].length, 1);
+  assert.equal(chains[1].length, 1);
+});
+
+test('Correction C3: Decreasing timestamps are rejected to prevent ring buffer corruption', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1050, 0, false);
+  assert.equal(manager.getPointCount(), 2);
+
+  // Attempt to add a sample with a backward timestamp (900 < 1050)
+  manager.addPoint(140, 100, 900, 0, false);
+  assert.equal(manager.getPointCount(), 2, 'Backward timestamp sample must be rejected');
+
+  // Add next valid forward sample
+  manager.addPoint(140, 100, 1100, 0, false);
+  assert.equal(manager.getPointCount(), 3, 'Valid forward sample must be accepted');
+
+  const chains = manager.getChains(1150);
+  assert.equal(chains.length, 1, 'Valid samples must form a continuous chain without buffer corruption');
+  assert.equal(chains[0].length, 3);
+});
+
+test('Correction C4: Very small positive timestamp differences are handled safely', () => {
+  const manager = new TrailHistoryManager(2000);
+  // Sub-millisecond continuous interpolation: dt = 0.05ms, dist = 0.05px (velocity 1 px/ms <= 3.5)
+  manager.addPoint(100.0, 100, 1000.0, 0, false);
+  manager.addPoint(100.05, 100, 1000.05, 0, false);
+
+  const chains = manager.getChains(1050);
+  assert.equal(chains.length, 1, 'Micro-step with valid velocity remains connected');
+
+  // Large displacement with tiny dt: dt = 0.05ms, dist = 50px (velocity 1000 px/ms > 3.5)
+  manager.addPoint(150.0, 100, 1000.1, 0, false);
+  const chainsJump = manager.getChains(1050);
+  assert.equal(chainsJump.length, 2, 'Tiny positive dt with extreme velocity must split');
+});
+
+test('Correction C5: Non-finite timestamps are rejected defensively', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, NaN, 0, false);
+  manager.addPoint(100, 100, Infinity, 0, false);
+  manager.addPoint(100, 100, -Infinity, 0, false);
+  assert.equal(manager.getPointCount(), 0, 'Non-finite timestamps must be rejected');
+});
+
+test('Correction C6: History remains fully usable after rejected samples', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+
+  // Rejected samples of various types
+  manager.addPoint(110, 100, NaN, 0, false);
+  manager.addPoint(110, 100, 500, 0, false);
+  manager.addPoint(NaN, 100, 1050, 0, false);
+  manager.addPoint(110, Infinity, 1050, 0, false);
+
+  assert.equal(manager.getPointCount(), 1, 'Invalid samples must not modify buffer');
+
+  // Subsequent valid sample
+  manager.addPoint(120, 100, 1050, 0, false);
+  assert.equal(manager.getPointCount(), 2);
+
+  const chains = manager.getChains(1100);
+  assert.equal(chains.length, 1);
+  assert.equal(chains[0].length, 2);
+});
+
+test('Correction C7: History pruning functions accurately after unusual timestamp inputs', () => {
+  const manager = new TrailHistoryManager(500); // 500ms lifetime
+  manager.addPoint(100, 100, 1000, 0, false);
+  manager.addPoint(120, 100, 1100, 0, false);
+  manager.addPoint(140, 100, 1200, 0, false);
+  assert.equal(manager.getPointCount(), 3);
+
+  // Attempted backward insertion
+  manager.addPoint(150, 100, 950, 0, false);
+  assert.equal(manager.getPointCount(), 3);
+
+  // At time 1550 (minTime = 1050): point 1000 is expired, points 1100 and 1200 are active
+  const chains = manager.getChains(1550);
+  assert.equal(chains.length, 1);
+  assert.equal(chains[0].length, 2);
+  assert.equal(manager.getPointCount(), 2, 'Buffer count pruned to 2 active points');
+
+  // At time 1800 (minTime = 1300): all points are expired
+  const expiredChains = manager.getChains(1800);
+  assert.equal(expiredChains.length, 0);
+  assert.equal(manager.getPointCount(), 0, 'Buffer count pruned to 0');
+});
+
+test('Correction C8: High-frequency chronological input remains unbroken', () => {
+  const manager = new TrailHistoryManager(2000);
+  // Simulate 15 consecutive 60fps frames (16.6ms intervals, 8px steps)
+  for (let i = 0; i < 15; i++) {
+    manager.addPoint(100 + i * 8, 100, 1000 + i * 16.6, 0, false);
+  }
+  const chains = manager.getChains(1300);
+  assert.equal(chains.length, 1, 'Chronological 60fps movement must form 1 unbroken chain');
+  assert.equal(chains[0].length, 15);
+});
+
+
