@@ -5,6 +5,8 @@ import {
   drawStylizedSnakeHead,
   drawContinuousSnakeBody,
   splitSpineIntoChains,
+  generateSmoothSpine,
+  getAnatomicalRadius,
   SKIN_VISUAL_THEMES,
   getSkinVisuals,
   type SpinePoint,
@@ -521,4 +523,168 @@ test('Shared integration: drawSkinPreview delegates to shared snake renderer cle
   assert.ok(ctx.fillStylesUsed.has(theme.headColor), 'Skin preview uses apex_void head');
   assert.ok(ctx.fillStylesUsed.has(theme.eyeColor), 'Skin preview uses apex_void eyes');
   assert.equal(ctx.saveDepth, 0, 'Canvas stack balanced');
+});
+
+// =============================================================================
+// 8. STREAMLINED CURVED BODY GEOMETRY & TURNING TESTS
+// =============================================================================
+
+test('Geometry: Straight body produces collinear spine and parallel boundary curves', () => {
+  const straightPoints: SpinePoint[] = [
+    { x: 100, y: 100 },
+    { x: 120, y: 100 },
+    { x: 140, y: 100 },
+    { x: 160, y: 100 },
+  ];
+  const nodes = generateSmoothSpine(straightPoints, 12);
+  assert.ok(nodes.length > 4, 'Must sample along straight path');
+
+  for (const node of nodes) {
+    assert.equal(Math.round(node.y), 100, 'Y must remain collinear');
+    assert.equal(Math.round(node.tangentX), 1, 'Tangent must point +X');
+    assert.equal(Math.round(node.tangentY), 0, 'Tangent Y must be 0');
+    assert.ok(node.leftY > node.y, 'Left boundary is +Y offset');
+    assert.ok(node.rightY < node.y, 'Right boundary is -Y offset');
+  }
+});
+
+test('Geometry: All four 90-degree turn orientations produce smooth, finite curvature without square corners', () => {
+  const turnCases: { name: string; points: SpinePoint[] }[] = [
+    { name: 'UP to RIGHT', points: [{ x: 100, y: 120 }, { x: 100, y: 100 }, { x: 120, y: 100 }] },
+    { name: 'RIGHT to DOWN', points: [{ x: 80, y: 100 }, { x: 100, y: 100 }, { x: 100, y: 120 }] },
+    { name: 'DOWN to LEFT', points: [{ x: 100, y: 80 }, { x: 100, y: 100 }, { x: 80, y: 100 }] },
+    { name: 'LEFT to UP', points: [{ x: 120, y: 100 }, { x: 100, y: 100 }, { x: 100, y: 80 }] },
+  ];
+
+  for (const tc of turnCases) {
+    const nodes = generateSmoothSpine(tc.points, 12);
+    assert.ok(nodes.length >= 6, `${tc.name} must generate dense curved nodes`);
+
+    // All coordinates must be strictly finite
+    for (const node of nodes) {
+      assert.ok(Number.isFinite(node.x) && Number.isFinite(node.y), `${tc.name} node x,y must be finite`);
+      assert.ok(Number.isFinite(node.leftX) && Number.isFinite(node.leftY), `${tc.name} left boundary must be finite`);
+      assert.ok(Number.isFinite(node.rightX) && Number.isFinite(node.rightY), `${tc.name} right boundary must be finite`);
+    }
+
+    // Check that tangent smoothly transitions (no abrupt 90-degree jump between adjacent nodes)
+    for (let i = 1; i < nodes.length; i++) {
+      const prev = nodes[i - 1];
+      const curr = nodes[i];
+      const dot = prev.tangentX * curr.tangentX + prev.tangentY * curr.tangentY;
+      assert.ok(dot > 0.6, `${tc.name}: step ${i} angle change must be gradual, not a right angle`);
+    }
+  }
+});
+
+test('Geometry: Consecutive turns and S-curves maintain continuous boundaries without self-intersection', () => {
+  const sCurve: SpinePoint[] = [
+    { x: 100, y: 100 },
+    { x: 120, y: 100 },
+    { x: 120, y: 120 },
+    { x: 140, y: 120 },
+    { x: 140, y: 140 },
+  ];
+  const nodes = generateSmoothSpine(sCurve, 10);
+  assert.ok(nodes.length > 10);
+
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
+    assert.ok(Number.isFinite(n.leftX) && Number.isFinite(n.rightX));
+    // Left and right contours must maintain positive separation
+    const dist = Math.hypot(n.leftX - n.rightX, n.leftY - n.rightY);
+    assert.ok(dist > 5, 'Body must maintain thickness without collapsing');
+  }
+});
+
+test('Geometry: Tight 180-degree U-turn prevents inner miter pinching and outer spikes', () => {
+  const uTurn: SpinePoint[] = [
+    { x: 100, y: 100 },
+    { x: 120, y: 100 },
+    { x: 120, y: 120 },
+    { x: 100, y: 120 },
+  ];
+  const nodes = generateSmoothSpine(uTurn, 10);
+
+  for (let i = 1; i < nodes.length; i++) {
+    const prev = nodes[i - 1];
+    const curr = nodes[i];
+
+    // Inner contour distance should be smooth and positive (no pinching/inversion)
+    const stepDist = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    assert.ok(stepDist < 15, 'Centerline step distance must remain continuous');
+
+    // Outer contour must not shoot off to infinity
+    assert.ok(Math.hypot(curr.leftX - curr.x, curr.leftY - curr.y) <= 18);
+    assert.ok(Math.hypot(curr.rightX - curr.x, curr.rightY - curr.y) <= 18);
+  }
+});
+
+test('Geometry: Natural anatomical radius tapers monotonically from mid-body to tail tip', () => {
+  const baseR = 14;
+  const rNeck = getAnatomicalRadius(0, baseR);
+  const rChest = getAnatomicalRadius(0.14, baseR);
+  const rMid = getAnatomicalRadius(0.5, baseR);
+  const rTailBase = getAnatomicalRadius(0.85, baseR);
+  const rTailTip = getAnatomicalRadius(1.0, baseR);
+
+  // Chest girth slightly fuller than neck joint
+  assert.ok(rChest >= rNeck, 'Girth expands smoothly from neck to body');
+  // Body tapers from mid to tail
+  assert.ok(rMid > rTailBase, 'Mid-body is thicker than tail base');
+  assert.ok(rTailBase > rTailTip, 'Tail base is thicker than tail tip');
+  assert.ok(rTailTip > 0, 'Tail tip radius is positive');
+});
+
+// =============================================================================
+// 9. PREMIUM SKIN MATERIAL REALISM & SCALE ARTISTRY
+// =============================================================================
+
+test('Skins: Every skin has an individually assigned, authentic ScaleStyle and secondary palette', () => {
+  const expectedStyles: Record<SnakeSkinId, string> = {
+    cyber_cyan: 'cyber_hex',
+    matrix_green: 'reptilian_keeled',
+    synth_sunset: 'sunset_chevron',
+    hyper_violet: 'geometric_facet',
+    crimson_blaze: 'viper_scutes',
+    arctic_frost: 'frost_crystalline',
+    gold_prestige: 'gold_metallic',
+    apex_void: 'void_chitin',
+  };
+
+  for (const id of ALL_SKIN_IDS) {
+    const theme = SKIN_VISUAL_THEMES[id];
+    assert.equal(theme.scaleStyle, expectedStyles[id], `${id} has expected scaleStyle`);
+    assert.ok(theme.scaleSecondaryColor, `${id} defines scaleSecondaryColor`);
+    assert.ok(theme.interstitialColor, `${id} defines interstitialColor`);
+    assert.ok(theme.specularGleam, `${id} defines specularGleam`);
+    assert.ok(theme.bellyShade, `${id} defines bellyShade`);
+  }
+});
+
+test('Skins: High mode renders scale patterns and dorsal highlights for all eight skins', () => {
+  for (const id of ALL_SKIN_IDS) {
+    const ctx = new MockTrackingCanvasContext();
+    const spine: SpinePoint[] = [
+      { x: 50, y: 100 },
+      { x: 70, y: 100 },
+      { x: 90, y: 100 },
+      { x: 110, y: 100 },
+      { x: 130, y: 100 },
+    ];
+    drawNaturalStylizedSnake(ctx as unknown as CanvasRenderingContext2D, spine, {
+      direction: 'RIGHT',
+      baseRadius: 14,
+      skin: id,
+      visualEffects: 'high',
+      allowGlow: true,
+      cellW: 20,
+    });
+
+    const theme = SKIN_VISUAL_THEMES[id];
+    assert.ok(ctx.fillStylesUsed.has(theme.scaleAccentColor), `${id} must draw scales with scaleAccentColor`);
+    assert.ok(ctx.strokeStylesUsed.has(theme.dorsalHighlight), `${id} must draw dorsal highlights`);
+    assert.equal(ctx.saveDepth, 0, `${id} balances canvas save depth`);
+  }
 });
