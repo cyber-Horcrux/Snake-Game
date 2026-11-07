@@ -27,6 +27,7 @@ import {
   ALL_THEME_IDS,
   DEFAULT_PLAYER_THEMES_STATE,
   STARTER_THEME_IDS,
+  createDefaultPlayerThemesState,
   isThemeUnlocked,
   isValidThemeId,
   reconcilePlayerThemes,
@@ -1045,16 +1046,39 @@ export function reconcileAndMigratePlayerTrails(
 // ==========================================
 
 export function loadPlayerThemes(storage: StorageLike | null = getBrowserStorage()): PlayerThemesState {
-  if (!storage) return { ...DEFAULT_PLAYER_THEMES_STATE };
+  if (!storage) return createDefaultPlayerThemesState();
 
   try {
     const raw = storage.getItem(STORAGE_KEYS.THEMES);
-    if (!raw) return { ...DEFAULT_PLAYER_THEMES_STATE };
+    if (!raw) {
+      // If theme ledger is missing, recover starter theme preference if set in settings
+      const settings = loadSettings(storage);
+      const equippedCandidate = (settings && STARTER_THEME_IDS.includes(settings.boardTheme as any))
+        ? (settings.boardTheme as BoardThemeId)
+        : DEFAULT_PLAYER_THEMES_STATE.equippedThemeId;
+
+      return {
+        equippedThemeId: equippedCandidate,
+        unlockedThemeIds: [...DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds],
+      };
+    }
 
     const parsed = JSON.parse(raw);
     return sanitizePlayerThemesState(parsed);
   } catch {
-    return { ...DEFAULT_PLAYER_THEMES_STATE };
+    let equippedCandidate = DEFAULT_PLAYER_THEMES_STATE.equippedThemeId;
+    try {
+      const settings = loadSettings(storage);
+      if (settings && STARTER_THEME_IDS.includes(settings.boardTheme as any)) {
+        equippedCandidate = settings.boardTheme as BoardThemeId;
+      }
+    } catch {
+      // fallback
+    }
+    return {
+      equippedThemeId: equippedCandidate,
+      unlockedThemeIds: [...DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds],
+    };
   }
 }
 
@@ -1114,11 +1138,18 @@ export function equipTheme(
     const savedSettings = saveSettings({ ...settings, boardTheme: themeId }, storage);
     if (!savedSettings) {
       // Rollback themes state
-      savePlayerThemes(current, storage);
+      const rollbackSuccess = savePlayerThemes(current, storage);
+      if (!rollbackSuccess) {
+        return {
+          success: false,
+          state: updated,
+          error: 'Failed to synchronize board theme with game settings. Critical: Storage rollback to previous state also failed.',
+        };
+      }
       return {
         success: false,
         state: current,
-        error: 'Storage failure: Unable to update game settings theme mirror.',
+        error: 'Failed to synchronize board theme with game settings.',
       };
     }
   }
@@ -1132,10 +1163,14 @@ export function equipTheme(
 export function unlockTheme(
   themeId: BoardThemeId,
   storage: StorageLike | null = getBrowserStorage()
-): { success: boolean; state: PlayerThemesState } {
+): { success: boolean; state: PlayerThemesState; error?: string } {
   if (!isValidThemeId(themeId)) {
     const current = loadPlayerThemes(storage);
-    return { success: false, state: current };
+    return {
+      success: false,
+      state: current,
+      error: `Invalid theme identifier: ${String(themeId)}`,
+    };
   }
 
   const current = loadPlayerThemes(storage);
@@ -1149,7 +1184,14 @@ export function unlockTheme(
   };
 
   const sanitized = sanitizePlayerThemesState(updated);
-  savePlayerThemes(sanitized, storage);
+  const saved = savePlayerThemes(sanitized, storage);
+  if (!saved) {
+    return {
+      success: false,
+      state: current,
+      error: 'Failed to write theme persistence to storage.',
+    };
+  }
 
   return {
     success: true,
@@ -1157,13 +1199,27 @@ export function unlockTheme(
   };
 }
 
-export function resetPlayerThemes(storage: StorageLike | null = getBrowserStorage()): boolean {
-  if (!storage) return false;
+export function resetPlayerThemes(
+  storage: StorageLike | null = getBrowserStorage()
+): { success: boolean; state: PlayerThemesState; error?: string } {
+  const defaultState = createDefaultPlayerThemesState();
+  if (!storage) {
+    return {
+      success: false,
+      state: defaultState,
+      error: 'Storage unavailable',
+    };
+  }
+
   try {
     const currentThemes = loadPlayerThemes(storage);
-    const savedThemes = savePlayerThemes(DEFAULT_PLAYER_THEMES_STATE, storage);
+    const savedThemes = savePlayerThemes(defaultState, storage);
     if (!savedThemes) {
-      return false;
+      return {
+        success: false,
+        state: currentThemes,
+        error: 'Storage failure: Unable to reset board themes ledger.',
+      };
     }
 
     const settings = loadSettings(storage);
@@ -1171,13 +1227,32 @@ export function resetPlayerThemes(storage: StorageLike | null = getBrowserStorag
       const savedSettings = saveSettings({ ...settings, boardTheme: 'obsidian_grid' }, storage);
       if (!savedSettings) {
         // Rollback themes ledger
-        savePlayerThemes(currentThemes, storage);
-        return false;
+        const rollbackSuccess = savePlayerThemes(currentThemes, storage);
+        if (!rollbackSuccess) {
+          return {
+            success: false,
+            state: defaultState,
+            error: 'Failed to synchronize reset board theme with game settings. Critical: Storage rollback to previous state also failed.',
+          };
+        }
+        return {
+          success: false,
+          state: currentThemes,
+          error: 'Failed to synchronize reset board theme with game settings.',
+        };
       }
     }
-    return true;
-  } catch {
-    return false;
+
+    return {
+      success: true,
+      state: defaultState,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      state: loadPlayerThemes(storage),
+      error: err instanceof Error ? err.message : 'Unexpected error during theme reset',
+    };
   }
 }
 
@@ -1209,7 +1284,7 @@ export function reconcileAndMigratePlayerThemes(
 ): ThemeReconciliationResult {
   if (!storage) {
     return {
-      themesState: { ...DEFAULT_PLAYER_THEMES_STATE },
+      themesState: createDefaultPlayerThemesState(),
       newlyUnlocked: [],
       mirrorRepaired: false,
       wasMigrated: false,
@@ -1304,7 +1379,7 @@ export function reconcileAndMigratePlayerThemes(
 
       const safeFallback: PlayerThemesState = hadThemesLedger
         ? currentThemes
-        : { ...DEFAULT_PLAYER_THEMES_STATE };
+        : createDefaultPlayerThemesState();
 
       return {
         themesState: safeFallback,
@@ -1353,7 +1428,7 @@ export function reconcileAndMigratePlayerThemes(
     };
   } catch (err) {
     return {
-      themesState: { ...DEFAULT_PLAYER_THEMES_STATE },
+      themesState: createDefaultPlayerThemesState(),
       newlyUnlocked: [],
       mirrorRepaired: false,
       wasMigrated: false,

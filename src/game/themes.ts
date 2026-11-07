@@ -34,6 +34,17 @@ export const DEFAULT_PLAYER_THEMES_STATE: PlayerThemesState = {
   unlockedThemeIds: ['obsidian_grid', 'industrial_foundry'],
 };
 
+/**
+ * Creates a fresh defensive copy of the default player themes state.
+ * Prevents callers from accidentally mutating exported constants or sharing array references.
+ */
+export function createDefaultPlayerThemesState(): PlayerThemesState {
+  return {
+    equippedThemeId: DEFAULT_PLAYER_THEMES_STATE.equippedThemeId,
+    unlockedThemeIds: [...DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds],
+  };
+}
+
 export const BOARD_THEMES: Record<BoardThemeId, BoardThemeDefinition> = {
   obsidian_grid: {
     id: 'obsidian_grid',
@@ -315,7 +326,7 @@ export function isThemeUnlocked(id: BoardThemeId, state: PlayerThemesState): boo
 
 export function sanitizePlayerThemesState(raw: unknown): PlayerThemesState {
   if (typeof raw !== 'object' || raw === null) {
-    return { ...DEFAULT_PLAYER_THEMES_STATE };
+    return createDefaultPlayerThemesState();
   }
 
   const candidate = raw as Partial<PlayerThemesState>;

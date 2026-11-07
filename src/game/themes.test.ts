@@ -12,6 +12,7 @@ import {
   BOARD_THEMES,
   DEFAULT_PLAYER_THEMES_STATE,
   STARTER_THEME_IDS,
+  createDefaultPlayerThemesState,
   getAllThemeDefinitions,
   getThemeDefinition,
   getThemeUnlockDescription,
@@ -40,20 +41,36 @@ import { drawThemePreview } from './theme_preview.ts';
 import { NeonRenderer } from './renderer.ts';
 import { createInitialState } from './engine.ts';
 
-function createMockStorage(initialData: Record<string, string> = {}): StorageLike & { store: Map<string, string> } {
+function createMockStorage(initialData: Record<string, string> = {}): StorageLike & {
+  store: Map<string, string>;
+  writeAttempt: number;
+  failNextWrite: boolean;
+  shouldFailWrite?: (key: string, attempt: number) => boolean;
+} {
   const store = new Map<string, string>(Object.entries(initialData));
-  return {
+  const storageObj = {
     store,
+    writeAttempt: 0,
+    failNextWrite: false,
+    shouldFailWrite: undefined as ((key: string, attempt: number) => boolean) | undefined,
     getItem(key: string): string | null {
       return store.get(key) ?? null;
     },
     setItem(key: string, value: string): void {
+      storageObj.writeAttempt++;
+      if (
+        storageObj.failNextWrite ||
+        (storageObj.shouldFailWrite && storageObj.shouldFailWrite(key, storageObj.writeAttempt))
+      ) {
+        throw new Error(`Simulated write error for ${key} at attempt ${storageObj.writeAttempt}`);
+      }
       store.set(key, value);
     },
     removeItem(key: string): void {
       store.delete(key);
     },
   };
+  return storageObj;
 }
 
 function createMockCanvasContext(): CanvasRenderingContext2D & { operations: string[] } {
@@ -397,6 +414,38 @@ test('Theme Persistence 3: unlockTheme unlocks single theme safely', () => {
   // Unlocking already unlocked theme is a no-op success
   const res2 = unlockTheme('solar_array', storage);
   assert.equal(res2.success, true);
+  assert.ok(res2.state.unlockedThemeIds.includes('solar_array'));
+});
+
+test('Theme Persistence 3b: unlockTheme handles write failure, invalid IDs, and null storage', () => {
+  // 1. Write failure when savePlayerThemes throws/fails
+  const failableStorage = createMockStorage();
+  failableStorage.failNextWrite = true;
+
+  const initialThemes = loadPlayerThemes(failableStorage);
+  assert.ok(!initialThemes.unlockedThemeIds.includes('solar_array'));
+
+  const failRes = unlockTheme('solar_array', failableStorage);
+  assert.equal(failRes.success, false, 'Must never return success: true when write fails');
+  assert.deepEqual(failRes.state, initialThemes, 'Must return the previous state on failure');
+  assert.ok(failRes.error?.includes('Failed to write theme persistence to storage'), 'Must return clear error');
+
+  // Verify storage was not updated
+  const storageAfterFail = loadPlayerThemes(failableStorage);
+  assert.ok(!storageAfterFail.unlockedThemeIds.includes('solar_array'));
+
+  // 2. Invalid theme ID rejection
+  const normalStorage = createMockStorage();
+  const invalidRes = unlockTheme('non_existent_theme' as unknown as BoardThemeId, normalStorage);
+  assert.equal(invalidRes.success, false);
+  assert.ok(invalidRes.error?.includes('Invalid theme identifier'));
+  assert.deepEqual(invalidRes.state, DEFAULT_PLAYER_THEMES_STATE);
+
+  // 3. Null storage failure
+  const nullRes = unlockTheme('solar_array', null);
+  assert.equal(nullRes.success, false);
+  assert.ok(nullRes.error?.includes('Failed to write theme persistence to storage'));
+  assert.deepEqual(nullRes.state, DEFAULT_PLAYER_THEMES_STATE);
 });
 
 test('Theme Persistence 4: resetPlayerThemes restores initial defaults', () => {
@@ -411,8 +460,9 @@ test('Theme Persistence 4: resetPlayerThemes restores initial defaults', () => {
     }),
   });
 
-  const resetOk = resetPlayerThemes(storage);
-  assert.equal(resetOk, true);
+  const resetResult = resetPlayerThemes(storage);
+  assert.equal(resetResult.success, true);
+  assert.deepEqual(resetResult.state, DEFAULT_PLAYER_THEMES_STATE);
 
   const themes = loadPlayerThemes(storage);
   assert.deepEqual(themes, DEFAULT_PLAYER_THEMES_STATE);
@@ -420,6 +470,214 @@ test('Theme Persistence 4: resetPlayerThemes restores initial defaults', () => {
   const settings = loadSettings(storage);
   assert.equal(settings.boardTheme, 'obsidian_grid');
 });
+
+test('Theme Persistence 4b: equipTheme rollback succeeds when settings write fails', () => {
+  const storage = createMockStorage({
+    [STORAGE_KEYS.THEMES]: JSON.stringify({
+      equippedThemeId: 'obsidian_grid',
+      unlockedThemeIds: ['obsidian_grid', 'industrial_foundry', 'arctic_research'],
+    }),
+    [STORAGE_KEYS.SETTINGS]: JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      boardTheme: 'obsidian_grid',
+    }),
+  });
+
+  // Attempt 1: savePlayerThemes(updated) succeeds
+  // Attempt 2: saveSettings(updated) fails
+  // Attempt 3: savePlayerThemes(current) rollback succeeds
+  storage.writeAttempt = 0;
+  storage.shouldFailWrite = (key: string, attempt: number) => {
+    return attempt === 2 && key === STORAGE_KEYS.SETTINGS;
+  };
+
+  const res = equipTheme('arctic_research', storage);
+  assert.equal(res.success, false);
+  assert.equal(res.state.equippedThemeId, 'obsidian_grid', 'State must report previous state because rollback succeeded');
+  assert.ok(res.error?.includes('Failed to synchronize board theme with game settings'));
+  assert.ok(!res.error?.includes('Critical'), 'Must not report critical error when rollback succeeds');
+
+  // Verify theme in storage was restored
+  const reloaded = loadPlayerThemes(storage);
+  assert.equal(reloaded.equippedThemeId, 'obsidian_grid');
+});
+
+test('Theme Persistence 4c: equipTheme reports critical error honestly when settings write and rollback both fail', () => {
+  const storage = createMockStorage({
+    [STORAGE_KEYS.THEMES]: JSON.stringify({
+      equippedThemeId: 'obsidian_grid',
+      unlockedThemeIds: ['obsidian_grid', 'industrial_foundry', 'arctic_research'],
+    }),
+    [STORAGE_KEYS.SETTINGS]: JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      boardTheme: 'obsidian_grid',
+    }),
+  });
+
+  // Attempt 1: savePlayerThemes(updated) succeeds
+  // Attempt 2: saveSettings(updated) fails
+  // Attempt 3: savePlayerThemes(current) rollback fails!
+  storage.writeAttempt = 0;
+  storage.shouldFailWrite = (key: string, attempt: number) => {
+    if (attempt === 2 && key === STORAGE_KEYS.SETTINGS) return true;
+    if (attempt === 3 && key === STORAGE_KEYS.THEMES) return true;
+    return false;
+  };
+
+  const res = equipTheme('arctic_research', storage);
+  assert.equal(res.success, false);
+  // State honestly reports arctic_research because rollback to obsidian_grid failed!
+  assert.equal(res.state.equippedThemeId, 'arctic_research', 'Must never claim previous state was restored when rollback fails');
+  assert.ok(res.error?.includes('Critical: Storage rollback to previous state also failed'), 'Must return explicit critical error');
+
+  // Verify storage actually contains arctic_research
+  const reloaded = loadPlayerThemes(storage);
+  assert.equal(reloaded.equippedThemeId, 'arctic_research');
+});
+
+test('Theme Persistence 4d: resetPlayerThemes rollback succeeds when settings reset fails', () => {
+  const storage = createMockStorage({
+    [STORAGE_KEYS.THEMES]: JSON.stringify({
+      equippedThemeId: 'arctic_research',
+      unlockedThemeIds: ['obsidian_grid', 'industrial_foundry', 'arctic_research'],
+    }),
+    [STORAGE_KEYS.SETTINGS]: JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      boardTheme: 'arctic_research',
+    }),
+  });
+
+  // Attempt 1: savePlayerThemes(defaultState) succeeds
+  // Attempt 2: saveSettings(default) fails
+  // Attempt 3: savePlayerThemes(currentThemes) rollback succeeds
+  storage.writeAttempt = 0;
+  storage.shouldFailWrite = (key: string, attempt: number) => {
+    return attempt === 2 && key === STORAGE_KEYS.SETTINGS;
+  };
+
+  const res = resetPlayerThemes(storage);
+  assert.equal(res.success, false);
+  assert.equal(res.state.equippedThemeId, 'arctic_research', 'State must report previous state because rollback succeeded');
+  assert.ok(res.error?.includes('Failed to synchronize reset board theme with game settings'));
+  assert.ok(!res.error?.includes('Critical'));
+
+  // Verify storage contains previous themes
+  const reloaded = loadPlayerThemes(storage);
+  assert.equal(reloaded.equippedThemeId, 'arctic_research');
+  assert.ok(reloaded.unlockedThemeIds.includes('arctic_research'));
+});
+
+test('Theme Persistence 4e: resetPlayerThemes reports critical error honestly when settings reset and rollback both fail', () => {
+  const storage = createMockStorage({
+    [STORAGE_KEYS.THEMES]: JSON.stringify({
+      equippedThemeId: 'arctic_research',
+      unlockedThemeIds: ['obsidian_grid', 'industrial_foundry', 'arctic_research'],
+    }),
+    [STORAGE_KEYS.SETTINGS]: JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      boardTheme: 'arctic_research',
+    }),
+  });
+
+  // Attempt 1: savePlayerThemes(defaultState) succeeds
+  // Attempt 2: saveSettings(default) fails
+  // Attempt 3: savePlayerThemes(currentThemes) rollback fails!
+  storage.writeAttempt = 0;
+  storage.shouldFailWrite = (key: string, attempt: number) => {
+    if (attempt === 2 && key === STORAGE_KEYS.SETTINGS) return true;
+    if (attempt === 3 && key === STORAGE_KEYS.THEMES) return true;
+    return false;
+  };
+
+  const res = resetPlayerThemes(storage);
+  assert.equal(res.success, false);
+  // State honestly reports defaultState because rollback to previous themes failed!
+  assert.equal(res.state.equippedThemeId, 'obsidian_grid', 'Must return state information honestly');
+  assert.deepEqual(res.state.unlockedThemeIds, ['obsidian_grid', 'industrial_foundry']);
+  assert.ok(res.error?.includes('Critical: Storage rollback to previous state also failed'), 'Must return explicit critical error');
+
+  // Verify storage actually contains default state
+  const reloaded = loadPlayerThemes(storage);
+  assert.equal(reloaded.equippedThemeId, 'obsidian_grid');
+});
+
+test('Theme Persistence 4f: resetPlayerThemes returns failure if initial themes write fails', () => {
+  const storage = createMockStorage({
+    [STORAGE_KEYS.THEMES]: JSON.stringify({
+      equippedThemeId: 'arctic_research',
+      unlockedThemeIds: ['obsidian_grid', 'industrial_foundry', 'arctic_research'],
+    }),
+    [STORAGE_KEYS.SETTINGS]: JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      boardTheme: 'arctic_research',
+    }),
+  });
+
+  storage.writeAttempt = 0;
+  storage.shouldFailWrite = (key: string, attempt: number) => {
+    return attempt === 1 && key === STORAGE_KEYS.THEMES;
+  };
+
+  const res = resetPlayerThemes(storage);
+  assert.equal(res.success, false);
+  assert.equal(res.state.equippedThemeId, 'arctic_research');
+  assert.ok(res.error?.includes('Unable to reset board themes ledger'));
+
+  // Settings should not have been modified
+  const settings = loadSettings(storage);
+  assert.equal(settings.boardTheme, 'arctic_research');
+});
+
+test('Theme Defensive Copying: modifying returned states cannot mutate default state constants', () => {
+  // Capture pristine snapshot of default state
+  const expectedDefaultEquipped = 'obsidian_grid';
+  const expectedDefaultUnlocked = ['obsidian_grid', 'industrial_foundry'];
+
+  assert.equal(DEFAULT_PLAYER_THEMES_STATE.equippedThemeId, expectedDefaultEquipped);
+  assert.deepEqual(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds, expectedDefaultUnlocked);
+
+  // 1. Modifying state returned from loadPlayerThemes(null)
+  const nullLoaded = loadPlayerThemes(null);
+  nullLoaded.equippedThemeId = 'solar_array';
+  nullLoaded.unlockedThemeIds.push('void_observatory');
+  assert.equal(DEFAULT_PLAYER_THEMES_STATE.equippedThemeId, expectedDefaultEquipped, 'Default equipped must not be mutated');
+  assert.deepEqual(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds, expectedDefaultUnlocked, 'Default unlocked array must not be mutated');
+
+  // 2. Modifying state returned from loadPlayerThemes(emptyStorage)
+  const emptyStorage = createMockStorage();
+  const emptyLoaded = loadPlayerThemes(emptyStorage);
+  emptyLoaded.unlockedThemeIds.push('arctic_research');
+  assert.deepEqual(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds, expectedDefaultUnlocked);
+
+  // 3. Modifying state returned from loadPlayerThemes with corrupted JSON
+  const corruptStorage = createMockStorage({
+    [STORAGE_KEYS.THEMES]: '{ invalid json !!!',
+  });
+  const corruptLoaded = loadPlayerThemes(corruptStorage);
+  corruptLoaded.unlockedThemeIds.push('bio_dome');
+  assert.deepEqual(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds, expectedDefaultUnlocked);
+
+  // 4. Modifying state returned from sanitizePlayerThemesState(null) and invalid types
+  const sanitizedNull = sanitizePlayerThemesState(null);
+  sanitizedNull.unlockedThemeIds.push('void_observatory');
+  assert.deepEqual(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds, expectedDefaultUnlocked);
+
+  const sanitizedString = sanitizePlayerThemesState('not-an-object');
+  sanitizedString.unlockedThemeIds.push('void_observatory');
+  assert.deepEqual(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds, expectedDefaultUnlocked);
+
+  // 5. Modifying state returned from createDefaultPlayerThemesState()
+  const freshCopy = createDefaultPlayerThemesState();
+  freshCopy.unlockedThemeIds.push('solar_array');
+  assert.deepEqual(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds, expectedDefaultUnlocked);
+
+  // 6. Modifying state returned from resetPlayerThemes()
+  const resetStorage = createMockStorage();
+  const resetRes = resetPlayerThemes(resetStorage);
+  resetRes.state.unlockedThemeIds.push('arctic_research');
+  assert.deepEqual(DEFAULT_PLAYER_THEMES_STATE.unlockedThemeIds, expectedDefaultUnlocked);
+});
+
 
 test('Theme Persistence 5: reconcileAndMigratePlayerThemes performs migration from legacy settings', () => {
   // Legacy user has settings with boardTheme = 'industrial_foundry', but no themes ledger yet
