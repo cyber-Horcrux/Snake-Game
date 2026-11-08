@@ -12,7 +12,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.3-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Capacitor](https://img.shields.io/badge/Capacitor-8.6-119EFF?style=flat-square&logo=capacitor&logoColor=white)](https://capacitorjs.com/)
 [![Android API](https://img.shields.io/badge/Android-API%2024%2B%20%7C%20Target%2036-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com/)
-[![Unit Tests](https://img.shields.io/badge/Tests-543%20Passing-10FFA0?style=flat-square&logo=node.js&logoColor=black)](#testing-and-quality-assurance)
+[![Automated Tests](https://img.shields.io/badge/Tests-543%20Passing-10FFA0?style=flat-square&logo=node.js&logoColor=black)](#testing-and-quality-assurance)
 
 [Overview](#overview) • [Core Features](#core-features) • [Game Modes](#game-modes) • [Cosmetic Customization](#cosmetic-customization) • [Progression & Economy](#progression--economy) • [Controls](#controls) • [Architecture](#architecture) • [Getting Started](#getting-started) • [Android Build Guide](#android-development--release-builds) • [Roadmap](#project-roadmap)
 
@@ -43,7 +43,7 @@ Engineered using a modern frontend architecture built on **React 19**, **TypeScr
 
 ## Core Features
 
-- **Apex Cyber-Viper Brand Identity**: Original geometric kinetic vector branding suite designed across 7 official SVG assets, custom density-scaled Android launcher icons (`mipmap-anydpi-v26`, `hdpi` through `xxxhdpi`), and branded native splash screens.
+- **Apex Cyber-Viper Brand Identity**: Original geometric kinetic vector branding suite designed across 7 official SVG assets, Android adaptive launcher icons (XML declarations under `mipmap-anydpi-v26` with foreground and background vector layers), legacy density-specific PNG launcher assets (`mdpi` through `xxxhdpi`), and density-scaled portrait and landscape splash screens.
 - **Optimized Canvas 2D Rendering Engine**: Game simulation loop decoupled from React render cycles, featuring DPR-aware scaling, sub-pixel coordinate interpolation, dynamic snake body curve calculation, multi-pass glow compositing, and recycled particle pools.
 - **Snake Trails Slipstream Engine**: Energy slipstream wake system utilizing an allocation-conscious fixed-capacity (64 nodes) circular ring buffer, adaptive stride distance estimation, and isolated boundary splitting for smooth trail continuity through high-speed turns and edge-wraps.
 - **Curated Multi-Stage Maze Campaign**: 6 handcrafted tactical architectural maze levels with perimeter barrier blocks, progressive obstacle density, and Warp Gate extraction mechanics.
@@ -211,10 +211,10 @@ Configurable anytime via the **Settings Modal**:
 - **TypeScript (`^7.0.2` / ES2022)**: Strict type checking across simulation physics loops, cosmetic definitions, event buses, and storage schemas.
 - **Vite 8 (`^8.3.0`)**: Local development server with Hot Module Replacement and production bundling.
 - **Tailwind CSS 4 (`^4.3.3`)**: Global cybernetic styling, custom CSS variables, and safe-area inset handling (`env(safe-area-inset-*)`).
-- **HTML5 Canvas 2D**: Hardware-accelerated pixel pipeline managing multi-layer rendering, trail history buffers, glow compositing, and particle pooling. Adaptive graphics mode (`high` vs `reduced`) allows users to disable glow compositing and reduce particle counts to lower rendering workload on budget devices.
+- **HTML5 Canvas 2D**: An optimized 2D canvas rendering pipeline managing multi-layer scene composition, trail history buffers, glow compositing, and particle recycling pools. An adaptive graphics setting (`high` vs `reduced`) allows users on lower-powered devices to disable glow compositing and reduce particle counts to lower rendering workload.
 - **Procedural Web Audio API**: Programmatic sound synthesis generating square, triangle, and sine wave oscillators with custom envelopes and zero external audio files.
 - **Capacitor 8 (`^8.6.0`)**: Cross-platform runtime bridging the web application into a native Android APK package (`com.cyberhorcrux.neonsnake`).
-- **Node.js Native Test Runner (`node:test`)**: Zero-dependency automated test runner executing 543 unit and integration tests in ~3.5 seconds.
+- **Node.js Native Test Runner (`node:test`)**: Zero-dependency test runner executing 543 automated tests in ~3.5 seconds.
 
 ---
 
@@ -269,7 +269,7 @@ src/
 │   ├── trail_renderer.ts    # 8 trail particle slipstreams & ring buffer
 │   ├── trails.ts            # 8 trail definitions & unlock criteria
 │   ├── types.ts             # TypeScript interfaces & domain data models
-│   └── *.test.ts            # 20 automated unit and integration test suites
+│   └── *.test.ts            # 20 automated test suites (543 passing tests)
 ├── App.tsx                  # Root orchestrator managing game loop & screens
 ├── index.css                # Tailwind CSS imports & cyber scrollbar styling
 └── main.tsx                 # React application entry point
@@ -281,7 +281,7 @@ src/
 
 ### Prerequisites
 
-- **Node.js**: Version 20.x or 22.x LTS (Node.js 22 LTS tested and recommended)
+- **Node.js**: Node.js 22.12+ or Node.js 24.x LTS (Node.js 24.x LTS recommended; Node.js 24.21.0 has been used successfully during project development and testing)
 - **npm**: Version 10.x or higher
 
 ### Installation
@@ -310,7 +310,7 @@ src/
 
 ### Local Development
 
-Start the local Vite development server:
+Start the local Vite development server on port 3000:
 
 ```bash
 npm run dev
@@ -358,8 +358,8 @@ NEON SNAKE includes a pre-configured native Android project wrapper powered by C
 - **Minimum SDK**: API 24 (Android 7.0 Nougat)
 - **Target SDK**: API 36 (Android 16)
 - **Compile SDK**: API 36
-- **Adaptive Launcher Icons**: Full density support (`mdpi`, `hdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`)
-- **Splash Screens**: Branded portrait and landscape splash screens across all five densities
+- **Launcher Icons**: Android adaptive icon XML declarations under `mipmap-anydpi-v26` (with `drawable-v24` foreground and `drawable` background resources) alongside legacy density-specific PNG launcher assets across `mdpi`, `hdpi`, `xhdpi`, `xxhdpi`, and `xxxhdpi`
+- **Splash Screens**: Branded portrait and landscape splash screens across all five densities (`mdpi`, `hdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`)
 
 ### Android Prerequisites
 
@@ -452,7 +452,7 @@ npm test
 - [x] **Pilot Progression System**: Level 1–50 XP leveling, milestone title badges, and career progression cards.
 - [x] **Daily Challenges System**: Deterministic UTC 3-tier missions, Trophy Stars economy, and streak tracking.
 - [x] **Multi-Modal Controls**: Swipe gesture tracking and non-overlapping virtual D-pads for mobile portrait and landscape.
-- [x] **Full Test Harness**: 543 automated unit and integration tests passing in ~3.5 seconds.
+- [x] **Full Test Harness**: 543 automated tests passing in ~3.5 seconds.
 
 ### Realistic Future Roadmap
 The following features are under technical evaluation for future releases:

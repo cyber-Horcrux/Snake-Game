@@ -52,9 +52,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Title Screen Callback Signatures**: Resolved TypeScript type mismatch between DOM mouse events and tab parameter strings on the primary customization action button.
 
 ### Technical Validation Summary (November 8, 2026)
-- **Unit & Integration Tests**: 543 passed, 0 failed across all 20 test files in `src/game/*.test.ts` (execution time: ~3.5s).
+- **Automated Tests**: 543 passed, 0 failed across all 20 test files in `src/game/*.test.ts` (execution time: ~3.5s).
 - **Type Safety**: Clean compilation with `tsc --noEmit` (0 errors).
 - **Production Web Bundle**: Built via Vite 8 (example build output: `dist/index.html` ~3.6 kB, `dist/assets/index.js` ~818 kB / ~210 kB gzip).
 - **Capacitor Android Synchronization**: Verified `npx cap sync android` with Android API configuration (minSdk 24, targetSdk 36, compileSdk 36).
 - **Android Release APK Build**: Successfully assembled a signed release APK using Gradle.
-- **Physical Device Validation**: Installed and verified operational on a physical Samsung Galaxy A14 test device running Android, confirming functional touch controls, audio synthesis, and gameplay responsiveness. *(Note: Formal frame-rate profiling was not conducted across the full API 24–36 hardware matrix).*
+- **Physical Device Validation**: Installed successfully and manually tested on a Samsung Galaxy A14, confirming functional touch controls, procedural audio synthesis, and gameplay responsiveness. *(Note: Formal frame-rate profiling was not conducted across the full API 24–36 hardware matrix).*
