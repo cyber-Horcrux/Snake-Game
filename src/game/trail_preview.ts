@@ -121,7 +121,17 @@ export function drawTrailPreview(
       const x = tailX - i * trailStepX;
       const phase = (totalSegments - 1 + i) * 0.68;
       const y = centerY + Math.sin(timeSec * waveFreq - phase) * waveAmp;
-      const angle = 0;
+
+      // Compute true tangent angle along the undulating trail curve
+      let angle = 0;
+      if (i < trailPointCount - 1) {
+        const nextX = tailX - (i + 1) * trailStepX;
+        const nextPhase = (totalSegments - 1 + i + 1) * 0.68;
+        const nextY = centerY + Math.sin(timeSec * waveFreq - nextPhase) * waveAmp;
+        angle = Math.atan2(nextY - y, nextX - x);
+      } else if (trailPoints.length > 0) {
+        angle = trailPoints[trailPoints.length - 1].angle;
+      }
 
       trailPoints.push({
         x,

@@ -115,15 +115,18 @@ export class TrailHistoryManager {
       // Numerically safe displacement check
       const dist = Math.hypot(x - newest.x, y - newest.y);
 
-      if (timeMs === newest.timeMs) {
-        // Equal timestamps: deduplicate negligible/zero displacement
-        if (dist < 0.25) {
-          return;
-        }
-      } else {
-        // Forward time: skip redundant high-frequency samples if very close in position and time
-        if (dist < 0.25 && (timeMs - newest.timeMs) < 14) {
-          return;
+      // Deduplication: Only skip redundant samples if not an explicit discontinuity boundary
+      if (!safeDiscontinuity) {
+        if (timeMs === newest.timeMs) {
+          // Equal timestamps: deduplicate negligible/zero displacement
+          if (dist < 0.25) {
+            return;
+          }
+        } else {
+          // Forward time: skip redundant high-frequency samples if very close in position and time
+          if (dist < 0.25 && (timeMs - newest.timeMs) < 14) {
+            return;
+          }
         }
       }
     }
@@ -1073,7 +1076,7 @@ function drawSolarTrail(
       ctx.lineTo(spikeL * 0.18, -spikeL * 0.18);
       ctx.lineTo(spikeL, 0);
       ctx.lineTo(spikeL * 0.18, spikeL * 0.18);
-      ctx.moveTo(0, spikeL);
+      ctx.lineTo(0, spikeL);
       ctx.lineTo(-spikeL * 0.18, spikeL * 0.18);
       ctx.lineTo(-spikeL, 0);
       ctx.lineTo(-spikeL * 0.18, -spikeL * 0.18);

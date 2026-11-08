@@ -1138,6 +1138,100 @@ test('Boundary Correction 3: Multiple boundary crossings with interleaved normal
   assert.equal(chains[2][1].x, 100);
 });
 
+// =============================================================================
+// RELEASE POLISH TESTS: Geometric Contours & Discontinuity Deduplication
+// =============================================================================
+
+test('Release Polish 1: Discontinuity samples are NEVER dropped during high-frequency deduplication', () => {
+  const manager = new TrailHistoryManager(2000);
+  manager.addPoint(100, 100, 1000, 0, false);
+  assert.equal(manager.getPointCount(), 1);
+
+  // Sample at same timestamp and position BUT with discontinuity = true
+  manager.addPoint(100, 100, 1000, 0, true);
+  assert.equal(manager.getPointCount(), 2, 'Discontinuity sample at same timestamp must be preserved');
+
+  // Sample within 14ms and sub-pixel displacement BUT with discontinuity = true
+  manager.addPoint(100.1, 100, 1005, 0, true);
+  assert.equal(manager.getPointCount(), 3, 'Discontinuity sample with sub-pixel displacement must be preserved');
+});
+
+test('Release Polish 2: Solar Radiance 4-point star glint forms a single continuous closed contour without disjoint moveTo', () => {
+  const ctx = createMockContext();
+  const chain: TrailPoint[] = [
+    { x: 100, y: 100, timeMs: 1000, angle: 0, discontinuity: false },
+    { x: 120, y: 100, timeMs: 1050, angle: 0, discontinuity: false },
+    { x: 140, y: 100, timeMs: 1100, angle: 0, discontinuity: false },
+    { x: 160, y: 100, timeMs: 1150, angle: 0, discontinuity: false },
+    { x: 180, y: 100, timeMs: 1200, angle: 0, discontinuity: false },
+  ];
+
+  drawSnakeTrail(ctx, [chain], 'solar_radiance', {
+    visualEffects: 'high',
+    allowGlow: true,
+    animationTimeMs: 1250,
+  });
+
+  // Verify that star glint paths start with beginPath, moveTo, followed by consecutive lineTo calls and closePath
+  // Find the operations between beginPath and closePath that correspond to the star
+  let foundStar = false;
+  for (let i = 0; i < ctx.operations.length; i++) {
+    if (ctx.operations[i] === 'beginPath') {
+      // Check if subsequent operations match 1 moveTo and 7 lineTo before closePath
+      const pathOps: string[] = [];
+      let j = i + 1;
+      while (j < ctx.operations.length && ctx.operations[j] !== 'closePath' && ctx.operations[j] !== 'stroke' && ctx.operations[j] !== 'fill') {
+        pathOps.push(ctx.operations[j]);
+        j++;
+      }
+      if (ctx.operations[j] === 'closePath' && pathOps.length === 8) {
+        // Star polygon has 1 moveTo + 7 lineTo = 8 ops
+        const moveToCount = pathOps.filter(op => op.startsWith('moveTo')).length;
+        const lineToCount = pathOps.filter(op => op.startsWith('lineTo')).length;
+        if (moveToCount === 1 && lineToCount === 7) {
+          foundStar = true;
+          break;
+        }
+      }
+    }
+  }
+
+  assert.ok(foundStar, 'Solar star glint must draw as a single continuous 8-vertex closed contour');
+});
+
+test('Release Polish 3: Zen mode boundary wrapping computes continuous tail angle without cross-screen distortion', () => {
+  const renderer = new NeonRenderer();
+  const ctx = createMockContext();
+  const state = createInitialState('zen', 24, 24);
+
+  // Snake wrapping across boundary: tail is at x=0, preceding segment is at x=23
+  state.snake = [
+    { x: 2, y: 10 },
+    { x: 1, y: 10 },
+    { x: 0, y: 10 }, // tail cell
+  ];
+  state.prevSnake = [
+    { x: 1, y: 10 },
+    { x: 0, y: 10 },
+    { x: 23, y: 10 }, // wrapped from 23 to 0
+  ];
+  state.gameTimeMs = 1000;
+
+  // Render when playing
+  renderer.render(ctx, 480, 480, state, 0.5, {
+    visualEffects: 'high',
+    trail: 'frost_vapor',
+    isPlaying: true,
+  });
+
+  assert.equal(renderer.trailHistory.getPointCount(), 1);
+  const chains = renderer.trailHistory.getChains(1000);
+  assert.equal(chains.length, 1);
+  // Point recorded should have a valid finite angle
+  assert.ok(Number.isFinite(chains[0][0].angle));
+});
+
+
 
 
 

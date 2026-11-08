@@ -13,7 +13,7 @@ interface TitleScreenProps {
   onStartGame: () => void;
   onOpenStageSelect?: () => void;
   onOpenDailyChallenges?: () => void;
-  onOpenSkinCollection?: () => void;
+  onOpenSkinCollection?: (tab?: 'skins' | 'trails' | 'themes' | React.MouseEvent) => void;
   onOpenHowToPlay: () => void;
   onOpenSettings: () => void;
   onOpenStats: () => void;

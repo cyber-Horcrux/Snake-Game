@@ -1344,8 +1344,9 @@ export default function App() {
           onStartGame={() => (selectedMode === 'maze' ? setShowStageSelect(true) : startGame(selectedMode))}
           onOpenStageSelect={() => setShowStageSelect(true)}
           onOpenDailyChallenges={() => setShowDailyChallenges(true)}
-          onOpenSkinCollection={() => {
-            setCustomizationTab('skins');
+          onOpenSkinCollection={(tab) => {
+            const targetTab = typeof tab === 'string' && (tab === 'trails' || tab === 'themes') ? tab : 'skins';
+            setCustomizationTab(targetTab);
             setShowSkinCollection(true);
           }}
           onOpenHowToPlay={() => setShowHowToPlay(true)}

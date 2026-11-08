@@ -828,12 +828,25 @@ export class NeonRenderer {
     if (interpolatedPoints.length > 0) {
       const tailIdx = interpolatedPoints.length - 1;
       const tailPt = interpolatedPoints[tailIdx];
+      const currTailGrid = state.snake[tailIdx];
       let tailAngle = 0;
       if (interpolatedPoints.length > 1) {
         const prevTailPt = interpolatedPoints[tailIdx - 1];
-        tailAngle = Math.atan2(tailPt.y - prevTailPt.y, tailPt.x - prevTailPt.x);
+        const aheadGrid = state.snake[tailIdx - 1];
+        let dx = tailPt.x - prevTailPt.x;
+        let dy = tailPt.y - prevTailPt.y;
+        if (state.mode === 'zen') {
+          const gridDx = currTailGrid.x - aheadGrid.x;
+          const gridDy = currTailGrid.y - aheadGrid.y;
+          if (Math.abs(gridDx) > 1) {
+            dx = (gridDx > 0 ? -1 : 1) * cellW;
+          }
+          if (Math.abs(gridDy) > 1) {
+            dy = (gridDy > 0 ? -1 : 1) * cellH;
+          }
+        }
+        tailAngle = Math.atan2(dy, dx);
       }
-      const currTailGrid = state.snake[tailIdx];
       const prevTailGrid = state.prevSnake[tailIdx] || currTailGrid;
       const isWrap = Math.abs(currTailGrid.x - prevTailGrid.x) > 1 || Math.abs(currTailGrid.y - prevTailGrid.y) > 1;
 

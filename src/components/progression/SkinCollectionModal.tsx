@@ -66,6 +66,11 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Sync activeTab whenever modal opens with a specific initial tab
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
   // Close on Escape key press for keyboard accessibility
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -446,6 +451,7 @@ export const SkinCollectionModal: React.FC<SkinCollectionModalProps> = ({
                         background="glow"
                         className="w-full max-w-[200px] aspect-[2/1] border border-[#161B2E] rounded-lg"
                         ariaLabel={`${trail.name} preview`}
+                        onClick={() => setSelectedTrailId(trail.id)}
                       />
                     </div>
 
