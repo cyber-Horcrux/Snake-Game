@@ -4,7 +4,7 @@
 
 # NEON SNAKE — ONE MORE RUN
 
-**A high-performance cybernetic arcade snake game engineered for modern desktop browsers and Android mobile devices.**
+**A high-octane cybernetic arcade snake game engineered for modern desktop browsers and Android mobile devices.**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
@@ -22,31 +22,31 @@
 
 ## Overview
 
-**NEON SNAKE: ONE MORE RUN** (Release v1.3.0) is a precision arcade snake simulation built with an unapologetic cybernetic aesthetic. Rooted in the official **Apex Cyber-Viper** brand identity, NEON SNAKE combines hardware-accelerated 60 FPS HTML5 Canvas 2D rendering, procedural Web Audio synthesis, multi-mode tactical gameplay, and deep cosmetic customization with zero microtransactions or grinding walls.
+**NEON SNAKE: ONE MORE RUN** (Release v1.3.0) is a precision arcade snake game built with a distinct cybernetic aesthetic. Rooted in the official **Apex Cyber-Viper** visual identity, NEON SNAKE combines high-performance HTML5 Canvas 2D rendering, procedural Web Audio synthesis, multi-mode tactical gameplay, and cosmetic customization without microtransactions or artificial grinding walls.
 
-Powered by a modern full-stack mobile web architecture featuring **React 19**, **TypeScript**, **Vite 8**, **Tailwind CSS 4**, and **Capacitor 8**, NEON SNAKE is built from the ground up for instantaneous response times, fluid swipe navigation, and native Android packaging (`com.cyberhorcrux.neonsnake`).
+Engineered using a modern frontend architecture built on **React 19**, **TypeScript**, **Vite 8**, **Tailwind CSS 4**, and **Capacitor 8**, NEON SNAKE runs in responsive desktop browsers, mobile viewports, and native Android application environments (`com.cyberhorcrux.neonsnake`).
 
 ---
 
-## Visual Showcase
+## Visual Showcase & Asset Transparency
 
 <div align="center">
 
-<img src="./public/og-image.png" alt="NEON SNAKE Gameplay Preview Banner" width="760" />
+<img src="./public/og-image.png" alt="NEON SNAKE Promotional Social Banner" width="760" />
 
 </div>
 
-> **Authentic Screenshot Asset Standards**:
-> All visual assets in this repository reflect genuine, unedited gameplay from running production builds. View capture requirements and catalog definitions in the [`docs/screenshots/`](./docs/screenshots/) directory.
+> **Asset Transparency Notice**:
+> The banner displayed above is an official promotional preview graphic (`public/og-image.png`). In-game screenshots are not pre-bundled in the repository tree to keep the repository payload lightweight. To view standardized capture specifications or contribute authentic, unedited gameplay screenshots from running builds, refer to the [`docs/screenshots/`](./docs/screenshots/) guide.
 
 ---
 
 ## Core Features
 
-- **Apex Cyber-Viper Brand Identity**: Original geometric kinetic vector branding suite designed across 7 official SVG assets, custom density-scaled Android launcher icons (`mipmap-anydpi-v26`, `hdpi`–`xxxhdpi`), and branded native splash screens.
-- **Deterministic 60 FPS Canvas 2D Engine**: High-performance game loop completely decoupled from React render triggers, featuring DPR-aware scaling, sub-pixel position interpolation, dynamic body curves, additive glow passes, and particle recycling pools.
-- **Snake Trails Slipstream Engine**: An energy wake system with a fixed-capacity (360 samples) zero-GC ring buffer, adaptive stride distance estimation, and isolated boundary splitting for seamless cornering and edge-wrapping.
-- **Curated Multi-Stage Maze Campaign**: 6 handcrafted tactical architectural maze levels with perimeter barrier blocks, progressive obstacle density, and Warp Gate extraction portals.
+- **Apex Cyber-Viper Brand Identity**: Original geometric kinetic vector branding suite designed across 7 official SVG assets, custom density-scaled Android launcher icons (`mipmap-anydpi-v26`, `hdpi` through `xxxhdpi`), and branded native splash screens.
+- **Optimized Canvas 2D Rendering Engine**: Game simulation loop decoupled from React render cycles, featuring DPR-aware scaling, sub-pixel coordinate interpolation, dynamic snake body curve calculation, multi-pass glow compositing, and recycled particle pools.
+- **Snake Trails Slipstream Engine**: Energy slipstream wake system utilizing an allocation-conscious fixed-capacity (64 nodes) circular ring buffer, adaptive stride distance estimation, and isolated boundary splitting for smooth trail continuity through high-speed turns and edge-wraps.
+- **Curated Multi-Stage Maze Campaign**: 6 handcrafted tactical architectural maze levels with perimeter barrier blocks, progressive obstacle density, and Warp Gate extraction mechanics.
 - **Level 1–50 Pilot XP Progression**: Deterministic career experience engine rewarding food consumption, survival time, combo chains, and stage victories with unlockable titles and cosmetic gear.
 - **UTC-Synchronized Daily Challenges**: Three procedural daily missions across Easy, Medium, and Hard tiers rewarding Trophy Stars, tracking streaks, and unlocking milestone awards.
 - **Dynamic Combo Multiplier**: Eating energy nodes within a rapid 3.2-second window escalates score multipliers (1x, 2x, 3x, 4x MAX) accompanied by synthesized harmonic chords.
@@ -60,10 +60,10 @@ Powered by a modern full-stack mobile web architecture featuring **React 19**, *
 
 | Mode | Border Physics | Speed Progression | Score Multiplier | Gameplay Focus |
 |---|---|---|---|---|
-| **CLASSIC** | Solid Walls | Incremental ramp (+7ms per food level) | 1.0x Base | Authentic arcade reflex test. Collisions with perimeter walls or your own body are fatal. |
-| **ZEN** | Toroidal Wraparound | Smooth, relaxed tempo (+5ms per food level) | 1.0x Base | Flow-state meditation. Crossing any border wraps the snake infinitely to the opposing side. Tail angles compute continuously across seams. |
-| **RUSH** | Solid Walls | Extreme initial tick rate + steep scaling | 1.5x Bonus | High-octane reflex challenge. Hyper-accelerated tick rate (down to 48ms) rewarding aggressive risk-taking. |
-| **MAZE** | Architectural Obstacles | Variable tactical pace (+6ms per food level) | Dynamic Bonus | 6-stage campaign. Navigate tight corridors, collect 10 Neon Cores, and extract via the active perimeter Warp Gate for bonus score points. |
+| **CLASSIC** | Solid Walls | Incremental ramp (+7ms per food level) | 1.0x Base | Authentic arcade reflex challenge. Collisions with perimeter walls or your own body are fatal. |
+| **ZEN** | Toroidal Wraparound | Smooth, relaxed tempo (+5ms per food level) | 1.0x Base | Endless flow state. Crossing any border wraps the snake to the opposing perimeter. Tail angles compute continuously across seams. |
+| **RUSH** | Solid Walls | High initial tick rate + steep scaling | 1.5x Bonus | High-octane reflex challenge. Accelerated tick rates (down to 48ms minimum interval) rewarding aggressive, high-risk routing. |
+| **MAZE** | Architectural Obstacles | Tactical variable pace (+6ms per food level) | Dynamic Bonus | 6-stage campaign. Navigate tight corridors, collect 10 Neon Cores, and extract via the active perimeter Warp Gate for bonus score points. |
 
 ### Maze Campaign Stages
 
@@ -71,14 +71,14 @@ Powered by a modern full-stack mobile web architecture featuring **React 19**, *
 2. **Stage 2: Twin Chambers** (Max Ingress Capacity: 20) — Symmetrical center divide requiring precise vertical navigation.
 3. **Stage 3: The Crossfire** (Max Ingress Capacity: 18) — Interlocking quadrant barriers with tight turning pockets.
 4. **Stage 4: Quantum Core** (Max Ingress Capacity: 22) — Concentric inner obstacle ring surrounding the core energy nodes.
-5. **Stage 5: The Labyrinth** (Max Ingress Capacity: 16) — Dense serpentine corridors demanding rapid turn buffering.
+5. **Stage 5: The Labyrinth** (Max Ingress Capacity: 16) — Serpentine corridors demanding quick turn buffering.
 6. **Stage 6: Apex Gauntlet** (Max Ingress Capacity: 14) — The ultimate tactical campaign challenge with high-density obstacle matrices.
 
 ---
 
 ## Cosmetic Customization
 
-Cosmetics are unlocked entirely through gameplay milestones, level progression, and challenge completion—**no paid currencies, microtransactions, or randomized loot boxes**.
+All cosmetics are unlocked entirely through gameplay milestones, level progression, and challenge completion—**there are no paid currencies, microtransactions, or randomized loot boxes**. Each category is accessible in the multi-tab customization drawer (`SkinCollectionModal`), displaying the complete collection alongside animated live canvas previews, equip states, and unlock requirement badges.
 
 ### 1. Snake Chassis Skins (8 Total)
 
@@ -157,15 +157,15 @@ The **Pilot Dossier** aggregates career telemetry and tracks 10 verifiable achie
 ## Energy Nodes & Tactical Power-Ups
 
 - 🟢 **Neon Core (+10 PTS)**: Foundational energy node. Extends snake length by 1 segment and advances the simulation speed level every 5 cores consumed.
-- 🌟 **Bonus Star (+30 PTS Base)**: Rare, timed high-value energy core with an animated radial countdown ring (9-second expiration).
+- 🌟 **Bonus Star (+30 PTS Base)**: Rare, timed high-value energy core featuring an animated radial countdown ring indicating remaining duration (9-second expiration window).
 - ⏱️ **Chrono Shift (+15 PTS)**: Temporarily decelerates simulation speed by ~45% for 7.5 seconds, providing precision steering through narrow corridors.
-- 🛡️ **Aegis Shield (+15 PTS)**: Deploys a quantum energy barrier around the snake head that absorbs exactly one fatal wall or body collision, keeping the run alive.
+- 🛡️ **Aegis Shield (+15 PTS)**: Deploys an energy barrier around the snake head that absorbs exactly one fatal wall or body collision, keeping the run alive.
 
 ---
 
 ## Controls
 
-The input system automatically detects your interaction medium and dynamically adjusts HUD layouts and gesture thresholds.
+The input system detects your interaction medium and dynamically adjusts HUD layouts and gesture thresholds.
 
 ### Desktop Keyboard Controls
 
@@ -183,10 +183,10 @@ The input system automatically detects your interaction medium and dynamically a
 ### Mobile & Touch Controls
 
 Configurable anytime via the **Settings Modal**:
-1. **Swipe Gestures (`swipe`)**: Intuitive drag or flick gestures anywhere across the arena canvas with an optimized 24-pixel threshold and angle disambiguation.
-2. **Virtual D-Pad (`buttons`)**: Responsive on-screen directional controls engineered for ergonomic clearance:
+1. **Swipe Gestures (`swipe`)**: Drag or flick gestures across the arena canvas with a 24-pixel directional threshold and angle disambiguation.
+2. **Virtual D-Pad (`buttons`)**: On-screen directional buttons engineered for clearance:
    - *Portrait Mode*: Docked beneath the 1:1 square arena, safely outside the playfield.
-   - *Landscape Mode*: Docked in the right-side gutter clearance zone, ensuring zero overlap with HUD telemetry or top-level controls.
+   - *Landscape Mode*: Docked in the right-side gutter clearance zone, ensuring separation from HUD telemetry and pause controls.
 3. **Hybrid Mode (`both`)**: Simultaneously accepts both direct arena swipe gestures and virtual D-pad button taps.
 
 ---
@@ -198,9 +198,9 @@ Configurable anytime via the **Settings Modal**:
 │                    NEON SNAKE v1.3.0                        │
 ├────────────────────────────────┬────────────────────────────┤
 │ Application Shell & UI State   │ React 19.0.1, TypeScript 7 │
-│ Styling & Responsive Layout    │ Tailwind CSS 4.3.3         │
+│ Styling & Layout Engine        │ Tailwind CSS 4.3.3         │
 │ Build Tooling & Bundler        │ Vite 8.3.0                 │
-│ Rendering & Visual FX          │ HTML5 Canvas 2D (60 FPS)   │
+│ Rendering Pipeline             │ HTML5 Canvas 2D            │
 │ Sound Engine                   │ Procedural Web Audio API   │
 │ Mobile Native Bridge           │ Capacitor 8.6.0 (Android)  │
 │ Automated Test Suite           │ Node.js Native Test Runner │
@@ -208,19 +208,19 @@ Configurable anytime via the **Settings Modal**:
 ```
 
 - **React 19 (`^19.0.1`)**: Component-based application shell, reactive modal orchestration, accessible dialog management, and HUD state synchronization.
-- **TypeScript (`^7.0.2` / ES2022)**: Strict type safety across physics calculation loops, skin and trail definitions, event buses, and storage schemas.
-- **Vite 8 (`^8.3.0`)**: Near-instant local development server and optimized Rollup client production bundler.
-- **Tailwind CSS 4 (`^4.3.3`)**: Cybernetic UI theming, custom CSS variables, and safe-area inset constraints (`env(safe-area-inset-*)`).
-- **HTML5 Canvas 2D**: Hardware-accelerated pixel pipeline managing multi-layer rendering, trail history buffers, glow compositing, and particle pooling.
-- **Procedural Web Audio API**: 100% programmatic sound synthesis generating square, triangle, and sine wave oscillators with custom ADSR envelopes and zero external WAV/MP3 files.
-- **Capacitor 8 (`^8.6.0`)**: Mobile runtime bridging the web application into a native Android APK package (`com.cyberhorcrux.neonsnake`).
+- **TypeScript (`^7.0.2` / ES2022)**: Strict type checking across simulation physics loops, cosmetic definitions, event buses, and storage schemas.
+- **Vite 8 (`^8.3.0`)**: Local development server with Hot Module Replacement and production bundling.
+- **Tailwind CSS 4 (`^4.3.3`)**: Global cybernetic styling, custom CSS variables, and safe-area inset handling (`env(safe-area-inset-*)`).
+- **HTML5 Canvas 2D**: Hardware-accelerated pixel pipeline managing multi-layer rendering, trail history buffers, glow compositing, and particle pooling. Adaptive graphics mode (`high` vs `reduced`) allows users to disable glow compositing and reduce particle counts to lower rendering workload on budget devices.
+- **Procedural Web Audio API**: Programmatic sound synthesis generating square, triangle, and sine wave oscillators with custom envelopes and zero external audio files.
+- **Capacitor 8 (`^8.6.0`)**: Cross-platform runtime bridging the web application into a native Android APK package (`com.cyberhorcrux.neonsnake`).
 - **Node.js Native Test Runner (`node:test`)**: Zero-dependency automated test runner executing 543 unit and integration tests in ~3.5 seconds.
 
 ---
 
 ## Architecture
 
-The project maintains a strict separation of concerns between presentation, game physics, audio synthesis, and persistence:
+The project maintains a clean separation of concerns between presentation, game physics, audio synthesis, and persistence:
 
 ```
 src/
@@ -281,7 +281,7 @@ src/
 
 ### Prerequisites
 
-- **Node.js**: Version 20.x or 22.x (Node.js 22 LTS recommended)
+- **Node.js**: Version 20.x or 22.x LTS (Node.js 22 LTS tested and recommended)
 - **npm**: Version 10.x or higher
 
 ### Installation
@@ -297,10 +297,16 @@ src/
    npm install
    ```
 
-3. Initialize environment variables:
-   ```bash
-   cp .env.example .env
-   ```
+3. (Optional) Initialize environment variables:
+   - **POSIX (Linux / macOS)**:
+     ```bash
+     cp .env.example .env
+     ```
+   - **Windows PowerShell**:
+     ```powershell
+     Copy-Item .env.example .env
+     ```
+   *(Note: NEON SNAKE is fully playable offline and runs completely in-browser without requiring external API keys or remote services).*
 
 ### Local Development
 
@@ -342,7 +348,7 @@ npm run preview
 
 ## Android Development & Release Builds
 
-NEON SNAKE includes an integrated native Android project wrapper powered by Capacitor 8.
+NEON SNAKE includes a pre-configured native Android project wrapper powered by Capacitor 8.
 
 ### Android Application Specifications
 
@@ -388,7 +394,7 @@ NEON SNAKE includes an integrated native Android project wrapper powered by Capa
      ```
 
 > **Release Signing Notice**:
-> Assembling a signed, release-ready APK or Android App Bundle (AAB) requires a valid keystore, JDK 21+, and properly configured signing properties (`android/keystore.properties`). Never commit signing keystores, store passwords, or private key credentials to public source repositories.
+> Assembling a signed release APK requires a valid keystore, JDK 21+, and properly configured signing properties (`android/keystore.properties`). Keystores, store passwords, or private key credentials must never be committed to source repositories.
 
 ---
 
@@ -432,7 +438,7 @@ npm test
 - `progression_ui.test.ts` (25 tests): Modal tab switching, celebration triggers, and card rendering.
 - `title_screen.test.ts` (8 tests): 2x3 secondary action grid, accessibility attributes, and callback routing.
 
-*(Note: Automated testing provides rigorous regression detection across game logic and math, but does not substitute for ongoing physical device testing).*
+*(Note: Automated testing provides regression protection for application logic and mechanics, but does not substitute for ongoing physical device testing).*
 
 ---
 
@@ -440,7 +446,7 @@ npm test
 
 ### Completed in v1.3.0
 - [x] **Apex Cyber-Viper Master Brand Identity**: 7 official vector SVG assets, custom Android icons, and branded splash screens.
-- [x] **Snake Trails Slipstream Engine**: 8 distinct particle trail styles, zero-GC circular buffer, and dynamic tangent previews.
+- [x] **Snake Trails Slipstream Engine**: 8 distinct particle trail styles, allocation-conscious circular buffer, and dynamic tangent previews.
 - [x] **Cosmetic Customization Suite**: 8 snake chassis skins, 6 board themes, and tabbed preview drawers.
 - [x] **Maze Campaign Mode**: 6 tactical architectural stages, obstacle collision routing, and Warp Gate extraction.
 - [x] **Pilot Progression System**: Level 1–50 XP leveling, milestone title badges, and career progression cards.
@@ -449,17 +455,17 @@ npm test
 - [x] **Full Test Harness**: 543 automated unit and integration tests passing in ~3.5 seconds.
 
 ### Realistic Future Roadmap
-The following features are under active technical evaluation for future releases:
+The following features are under technical evaluation for future releases:
 1. **Custom Maze Stage Editor**: In-browser obstacle layout builder allowing players to design and test custom tactical stages.
 2. **Ghost Run Replays**: Export and replay high-score runs using compact deterministic input logs.
-3. **Advanced Sound Synthesizer Presets**: User-selectable audio profiles (e.g. 8-Bit Chiptune, Dark Synth, Ambient Minimal).
+3. **Advanced Sound Synthesizer Presets**: User-selectable audio oscillator profiles (e.g., Chiptune, Dark Synth, Ambient Minimal).
 4. **Haptic Feedback Integration**: Native vibration patterns for food consumption, power-up activation, and shield breaks on supported mobile hardware.
 
 ---
 
 ## Contributing
 
-Contributions that align with NEON SNAKE's architecture and performance standards are welcome:
+Contributions that align with NEON SNAKE's architecture and quality standards are welcome:
 
 1. Fork the repository (`https://github.com/cyber-Horcrux/Snake-Game`).
 2. Create a feature branch:
@@ -477,6 +483,6 @@ Contributions that align with NEON SNAKE's architecture and performance standard
 
 ## License & Intellectual Property
 
-This repository currently operates **without a formal open-source license**. All visual branding assets, vector logos, game designs, audio algorithms, and source code are the proprietary intellectual property of the project maintainers. 
+This repository currently operates **without a formal open-source license**. 
 
-No license to copy, redistribute, modify, or commercially exploit this software is granted or implied by its presence in this repository. A formal open-source or commercial license may be designated in a future release at the sole discretion of the project maintainers.
+All rights to the game designs, visual branding assets, vector logos, procedural audio synthesis routines, and source code are reserved by the project authors and maintainers. No permission to copy, modify, redistribute, sublicense, or commercially exploit this software or its associated assets is granted by default. A formal open-source or commercial license may be designated in a future release at the discretion of the project maintainers.
